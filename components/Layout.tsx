@@ -12,7 +12,8 @@ import {
   Briefcase,
   PieChart, 
   ShoppingBag,
-  Users // Added icon
+  Users,
+  TrendingDown // Added Icon
 } from 'lucide-react';
 import { AppView, ProfileType, UserProfile } from '../types';
 
@@ -59,7 +60,7 @@ const Layout: React.FC<LayoutProps> = ({
           <NavItem 
             icon={<FileText size={24} />} 
             label="Documentos" 
-            isActive={activeView === AppView.INVOICES}
+            isActive={activeView === AppView.INVOICES || activeView === AppView.INVOICE_DETAIL}
             onClick={() => onNavigate(AppView.INVOICES)}
           />
           <NavItem 
@@ -67,6 +68,12 @@ const Layout: React.FC<LayoutProps> = ({
             label="Clientes" 
             isActive={activeView === AppView.CLIENTS}
             onClick={() => onNavigate(AppView.CLIENTS)}
+          />
+          <NavItem 
+            icon={<TrendingDown size={24} />} 
+            label="Gastos" 
+            isActive={activeView === AppView.EXPENSES}
+            onClick={() => onNavigate(AppView.EXPENSES)}
           />
           <NavItem 
             icon={<ShoppingBag size={24} />} 

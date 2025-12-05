@@ -1,32 +1,111 @@
 
 import { Client } from '@neondatabase/serverless';
-import { Invoice } from '../types';
+import { Invoice, UserProfile } from '../types';
 
 /**
  * NEON DATABASE CONFIGURATION
  * 
  * NOTE: In a real production app, never expose credentials in the frontend code.
  * This should be handled by a backend API. For this prototype, we use the serverless driver.
- * 
- * We allow looking up the URL from localStorage for easier testing in browser environments
- * without env var injection.
  */
 
 const getDbClient = () => {
-  // 1. Try Environment Variable
-  const envUrl = process.env.DATABASE_URL;
-  // 2. Try Local Storage (User Settings)
-  const localUrl = localStorage.getItem('NEON_DATABASE_URL');
-  
-  const url = envUrl || localUrl;
+  try {
+    // 1. Try Environment Variable
+    const envUrl = process.env.DATABASE_URL;
+    // 2. Try Local Storage (User Settings)
+    const localUrl = localStorage.getItem('NEON_DATABASE_URL');
+    
+    const url = envUrl || localUrl;
 
-  if (!url) {
-    console.warn("Neon DB: No DATABASE_URL found. Running in Offline/Mock mode.");
+    if (!url) {
+      return null;
+    }
+    
+    // Safety check for minimal valid postgres URL structure
+    if (!url.startsWith('postgres://') && !url.startsWith('postgresql://')) {
+      console.warn("Invalid Database URL format");
+      return null;
+    }
+    
+    const client = new Client(url);
+    return client;
+  } catch (error) {
+    console.error("Error initializing DB Client:", error);
     return null;
   }
+};
+
+/**
+ * AUTHENTICATION: Login User
+ */
+export const authenticateUser = async (email: string, password: string): Promise<UserProfile | null> => {
+  const client = getDbClient();
   
-  const client = new Client(url);
-  return client;
+  // If no DB connection string, fallback to MOCK for demo purposes if creds match default
+  if (!client) {
+    if (email === 'juan@facturazen.com' && password === 'password123') {
+       // Return Mock Profile
+       return {
+         id: 'p1',
+         name: 'Juan Pérez',
+         type: 'Autónomo' as any,
+         taxId: '8-123-456',
+         avatar: '',
+         isOnboardingComplete: true,
+         defaultCurrency: 'USD',
+         plan: 'Emprendedor Pro',
+         country: 'Panamá',
+         branding: { primaryColor: '#27bea5', templateStyle: 'Modern' }
+       } as UserProfile;
+    }
+    // Don't throw error, just return null so UI handles "Invalid credentials"
+    return null;
+  }
+
+  try {
+    await client.connect();
+    
+    // WARNING: In production, use bcrypt/argon2 on a backend. 
+    // This is a prototype direct connection.
+    const query = 'SELECT * FROM users WHERE email = $1 AND password = $2';
+    const { rows } = await client.query(query, [email, password]);
+    
+    await client.end();
+
+    if (rows.length > 0) {
+       const userRow = rows[0];
+       // Merge flat columns with the JSONB profile_data
+       return {
+         id: userRow.id,
+         name: userRow.name,
+         email: userRow.email,
+         type: userRow.type,
+         ...userRow.profile_data, // Expand JSONB profile
+         isOnboardingComplete: true // Assuming existing users are complete
+       } as UserProfile;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error("Neon Auth Error:", error);
+    // Fallback to local mock login if DB fails (for demo resilience)
+    if (email === 'juan@facturazen.com' && password === 'password123') {
+        return {
+             id: 'p1',
+             name: 'Juan Pérez (Offline)',
+             type: 'Autónomo' as any,
+             taxId: '8-123-456',
+             avatar: '',
+             isOnboardingComplete: true,
+             defaultCurrency: 'USD',
+             plan: 'Emprendedor Pro',
+             country: 'Panamá',
+             branding: { primaryColor: '#27bea5', templateStyle: 'Modern' }
+           } as UserProfile;
+    }
+    return null;
+  }
 };
 
 /**
@@ -59,7 +138,7 @@ export const fetchInvoicesFromDb = async (): Promise<Invoice[] | null> => {
     });
 
   } catch (error) {
-    console.error("Neon DB Connection Error:", error);
+    console.warn("Neon DB Connection Error (using local data):", error);
     return null; // Return null to fallback to mocks
   }
 };

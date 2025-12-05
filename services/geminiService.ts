@@ -101,6 +101,33 @@ const generateWithFallback = async (
 // --- PUBLIC METHODS ---
 
 /**
+ * Simple connection test to verify API Key validity
+ */
+export const testAiConnection = async (provider: 'gemini' | 'openai', key: string): Promise<boolean> => {
+  try {
+    if (provider === 'gemini') {
+      const ai = new GoogleGenAI({ apiKey: key });
+      await ai.models.generateContent({
+        model: GEMINI_MODEL_ID,
+        contents: "Hello",
+      });
+      return true;
+    } 
+    
+    if (provider === 'openai') {
+      const response = await fetch("https://api.openai.com/v1/models", {
+        headers: { "Authorization": `Bearer ${key}` }
+      });
+      return response.ok;
+    }
+    return false;
+  } catch (e) {
+    console.error("Connection Test Failed", e);
+    return false;
+  }
+};
+
+/**
  * Parses natural language input into structured data.
  */
 export const parseInvoiceRequest = async (input: string, keys?: AiKeys): Promise<ParsedInvoiceData | null> => {
@@ -111,16 +138,18 @@ export const parseInvoiceRequest = async (input: string, keys?: AiKeys): Promise
       concept: { type: Type.STRING, description: "Descripción clara del servicio/producto." },
       amount: { type: Type.NUMBER, description: "Monto total numerico. Si no se sabe, usar 0." },
       currency: { type: Type.STRING, description: "Código de moneda ej. USD, EUR, MXN" },
-      detectedType: { type: Type.STRING, enum: ['Invoice', 'Quote', 'Expense'] }
+      detectedType: { type: Type.STRING, enum: ['Invoice', 'Quote', 'Expense'] },
+      date: { type: Type.STRING, description: "Fecha en formato ISO YYYY-MM-DD si se menciona." }
     },
     required: ["clientName", "amount", "concept", "detectedType"],
   };
 
   const systemPrompt = `Eres un asistente contable experto. Analiza la solicitud del usuario y extrae los datos.
   Reglas:
-  1. Si menciona "cotización" o "presupuesto" -> 'Quote'. De lo contrario 'Invoice'.
-  2. Infiere moneda (USD default).
-  3. Resume el concepto en Español.`;
+  1. Si menciona "gasto", "compra" o "pagué" -> 'Expense'.
+  2. Si menciona "cotización" o "presupuesto" -> 'Quote'. De lo contrario 'Invoice'.
+  3. Infiere moneda (USD default).
+  4. Resume el concepto en Español.`;
 
   const result = await generateWithFallback(input, systemPrompt, schema, keys, true);
   if (!result) return null;
@@ -129,6 +158,70 @@ export const parseInvoiceRequest = async (input: string, keys?: AiKeys): Promise
     return JSON.parse(result) as ParsedInvoiceData;
   } catch (e) {
     console.error("JSON Parse Error", e);
+    return null;
+  }
+};
+
+/**
+ * PARSE EXPENSE RECEIPT (IMAGE/VISION)
+ * Uses Gemini Vision capabilities
+ */
+export const parseExpenseImage = async (
+  imageBase64: string, 
+  mimeType: string, 
+  keys?: AiKeys
+): Promise<ParsedInvoiceData | null> => {
+  const geminiKey = keys?.gemini || process.env.API_KEY;
+  if (!geminiKey) return null;
+
+  try {
+    const ai = new GoogleGenAI({ apiKey: geminiKey });
+    
+    // Schema for vision output
+    const schema: Schema = {
+      type: Type.OBJECT,
+      properties: {
+        clientName: { type: Type.STRING, description: "Nombre del proveedor/comercio." },
+        amount: { type: Type.NUMBER, description: "Total a pagar." },
+        currency: { type: Type.STRING, description: "Código de moneda ej. USD" },
+        date: { type: Type.STRING, description: "Fecha del recibo en YYYY-MM-DD" },
+        concept: { type: Type.STRING, description: "Breve descripción de los ítems comprados (ej. Cena, Gasolina, Software)." }
+      },
+      required: ["clientName", "amount", "currency", "concept"]
+    };
+
+    const response = await ai.models.generateContent({
+      model: GEMINI_MODEL_ID,
+      contents: {
+        parts: [
+          {
+            inlineData: {
+              data: imageBase64,
+              mimeType: mimeType
+            }
+          },
+          {
+            text: "Analiza esta imagen de recibo/factura y extrae los datos clave en JSON. Si no es legible, devuelve null."
+          }
+        ]
+      },
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: schema
+      }
+    });
+
+    if (response.text) {
+       const data = JSON.parse(response.text);
+       return {
+         ...data,
+         detectedType: 'Expense'
+       } as ParsedInvoiceData;
+    }
+    return null;
+
+  } catch (error) {
+    console.error("Gemini Vision Error:", error);
     return null;
   }
 };

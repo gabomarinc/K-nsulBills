@@ -5,39 +5,32 @@ import Dashboard from './components/Dashboard';
 import InvoiceWizard from './components/InvoiceWizard';
 import SupportWidget from './components/SupportWidget';
 import OnboardingWizard from './components/OnboardingWizard';
-import InvoiceDetail from './components/InvoiceDetail'; // Import Detail View
-import UserProfileSettings from './components/UserProfileSettings'; // Import Settings View
-import DocumentList from './components/DocumentList'; // Import New Document List
-import ReportsDashboard from './components/ReportsDashboard'; // Import New Reports Dashboard
-import CatalogDashboard from './components/CatalogDashboard'; // Import New Catalog Dashboard
-import ClientList from './components/ClientList'; // Import New Client List
+import LoginScreen from './components/LoginScreen'; 
+import InvoiceDetail from './components/InvoiceDetail'; 
+import UserProfileSettings from './components/UserProfileSettings'; 
+import DocumentList from './components/DocumentList'; 
+import ReportsDashboard from './components/ReportsDashboard'; 
+import CatalogDashboard from './components/CatalogDashboard'; 
+import ClientList from './components/ClientList'; 
+import ExpenseTracker from './components/ExpenseTracker'; 
+import ExpenseWizard from './components/ExpenseWizard'; // New Import
 import { AppView, ProfileType, UserProfile, Invoice, CatalogItem } from './types';
-import { fetchInvoicesFromDb, saveInvoiceToDb, deleteInvoiceFromDb } from './services/neon'; // Import Neon Service
+import { fetchInvoicesFromDb, saveInvoiceToDb, deleteInvoiceFromDb } from './services/neon'; 
 
-// Mock Profiles
+// Mock Profiles (kept for fallback if needed, but Login overwrites)
 const FREELANCE_PROFILE: UserProfile = {
   id: 'p1',
   name: 'Juan Pérez',
   type: ProfileType.FREELANCE,
   taxId: '8-123-456',
   avatar: '',
-  isOnboardingComplete: false, // Start here to show onboarding
-  defaultServices: [
-    { id: 'c1', name: 'Consultoría Estratégica', price: 150, description: 'Sesión de 1 hora de asesoría' },
-    { id: 'c2', name: 'Desarrollo Web Básico', price: 800, description: 'Landing page con 3 secciones' },
-    { id: 'c3', name: 'Mantenimiento Mensual', price: 200, description: 'Soporte y actualizaciones' },
-  ],
+  isOnboardingComplete: false, 
+  defaultServices: [],
   branding: { primaryColor: '#27bea5', templateStyle: 'Modern' },
   defaultCurrency: 'USD',
   plan: 'Emprendedor Pro',
   renewalDate: '15 Nov 2024',
   country: 'Panamá',
-  documentSequences: {
-    invoicePrefix: 'FAC',
-    invoiceNextNumber: 150, // Simulator starting point
-    quotePrefix: 'COT',
-    quoteNextNumber: 45
-  }
 };
 
 const COMPANY_PROFILE: UserProfile = {
@@ -47,21 +40,12 @@ const COMPANY_PROFILE: UserProfile = {
   taxId: '15569888-2-2021',
   avatar: '',
   isOnboardingComplete: true,
-  defaultServices: [
-    { id: 'c1', name: 'Licencia Software Enterprise', price: 5000 },
-    { id: 'c2', name: 'Soporte 24/7', price: 1200 },
-  ],
+  defaultServices: [],
   branding: { primaryColor: '#1c2938', templateStyle: 'Classic' },
   defaultCurrency: 'USD',
   plan: 'Empresa Scale',
   renewalDate: '01 Dic 2024',
   country: 'Panamá',
-  documentSequences: {
-    invoicePrefix: 'F',
-    invoiceNextNumber: 1024,
-    quotePrefix: 'Q',
-    quoteNextNumber: 200
-  }
 };
 
 // --- DATA GENERATOR (ROBUST MOCK FALLBACK) ---
@@ -69,23 +53,17 @@ const generateMockInvoices = (): Invoice[] => {
   const items: Invoice[] = [];
   const now = new Date();
   const clients = ['TechSolutions SRL', 'Restaurante El Sol', 'Agencia Creativa One', 'Consultora Global', 'Startup X', 'Juan Pérez', 'Empresa Demo'];
-  
-  // Counters to simulate sequence history
   let invSeq = 110;
   let quoteSeq = 20;
 
-  // Helper to create a single invoice
   const createItem = (idSuffix: number, daysAgo: number): Invoice => {
      const d = new Date(now);
      d.setDate(d.getDate() - daysAgo);
-     // Add some randomness to time for sorting
      d.setHours(Math.floor(Math.random() * 24), Math.floor(Math.random() * 60));
      
-     // Weighted types: More invoices than quotes/expenses
      const rand = Math.random();
      const type = rand > 0.3 ? 'Invoice' : (rand > 0.15 ? 'Quote' : 'Expense');
      
-     // ID Generation based on type
      let docId = '';
      if (type === 'Invoice') {
        docId = `FAC-${String(invSeq++).padStart(4, '0')}`;
@@ -95,29 +73,24 @@ const generateMockInvoices = (): Invoice[] => {
        docId = `EXP-${String(idSuffix).padStart(4, '0')}`;
      }
 
-     // UPDATED STATUS LOGIC
      let status: Invoice['status'] = 'Borrador';
-     
      if (type === 'Invoice') {
-        // Biased towards Aceptada/Enviada for "Success" feeling
         const r = Math.random();
-        if (r > 0.4) status = 'Aceptada'; // Paid
-        else if (r > 0.2) status = 'Enviada'; // Sent
-        else if (r > 0.1) status = 'Seguimiento'; // Follow-up
+        if (r > 0.4) status = 'Aceptada'; 
+        else if (r > 0.2) status = 'Enviada'; 
+        else if (r > 0.1) status = 'Seguimiento'; 
         else status = 'Creada';
      } else if (type === 'Quote') {
         const r = Math.random();
         if (r > 0.7) status = 'Negociacion';
-        else if (r > 0.5) status = 'Seguimiento'; // Viewed
+        else if (r > 0.5) status = 'Seguimiento';
         else if (r > 0.3) status = 'Enviada';
         else if (r > 0.1) status = 'Rechazada';
         else status = 'Borrador';
      } else {
-        // Expense
         status = 'Aceptada';
      }
 
-     // Amounts: varied but realistic
      const amount = Math.floor(Math.random() * 2500) + 150;
 
      return {
@@ -144,72 +117,77 @@ const generateMockInvoices = (): Invoice[] => {
   };
 
   let idCounter = 0;
-
-  // 1. RECENT ACTIVITY (Last 30 Days)
-  for (let i = 0; i < 15; i++) {
-    const daysAgo = Math.floor(Math.random() * 30);
-    items.push(createItem(idCounter++, daysAgo));
-  }
-
-  // 2. QUARTERLY ACTIVITY (Last 31-90 Days)
-  for (let i = 0; i < 20; i++) {
-    const daysAgo = Math.floor(Math.random() * 60) + 31; // 31 to 90
-    items.push(createItem(idCounter++, daysAgo));
-  }
-
-  // 3. YEARLY ACTIVITY (Last 91-365 Days)
-  for (let i = 0; i < 40; i++) {
-    const daysAgo = Math.floor(Math.random() * 270) + 91; // 91 to 365
-    items.push(createItem(idCounter++, daysAgo));
-  }
+  for (let i = 0; i < 15; i++) { items.push(createItem(idCounter++, Math.floor(Math.random() * 30))); }
+  for (let i = 0; i < 20; i++) { items.push(createItem(idCounter++, Math.floor(Math.random() * 60) + 31)); }
+  for (let i = 0; i < 40; i++) { items.push(createItem(idCounter++, Math.floor(Math.random() * 270) + 91)); }
   
   return items.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 };
 
 const App: React.FC = () => {
-  const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
+  // --- AUTH STATE ---
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentProfile, setCurrentProfile] = useState<UserProfile>(FREELANCE_PROFILE);
+  const [showRegister, setShowRegister] = useState(false);
+
+  // --- APP STATE ---
+  const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
   const [isOffline, setIsOffline] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   
-  // Data State
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [isDbConnected, setIsDbConnected] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingData, setIsLoadingData] = useState(false);
 
-  // INITIAL LOAD: Try Neon, Fallback to Mock
-  useEffect(() => {
-    const loadData = async () => {
-      setIsLoading(true);
-      
-      // 1. Try Fetching from Neon
-      const dbData = await fetchInvoicesFromDb();
-      
-      if (dbData && dbData.length > 0) {
-        console.log("✅ Connected to Neon DB. Loaded", dbData.length, "invoices.");
-        setInvoices(dbData);
-        setIsDbConnected(true);
-      } else {
-        // 2. Fallback to Mock Data generator
-        console.warn("⚠️ Could not connect to Neon (or empty). Using robust mock data.");
+  // LOAD DATA HELPER
+  const refreshData = async () => {
+    setIsLoadingData(true);
+    
+    // Attempt fetch (will use localStorage DB string if available)
+    const dbData = await fetchInvoicesFromDb();
+    
+    if (dbData && dbData.length > 0) {
+      console.log("✅ Connected to Neon DB. Loaded", dbData.length, "invoices.");
+      setInvoices(dbData);
+      setIsDbConnected(true);
+    } else {
+      console.warn("⚠️ Could not connect to Neon (or empty). Using robust mock data.");
+      // Keep existing mock data if we already had it and db failed, or generate new
+      if (invoices.length === 0) {
         setInvoices(generateMockInvoices());
-        setIsDbConnected(false);
       }
-      setIsLoading(false);
-    };
+      setIsDbConnected(false);
+    }
+    setIsLoadingData(false);
+  };
 
-    loadData();
-  }, []);
+  // LOAD DATA EFFECT (Only runs after Auth)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    refreshData();
+  }, [isAuthenticated]);
+
+  const handleLoginSuccess = (user: UserProfile) => {
+    setCurrentProfile(user);
+    setIsAuthenticated(true);
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setInvoices([]);
+    setCurrentView(AppView.DASHBOARD);
+  };
 
   const toggleProfile = () => {
+    // For demo purposes, switching profile just toggles the mock data object if we aren't using real auth
+    // In real app, this might re-fetch user data
     setCurrentProfile(prev => prev.id === 'p1' ? COMPANY_PROFILE : FREELANCE_PROFILE);
   };
 
   const handleSaveInvoice = async (newInvoice: Invoice) => {
-    // Initialize timeline for new invoice
     const invoiceWithTimeline: Invoice = {
       ...newInvoice,
-      timeline: [
+      timeline: newInvoice.timeline || [
          { 
            id: Date.now().toString(), 
            type: 'CREATED', 
@@ -221,11 +199,10 @@ const App: React.FC = () => {
       successProbability: newInvoice.type === 'Quote' ? Math.floor(Math.random() * 30) + 60 : undefined
     };
     
-    // Update Local State Optimistically
     setInvoices([invoiceWithTimeline, ...invoices]);
     setSelectedInvoice(invoiceWithTimeline);
 
-    // Update Sequence Counters in Profile
+    // Update Sequences only for Sales Docs
     if (newInvoice.type === 'Invoice') {
       setCurrentProfile(prev => ({
         ...prev,
@@ -244,36 +221,25 @@ const App: React.FC = () => {
       }));
     }
     
-    // Persist to Neon DB
     if (isDbConnected || !isOffline) {
        saveInvoiceToDb(invoiceWithTimeline).then(success => {
          if (success) console.log("✅ Saved to Neon DB");
-         else console.warn("❌ Failed to save to Neon DB");
        });
     }
   };
 
   const handleDeleteInvoice = async (id: string) => {
     if (window.confirm("¿Estás seguro de que quieres eliminar este documento? Esta acción no se puede deshacer.")) {
-      // 1. Optimistic Update
       const newInvoices = invoices.filter(i => i.id !== id);
       setInvoices(newInvoices);
       if (selectedInvoice?.id === id) setSelectedInvoice(null);
 
-      // 2. DB Delete
       if (isDbConnected || !isOffline) {
-        const success = await deleteInvoiceFromDb(id);
-        if (success) {
-           console.log("✅ Deleted from Neon DB");
-        } else {
-           console.warn("❌ Failed to delete from DB");
-           // Ideally rollback here, but kept simple for prototype
-        }
+        await deleteInvoiceFromDb(id);
       }
     }
   };
 
-  // --- ACTIONS FOR DOCUMENT LIST ---
   const handleMarkAsPaid = async (id: string) => {
     const updatedInvoices = invoices.map(inv => {
       if (inv.id === id) {
@@ -296,7 +262,6 @@ const App: React.FC = () => {
     });
     setInvoices(updatedInvoices);
     
-    // Sync update to DB
     const updatedInv = updatedInvoices.find(i => i.id === id);
     if (updatedInv && (isDbConnected || !isOffline)) {
       saveInvoiceToDb(updatedInv);
@@ -307,19 +272,17 @@ const App: React.FC = () => {
     const quote = invoices.find(i => i.id === quoteId);
     if (!quote) return;
 
-    // 1. Mark Quote as Accepted
     const updatedInvoices = invoices.map(inv => 
       inv.id === quoteId ? { ...inv, status: 'Aceptada' as const } : inv
     );
 
-    // 2. Create new Invoice based on Quote
-    const nextInvId = `${currentProfile.documentSequences?.invoicePrefix}-${String(currentProfile.documentSequences?.invoiceNextNumber).padStart(4, '0')}`;
+    const nextInvId = `${currentProfile.documentSequences?.invoicePrefix || 'FAC'}-${String(currentProfile.documentSequences?.invoiceNextNumber || 1).padStart(4, '0')}`;
     
     const newInvoice: Invoice = {
       ...quote,
       id: nextInvId,
       type: 'Invoice',
-      status: 'Creada', // Start as created
+      status: 'Creada',
       date: new Date().toISOString(),
       timeline: [
         {
@@ -334,7 +297,6 @@ const App: React.FC = () => {
 
     setInvoices([newInvoice, ...updatedInvoices]);
     
-    // Increment sequence
     setCurrentProfile(prev => ({
       ...prev,
       documentSequences: {
@@ -343,7 +305,6 @@ const App: React.FC = () => {
       }
     }));
     
-    // Sync both to DB
     if (isDbConnected || !isOffline) {
        await saveInvoiceToDb({...quote, status: 'Aceptada'});
        await saveInvoiceToDb(newInvoice);
@@ -356,22 +317,27 @@ const App: React.FC = () => {
   };
 
   const handleOnboardingComplete = (data: Partial<UserProfile>) => {
-    setCurrentProfile(prev => ({
-      ...prev,
+    const newProfile = {
+      ...currentProfile,
       ...data,
       isOnboardingComplete: true,
-      // Ensure defaults if not provided
-      documentSequences: prev.documentSequences || {
-        invoicePrefix: 'FAC',
-        invoiceNextNumber: 1,
-        quotePrefix: 'COT',
-        quoteNextNumber: 1
+      documentSequences: currentProfile.documentSequences || {
+        invoicePrefix: 'FAC', invoiceNextNumber: 1,
+        quotePrefix: 'COT', quoteNextNumber: 1
       }
-    }));
+    };
+    setCurrentProfile(newProfile);
+    setIsAuthenticated(true); // Auto-login after register
+    setShowRegister(false);
   };
 
-  const handleProfileUpdate = (updatedProfile: UserProfile) => {
+  // NEW: Async profile update that triggers data refresh
+  const handleProfileUpdate = async (updatedProfile: UserProfile) => {
     setCurrentProfile(updatedProfile);
+    
+    // If user saved settings, likely they updated DB connection string.
+    // Let's try to reconnect nicely.
+    await refreshData();
   };
 
   const handleCatalogUpdate = (newItems: CatalogItem[]) => {
@@ -383,24 +349,48 @@ const App: React.FC = () => {
 
   const pendingCount = invoices.filter(i => i.status === 'PendingSync').length;
 
-  if (isLoading) {
+  // --- RENDER FLOW ---
+
+  // 1. Loading Data Spinner (Initial)
+  if (isLoadingData && invoices.length === 0) {
     return (
       <div className="h-screen flex items-center justify-center bg-slate-50 flex-col gap-4">
         <div className="w-12 h-12 bg-[#27bea5] rounded-xl animate-spin"></div>
-        <p className="text-slate-500 font-medium animate-pulse">Conectando a Neon DB...</p>
+        <p className="text-slate-500 font-medium animate-pulse">Sincronizando oficina virtual...</p>
       </div>
     );
   }
 
-  // Render Onboarding if incomplete
-  if (!currentProfile.isOnboardingComplete) {
+  // 2. Auth: Registration (Onboarding)
+  if (showRegister || (isAuthenticated && !currentProfile.isOnboardingComplete)) {
     return (
       <div className="antialiased text-[#1c2938] font-sans">
         <OnboardingWizard onComplete={handleOnboardingComplete} />
+        {/* Back to Login option if cancelled/stuck */}
+        {!isAuthenticated && (
+           <div className="fixed bottom-4 left-4 z-50">
+              <button onClick={() => setShowRegister(false)} className="text-slate-400 text-sm hover:text-[#1c2938] font-bold">
+                 ← Volver al Login
+              </button>
+           </div>
+        )}
       </div>
     );
   }
 
+  // 3. Auth: Login Screen
+  if (!isAuthenticated) {
+    return (
+      <div className="antialiased text-[#1c2938] font-sans">
+        <LoginScreen 
+          onLoginSuccess={handleLoginSuccess} 
+          onRegisterClick={() => setShowRegister(true)} 
+        />
+      </div>
+    );
+  }
+
+  // 4. Main App
   return (
     <div className="antialiased text-[#1c2938] font-sans">
       <Layout
@@ -438,15 +428,23 @@ const App: React.FC = () => {
           />
         )}
 
+        {/* EXPENSE WIZARD */}
+        {currentView === AppView.EXPENSE_WIZARD && (
+          <ExpenseWizard 
+            currentUser={currentProfile}
+            onSave={handleSaveInvoice}
+            onCancel={() => setCurrentView(AppView.EXPENSES)}
+          />
+        )}
+
         {currentView === AppView.INVOICE_DETAIL && selectedInvoice && (
           <InvoiceDetail 
             invoice={selectedInvoice}
             issuer={currentProfile}
-            onBack={() => setCurrentView(AppView.INVOICES)} // Return to list if coming from list
+            onBack={() => setCurrentView(AppView.INVOICES)} 
           />
         )}
         
-        {/* Document List View */}
         {currentView === AppView.INVOICES && (
           <DocumentList 
             invoices={invoices} 
@@ -454,12 +452,11 @@ const App: React.FC = () => {
             onCreateNew={() => setCurrentView(AppView.WIZARD)}
             onMarkPaid={handleMarkAsPaid}
             onConvertQuote={handleConvertQuote}
-            onDeleteInvoice={handleDeleteInvoice} // NEW PROP
+            onDeleteInvoice={handleDeleteInvoice} 
             currencySymbol={currentProfile.defaultCurrency === 'EUR' ? '€' : '$'}
           />
         )}
 
-        {/* Client List View */}
         {currentView === AppView.CLIENTS && (
           <ClientList 
             invoices={invoices} 
@@ -468,22 +465,29 @@ const App: React.FC = () => {
           />
         )}
 
-        {/* Catalog View */}
         {currentView === AppView.CATALOG && (
           <CatalogDashboard 
             items={currentProfile.defaultServices || []}
             userCountry={currentProfile.country || 'Global'}
-            apiKey={currentProfile.apiKeys} // Pass full key object
+            apiKey={currentProfile.apiKeys} 
             onUpdate={handleCatalogUpdate}
           />
         )}
 
-        {/* Reports View */}
         {currentView === AppView.REPORTS && (
           <ReportsDashboard 
             invoices={invoices}
             currencySymbol={currentProfile.defaultCurrency === 'EUR' ? '€' : '$'}
-            apiKey={currentProfile.apiKeys} // Pass full key object
+            apiKey={currentProfile.apiKeys} 
+          />
+        )}
+
+        {/* EXPENSES VIEW */}
+        {currentView === AppView.EXPENSES && (
+          <ExpenseTracker 
+            invoices={invoices}
+            currencySymbol={currentProfile.defaultCurrency === 'EUR' ? '€' : '$'}
+            onCreateExpense={() => setCurrentView(AppView.EXPENSE_WIZARD)}
           />
         )}
         

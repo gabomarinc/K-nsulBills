@@ -8,6 +8,8 @@ export enum AppView {
   INVOICE_DETAIL = 'INVOICE_DETAIL', // New View
   REPORTS = 'REPORTS', // New Reports View
   CATALOG = 'CATALOG', // New Catalog View
+  EXPENSES = 'EXPENSES', // New Expenses View
+  EXPENSE_WIZARD = 'EXPENSE_WIZARD', // New Expense Creation Flow
 }
 
 export enum ProfileType {
@@ -140,6 +142,7 @@ export interface Invoice {
   // Vital Signs
   timeline?: TimelineEvent[];
   successProbability?: number; // 0-100 (Only for Quotes)
+  receiptUrl?: string; // New: For Expense receipts
 }
 
 export interface ParsedInvoiceData {
@@ -148,6 +151,7 @@ export interface ParsedInvoiceData {
   amount: number;
   currency: string;
   detectedType: 'Invoice' | 'Quote' | 'Expense';
+  date?: string; // New for Expenses
 }
 
 export interface ChartData {

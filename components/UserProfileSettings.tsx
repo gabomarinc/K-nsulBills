@@ -5,20 +5,24 @@ import {
   Save, Crown, Calendar, Globe,
   Coins, Sparkles, Key, Eye, EyeOff, ShieldCheck,
   Smartphone, Mail, ChevronRight,
-  LayoutTemplate, Check, Database
+  LayoutTemplate, Check, Database, Zap, Loader2, CheckCircle2, XCircle, AlertTriangle
 } from 'lucide-react';
 import { UserProfile } from '../types';
+import { testAiConnection } from '../services/geminiService';
 
 interface UserProfileSettingsProps {
   currentUser: UserProfile;
-  onUpdate: (updatedProfile: UserProfile) => void;
+  onUpdate: (updatedProfile: UserProfile) => Promise<void>; // Updated to Promise for smooth async handling
 }
 
 const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, onUpdate }) => {
   const [profile, setProfile] = useState<UserProfile>(currentUser);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'IDLE' | 'SUCCESS' | 'ERROR'>('IDLE');
   const [showKeys, setShowKeys] = useState<{ [key: string]: boolean }>({});
   const [dbUrl, setDbUrl] = useState(''); // Local state for DB URL
+  const [testStatus, setTestStatus] = useState<{ [key: string]: 'IDLE' | 'LOADING' | 'SUCCESS' | 'ERROR' }>({});
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load DB URL from local storage on mount
@@ -43,10 +47,28 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
       ...prev,
       apiKeys: { ...prev.apiKeys, [provider]: value }
     }));
+    // Reset test status on change
+    setTestStatus(prev => ({ ...prev, [provider]: 'IDLE' }));
   };
 
   const toggleKeyVisibility = (provider: string) => {
     setShowKeys(prev => ({ ...prev, [provider]: !prev[provider] }));
+  };
+
+  const runConnectionTest = async (provider: 'gemini' | 'openai') => {
+    const key = profile.apiKeys?.[provider];
+    if (!key) return;
+
+    setTestStatus(prev => ({ ...prev, [provider]: 'LOADING' }));
+    const success = await testAiConnection(provider, key);
+    setTestStatus(prev => ({ ...prev, [provider]: success ? 'SUCCESS' : 'ERROR' }));
+    
+    // Auto-hide success after 3s
+    if (success) {
+      setTimeout(() => {
+        setTestStatus(prev => ({ ...prev, [provider]: 'IDLE' }));
+      }, 3000);
+    }
   };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -60,28 +82,48 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
     }
   };
 
-  const saveChanges = () => {
+  const saveChanges = async () => {
     setIsSaving(true);
+    setSaveStatus('IDLE');
     
-    // Save DB URL to localStorage
-    if (dbUrl) {
-      localStorage.setItem('NEON_DATABASE_URL', dbUrl);
-    } else {
-      localStorage.removeItem('NEON_DATABASE_URL');
-    }
+    try {
+      // Save DB URL to localStorage
+      if (dbUrl) {
+        localStorage.setItem('NEON_DATABASE_URL', dbUrl.trim());
+      } else {
+        localStorage.removeItem('NEON_DATABASE_URL');
+      }
 
-    // Simulate API call
-    setTimeout(() => {
-      onUpdate(profile);
+      // Propagate update to App.tsx (which handles DB reconnection)
+      await onUpdate(profile);
+      
+      setSaveStatus('SUCCESS');
+      setTimeout(() => setSaveStatus('IDLE'), 3000);
+    } catch (error) {
+      console.error("Failed to save:", error);
+      setSaveStatus('ERROR');
+    } finally {
       setIsSaving(false);
-      // Force reload to pick up new DB connection if changed
-      window.location.reload(); 
-    }, 800);
+    }
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-10 animate-in fade-in pb-12">
+    <div className="max-w-6xl mx-auto space-y-10 animate-in fade-in pb-12 relative">
       
+      {/* Toast Notification */}
+      {saveStatus === 'SUCCESS' && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-green-500 text-white px-6 py-3 rounded-full shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-top-4">
+          <CheckCircle2 className="w-5 h-5" />
+          <span className="font-bold">¡Cambios guardados con éxito!</span>
+        </div>
+      )}
+      {saveStatus === 'ERROR' && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-red-500 text-white px-6 py-3 rounded-full shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-top-4">
+          <AlertTriangle className="w-5 h-5" />
+          <span className="font-bold">Error al guardar. Revisa tu conexión.</span>
+        </div>
+      )}
+
       {/* HEADER: Visceral & Reflective - Welcoming and empowering */}
       <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-4 border-b border-slate-100 pb-6">
         <div>
@@ -91,10 +133,17 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
         <button 
           onClick={saveChanges}
           disabled={isSaving}
-          className="bg-[#1c2938] text-white px-8 py-3 rounded-2xl font-bold hover:bg-[#27bea5] transition-all duration-300 flex items-center gap-3 shadow-lg hover:shadow-xl hover:-translate-y-1 active:translate-y-0 active:scale-95 disabled:opacity-70 disabled:transform-none"
+          className={`px-8 py-3 rounded-2xl font-bold transition-all duration-300 flex items-center gap-3 shadow-lg hover:shadow-xl hover:-translate-y-1 active:translate-y-0 active:scale-95 disabled:opacity-70 disabled:transform-none ${
+             saveStatus === 'SUCCESS' ? 'bg-green-500 text-white' : 'bg-[#1c2938] text-white hover:bg-[#27bea5]'
+          }`}
         >
-          {isSaving ? 'Guardando...' : 'Guardar Cambios'}
-          {!isSaving && <Save className="w-5 h-5" />}
+          {isSaving ? (
+            <><Loader2 className="w-5 h-5 animate-spin" /> Guardando...</>
+          ) : saveStatus === 'SUCCESS' ? (
+            <><Check className="w-5 h-5" /> Guardado</>
+          ) : (
+            <>Guardar Cambios <Save className="w-5 h-5" /></>
+          )}
         </button>
       </div>
 
@@ -250,20 +299,39 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                       <span>Google Gemini API Key</span>
                       <span className="text-[#27bea5] bg-[#27bea5]/10 px-2 py-0.5 rounded text-[10px]">Recomendado</span>
                    </label>
-                   <div className="relative group/input">
-                      <Key className="absolute left-4 top-3.5 w-5 h-5 text-slate-500 group-focus-within/input:text-[#27bea5] transition-colors" />
-                      <input 
-                        type={showKeys['gemini'] ? "text" : "password"}
-                        value={profile.apiKeys?.gemini || ''}
-                        onChange={(e) => handleApiKeyChange('gemini', e.target.value)}
-                        placeholder="Pega tu llave aquí..."
-                        className="w-full pl-12 pr-12 p-3.5 bg-white/5 border border-white/10 rounded-2xl focus:ring-2 focus:ring-[#27bea5] outline-none text-white placeholder:text-slate-600 font-mono text-sm transition-all focus:bg-white/10"
-                      />
+                   <div className="relative flex gap-2">
+                      <div className="relative group/input flex-1">
+                          <Key className="absolute left-4 top-3.5 w-5 h-5 text-slate-500 group-focus-within/input:text-[#27bea5] transition-colors" />
+                          <input 
+                            type={showKeys['gemini'] ? "text" : "password"}
+                            value={profile.apiKeys?.gemini || ''}
+                            onChange={(e) => handleApiKeyChange('gemini', e.target.value)}
+                            placeholder="Pega tu llave aquí..."
+                            className="w-full pl-12 pr-12 p-3.5 bg-white/5 border border-white/10 rounded-2xl focus:ring-2 focus:ring-[#27bea5] outline-none text-white placeholder:text-slate-600 font-mono text-sm transition-all focus:bg-white/10"
+                          />
+                          <button 
+                            onClick={() => toggleKeyVisibility('gemini')}
+                            className="absolute right-3 top-3.5 p-1 text-slate-500 hover:text-white transition-colors rounded-lg hover:bg-white/10"
+                          >
+                            {showKeys['gemini'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                      </div>
+                      
+                      {/* TEST BUTTON */}
                       <button 
-                        onClick={() => toggleKeyVisibility('gemini')}
-                        className="absolute right-3 top-3.5 p-1 text-slate-500 hover:text-white transition-colors rounded-lg hover:bg-white/10"
+                        onClick={() => runConnectionTest('gemini')}
+                        disabled={!profile.apiKeys?.gemini || testStatus['gemini'] === 'LOADING'}
+                        className={`p-3.5 rounded-2xl border transition-all flex items-center justify-center ${
+                          testStatus['gemini'] === 'SUCCESS' ? 'bg-green-500/20 border-green-500 text-green-400' : 
+                          testStatus['gemini'] === 'ERROR' ? 'bg-red-500/20 border-red-500 text-red-400' :
+                          'bg-white/5 border-white/10 hover:bg-white/10'
+                        }`}
+                        title="Probar Conexión"
                       >
-                        {showKeys['gemini'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                         {testStatus['gemini'] === 'LOADING' ? <Loader2 className="w-5 h-5 animate-spin" /> : 
+                          testStatus['gemini'] === 'SUCCESS' ? <CheckCircle2 className="w-5 h-5" /> : 
+                          testStatus['gemini'] === 'ERROR' ? <XCircle className="w-5 h-5" /> : 
+                          <Zap className="w-5 h-5" />}
                       </button>
                    </div>
                 </div>
@@ -271,20 +339,39 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                 {/* OpenAI */}
                 <div className="space-y-2">
                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">OpenAI API Key (Backup)</label>
-                   <div className="relative group/input">
-                      <Key className="absolute left-4 top-3.5 w-5 h-5 text-slate-500 group-focus-within/input:text-white transition-colors" />
-                      <input 
-                        type={showKeys['openai'] ? "text" : "password"}
-                        value={profile.apiKeys?.openai || ''}
-                        onChange={(e) => handleApiKeyChange('openai', e.target.value)}
-                        placeholder="sk-..."
-                        className="w-full pl-12 pr-12 p-3.5 bg-white/5 border border-white/10 rounded-2xl focus:ring-2 focus:ring-white/30 outline-none text-white placeholder:text-slate-600 font-mono text-sm transition-all focus:bg-white/10"
-                      />
+                   <div className="relative flex gap-2">
+                      <div className="relative group/input flex-1">
+                        <Key className="absolute left-4 top-3.5 w-5 h-5 text-slate-500 group-focus-within/input:text-white transition-colors" />
+                        <input 
+                          type={showKeys['openai'] ? "text" : "password"}
+                          value={profile.apiKeys?.openai || ''}
+                          onChange={(e) => handleApiKeyChange('openai', e.target.value)}
+                          placeholder="sk-..."
+                          className="w-full pl-12 pr-12 p-3.5 bg-white/5 border border-white/10 rounded-2xl focus:ring-2 focus:ring-white/30 outline-none text-white placeholder:text-slate-600 font-mono text-sm transition-all focus:bg-white/10"
+                        />
+                        <button 
+                          onClick={() => toggleKeyVisibility('openai')}
+                          className="absolute right-3 top-3.5 p-1 text-slate-500 hover:text-white transition-colors rounded-lg hover:bg-white/10"
+                        >
+                          {showKeys['openai'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                      
+                      {/* TEST BUTTON */}
                       <button 
-                        onClick={() => toggleKeyVisibility('openai')}
-                        className="absolute right-3 top-3.5 p-1 text-slate-500 hover:text-white transition-colors rounded-lg hover:bg-white/10"
+                        onClick={() => runConnectionTest('openai')}
+                        disabled={!profile.apiKeys?.openai || testStatus['openai'] === 'LOADING'}
+                        className={`p-3.5 rounded-2xl border transition-all flex items-center justify-center ${
+                          testStatus['openai'] === 'SUCCESS' ? 'bg-green-500/20 border-green-500 text-green-400' : 
+                          testStatus['openai'] === 'ERROR' ? 'bg-red-500/20 border-red-500 text-red-400' :
+                          'bg-white/5 border-white/10 hover:bg-white/10'
+                        }`}
+                        title="Probar Conexión"
                       >
-                         {showKeys['openai'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                         {testStatus['openai'] === 'LOADING' ? <Loader2 className="w-5 h-5 animate-spin" /> : 
+                          testStatus['openai'] === 'SUCCESS' ? <CheckCircle2 className="w-5 h-5" /> : 
+                          testStatus['openai'] === 'ERROR' ? <XCircle className="w-5 h-5" /> : 
+                          <Zap className="w-5 h-5" />}
                       </button>
                    </div>
                 </div>
