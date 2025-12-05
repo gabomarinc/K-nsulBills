@@ -1,0 +1,567 @@
+
+import React, { useState, useEffect } from 'react';
+import { 
+  Mic, Send, Sparkles, Check, ArrowLeft, Edit2, Loader2, 
+  FileText, FileBadge, Calendar, User, Search, Plus, Trash2, 
+  ShoppingBag, Calculator, ChevronDown, Building2, Eye,
+  Coins
+} from 'lucide-react';
+import { Invoice, ParsedInvoiceData, UserProfile, InvoiceItem } from '../types';
+import { parseInvoiceRequest } from '../services/geminiService';
+
+interface InvoiceWizardProps {
+  currentUser: UserProfile;
+  isOffline: boolean;
+  onSave: (invoice: Invoice) => void;
+  onCancel: () => void;
+  onViewDetail?: () => void; // New Prop
+}
+
+type Step = 'TYPE_SELECT' | 'AI_INPUT' | 'SMART_EDITOR' | 'SUCCESS';
+
+// Mock Memory for Client Autocomplete
+const MOCK_CLIENTS = [
+  { name: 'TechSolutions SRL', taxId: 'B12345678', email: 'billing@techsolutions.com' },
+  { name: 'Restaurante El Sol', taxId: 'XEXX010101000', email: 'admin@elsol.mx' },
+  { name: 'Agencia Creativa One', taxId: 'A98765432', email: 'finanzas@one.com' },
+];
+
+const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, onSave, onCancel, onViewDetail }) => {
+  const [step, setStep] = useState<Step>('TYPE_SELECT');
+  const [docType, setDocType] = useState<'Invoice' | 'Quote'>('Invoice');
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // Smart Editor State
+  const [clientSearch, setClientSearch] = useState('');
+  const [showClientDropdown, setShowClientDropdown] = useState(false);
+  const [showCatalog, setShowCatalog] = useState(false);
+  
+  const [draft, setDraft] = useState<{
+    clientName: string;
+    clientTaxId: string;
+    clientEmail?: string;
+    items: InvoiceItem[];
+    currency: string;
+    discountRate: number; // Percentage
+    notes: string;
+    validityDate: string; // YYYY-MM-DD
+  }>({
+    clientName: '',
+    clientTaxId: '',
+    items: [],
+    currency: currentUser.defaultCurrency || 'USD',
+    discountRate: 0,
+    notes: '',
+    validityDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] // +15 days default
+  });
+
+  // --- LOGIC: Math & Fiscal ---
+  const calculateTotals = () => {
+    const subtotal = draft.items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+    const discountAmount = subtotal * (draft.discountRate / 100);
+    const taxableBase = subtotal - discountAmount;
+    
+    // Simplified Tax Logic (Demo)
+    const taxRate = 0.21; // 21% IVA
+    const taxAmount = taxableBase * taxRate;
+    const total = taxableBase + taxAmount;
+
+    return { subtotal, discountAmount, taxAmount, total };
+  };
+
+  const totals = calculateTotals();
+
+  // --- LOGIC: Client Autocomplete ---
+  const handleClientSelect = (client: typeof MOCK_CLIENTS[0]) => {
+    setDraft(prev => ({ 
+      ...prev, 
+      clientName: client.name, 
+      clientTaxId: client.taxId,
+      clientEmail: client.email
+    }));
+    setClientSearch(client.name);
+    setShowClientDropdown(false);
+  };
+
+  const handleNewClientTaxId = (id: string) => {
+    setDraft(prev => ({ ...prev, clientTaxId: id }));
+  };
+
+  // --- LOGIC: AI Parsing ---
+  const handleTypeSelect = (type: 'Invoice' | 'Quote') => {
+    setDocType(type);
+    setStep('AI_INPUT');
+  };
+
+  const handleAiSubmit = async () => {
+    if (!input.trim()) return;
+    setIsLoading(true);
+    try {
+      const contextInput = `${docType === 'Quote' ? 'Cotización: ' : 'Factura: '} ${input}`;
+      // Pass the user's API Key if available
+      const result = await parseInvoiceRequest(contextInput, currentUser.apiKeys?.gemini);
+      
+      if (result) {
+        // Construct items immediately
+        const newItems = [{
+          id: Date.now().toString(),
+          description: result.concept || 'Servicios Profesionales',
+          quantity: 1,
+          price: result.amount || 0,
+          tax: 21
+        }];
+
+        // Update draft state fully
+        setDraft(prev => ({
+          ...prev,
+          clientName: result.clientName || prev.clientName,
+          clientTaxId: result.clientName ? '' : prev.clientTaxId, // Clear ID if new name detected
+          currency: result.currency || prev.currency,
+          items: newItems
+        }));
+        
+        // Update UI search field
+        setClientSearch(result.clientName || '');
+        
+        // Move to editor
+        setStep('SMART_EDITOR');
+      }
+    } catch (error) {
+      console.error("AI Parsing Error", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const skipAi = () => {
+    setStep('SMART_EDITOR');
+  };
+
+  const handleSave = () => {
+    if (!draft.clientName || totals.total === 0) return;
+
+    const finalInvoice: Invoice = {
+      id: Math.random().toString(36).substr(2, 9),
+      clientName: draft.clientName,
+      clientTaxId: draft.clientTaxId,
+      date: new Date().toISOString(),
+      items: draft.items,
+      total: totals.total,
+      status: isOffline ? 'PendingSync' : (docType === 'Quote' ? 'Draft' : 'Sent'),
+      currency: draft.currency,
+      type: docType
+    };
+    
+    onSave(finalInvoice);
+    setStep('SUCCESS');
+  };
+
+  // --- COMPONENTS: Item Row ---
+  const addItem = (catalogItem?: any) => {
+    setDraft(prev => ({
+      ...prev,
+      items: [...prev.items, {
+        id: Date.now().toString(),
+        description: catalogItem?.name || '',
+        quantity: 1,
+        price: catalogItem?.price || 0,
+        tax: 21
+      }]
+    }));
+    setShowCatalog(false);
+  };
+
+  const updateItem = (index: number, field: keyof InvoiceItem, value: any) => {
+    const newItems = [...draft.items];
+    newItems[index] = { ...newItems[index], [field]: value };
+    setDraft(prev => ({ ...prev, items: newItems }));
+  };
+
+  const removeItem = (index: number) => {
+    setDraft(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== index) }));
+  };
+
+  // --- RENDER ---
+  if (step === 'SUCCESS') {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-center animate-in zoom-in duration-300">
+        <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-6 shadow-lg shadow-green-200">
+          <Check className="w-12 h-12" />
+        </div>
+        <h2 className="text-3xl font-bold text-[#1c2938] mb-2">
+          {docType === 'Quote' ? 'Cotización Lista' : 'Factura Lista'}
+        </h2>
+        <p className="text-lg text-slate-500 mb-8 max-w-md">
+          {isOffline 
+            ? "Guardada en la cola segura. Se sincronizará automáticamente." 
+            : `El documento para ${draft.clientName} ha sido generado exitosamente.`}
+        </p>
+        <div className="flex gap-4">
+           <button onClick={onCancel} className="text-slate-500 font-medium hover:text-slate-800 px-6">Cerrar</button>
+           
+           <button 
+             onClick={() => onViewDetail && onViewDetail()}
+             className="bg-[#27bea5] text-white px-8 py-3 rounded-xl font-bold hover:bg-[#22a890] transition-all shadow-lg flex items-center gap-2"
+           >
+             <Eye className="w-5 h-5" /> Ver Documento
+           </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-6xl mx-auto h-full flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6 px-4 lg:px-0">
+        <div className="flex items-center gap-4">
+          <button onClick={() => step === 'SMART_EDITOR' ? setStep('AI_INPUT') : onCancel()} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+            <ArrowLeft className="w-6 h-6 text-slate-500" />
+          </button>
+          <div className="h-2 w-24 md:w-32 bg-slate-100 rounded-full overflow-hidden hidden md:block">
+            <div 
+              className="h-full bg-[#27bea5] transition-all duration-500 ease-out"
+              style={{ width: step === 'TYPE_SELECT' ? '20%' : step === 'AI_INPUT' ? '50%' : '100%' }}
+            />
+          </div>
+        </div>
+        <div className="text-sm font-medium text-slate-400 uppercase tracking-wide">
+          {step === 'SMART_EDITOR' ? (docType === 'Quote' ? 'Editando Cotización' : 'Editando Factura') : 'Asistente'}
+        </div>
+      </div>
+
+      {/* STEP 1: SELECT */}
+      {step === 'TYPE_SELECT' && (
+        <div className="flex-1 flex flex-col items-center justify-center animate-in slide-in-from-right-8 px-4">
+          <h2 className="text-3xl font-bold text-[#1c2938] mb-8 text-center">¿Qué vamos a crear?</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-2xl">
+            <button onClick={() => handleTypeSelect('Invoice')} className="group bg-white p-8 rounded-3xl shadow-sm hover:shadow-xl border-2 border-transparent hover:border-[#27bea5] transition-all text-left">
+              <div className="w-14 h-14 bg-[#27bea5]/10 text-[#27bea5] rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                <FileText className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-bold text-[#1c2938]">Factura de Venta</h3>
+              <p className="text-slate-500 mt-2">Para cobrar un trabajo ya realizado.</p>
+            </button>
+
+            <button onClick={() => handleTypeSelect('Quote')} className="group bg-white p-8 rounded-3xl shadow-sm hover:shadow-xl border-2 border-transparent hover:border-[#27bea5] transition-all text-left">
+              <div className="w-14 h-14 bg-[#1c2938]/10 text-[#1c2938] rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                <FileBadge className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-bold text-[#1c2938]">Cotización</h3>
+              <p className="text-slate-500 mt-2">Presupuesto formal para cerrar una venta.</p>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 2: AI INPUT */}
+      {step === 'AI_INPUT' && (
+        <div className="flex-1 flex flex-col justify-center animate-in slide-in-from-right-8 px-4">
+          <div className="text-center mb-8">
+            <h2 className="text-3xl font-bold text-[#1c2938]">Dímelo con tus palabras</h2>
+            <p className="text-slate-500 mt-2">O salta este paso para hacerlo manualmente.</p>
+          </div>
+
+          <div className="bg-white p-6 rounded-3xl shadow-xl border border-slate-100 max-w-2xl mx-auto w-full relative">
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={docType === 'Quote' ? "Ej: Cotiza 3 laptops para TechSolutions..." : "Ej: Factura a Juan Pérez por consultoría..."}
+              className="w-full h-40 text-xl p-4 placeholder-slate-300 border-none focus:ring-0 resize-none rounded-xl"
+              autoFocus
+            />
+            <div className="flex justify-between items-center mt-4 pt-4 border-t border-slate-50">
+              <button onClick={skipAi} className="text-slate-500 font-medium hover:text-[#27bea5] px-4">
+                Saltar a Manual
+              </button>
+              <button 
+                onClick={handleAiSubmit}
+                disabled={!input.trim() || isLoading}
+                className="flex items-center gap-2 bg-[#27bea5] text-white px-6 py-3 rounded-xl font-bold hover:bg-[#22a890] disabled:opacity-50 transition-all"
+              >
+                {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+                {isLoading ? 'Analizando...' : 'Generar Borrador'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 3: SMART EDITOR (Fixed Layout) */}
+      {step === 'SMART_EDITOR' && (
+        <div className="flex-1 flex flex-col lg:flex-row gap-6 animate-in fade-in duration-300 h-[calc(100vh-140px)] min-h-[500px]">
+          
+          {/* LEFT: FORM INPUTS (Scrollable) */}
+          <div className="flex-1 space-y-6 overflow-y-auto pb-20 pr-2 custom-scrollbar">
+            
+            {/* 1. Client Identity Section */}
+            <section className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                <User className="w-4 h-4" /> Cliente
+              </h3>
+              
+              <div className="relative">
+                <div className="flex items-center border rounded-xl px-3 py-3 focus-within:ring-2 focus-within:ring-[#27bea5] bg-slate-50">
+                  <Search className="w-5 h-5 text-slate-400 mr-3" />
+                  <input 
+                    value={clientSearch}
+                    onChange={(e) => {
+                      setClientSearch(e.target.value);
+                      setShowClientDropdown(true);
+                      if (draft.clientName !== e.target.value) {
+                         setDraft(prev => ({...prev, clientName: e.target.value, clientTaxId: ''}));
+                      }
+                    }}
+                    placeholder="Buscar cliente o escribir nuevo..."
+                    className="flex-1 bg-transparent outline-none font-medium text-[#1c2938] placeholder:font-normal"
+                  />
+                </div>
+
+                {/* Autocomplete Dropdown */}
+                {showClientDropdown && clientSearch && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-slate-100 z-20 overflow-hidden">
+                    {MOCK_CLIENTS.filter(c => c.name.toLowerCase().includes(clientSearch.toLowerCase())).map((c, idx) => (
+                      <button 
+                        key={idx}
+                        onClick={() => handleClientSelect(c)}
+                        className="w-full text-left px-4 py-3 hover:bg-[#27bea5]/10 transition-colors flex justify-between items-center group"
+                      >
+                        <div>
+                          <p className="font-bold text-slate-800">{c.name}</p>
+                          <p className="text-xs text-slate-500">{c.taxId}</p>
+                        </div>
+                        <Check className="w-4 h-4 text-[#27bea5] opacity-0 group-hover:opacity-100" />
+                      </button>
+                    ))}
+                    <div className="px-4 py-3 bg-slate-50 border-t border-slate-100 text-xs text-slate-500">
+                      Si es nuevo, ingresa su ID Fiscal abajo.
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Smart ID Lookup for New Clients */}
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">ID Fiscal (RFC/NIF)</label>
+                  <input 
+                    value={draft.clientTaxId}
+                    onChange={(e) => handleNewClientTaxId(e.target.value.toUpperCase())}
+                    placeholder="Obligatorio"
+                    className={`w-full p-3 rounded-xl border outline-none ${!draft.clientTaxId && draft.clientName ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white'}`}
+                  />
+                </div>
+                <div>
+                   <label className="block text-xs font-bold text-slate-500 mb-1">Email (Opcional)</label>
+                   <input 
+                     value={draft.clientEmail || ''}
+                     onChange={(e) => setDraft({...draft, clientEmail: e.target.value})}
+                     placeholder="para@envio.com"
+                     className="w-full p-3 rounded-xl border border-slate-200 bg-white outline-none"
+                   />
+                </div>
+              </div>
+            </section>
+
+            {/* 2. Items Section */}
+            <section className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                  <ShoppingBag className="w-4 h-4" /> Ítems
+                </h3>
+                <button 
+                  onClick={() => setShowCatalog(!showCatalog)}
+                  className="text-xs font-bold text-[#27bea5] bg-[#27bea5]/10 px-3 py-1.5 rounded-lg hover:bg-[#27bea5]/20 transition-colors flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" /> Catálogo
+                </button>
+              </div>
+
+              {/* Catalog Popover */}
+              {showCatalog && (
+                <div className="mb-4 bg-slate-50 p-3 rounded-xl border border-slate-200 animate-in slide-in-from-top-2">
+                  <p className="text-xs font-bold text-slate-500 mb-2 pl-1">Selecciona del catálogo:</p>
+                  <div className="grid grid-cols-1 gap-2">
+                    {currentUser.defaultServices?.map(svc => (
+                      <button 
+                        key={svc.id} 
+                        onClick={() => addItem(svc)}
+                        className="flex justify-between items-center p-2 bg-white rounded-lg border border-slate-100 hover:border-[#27bea5] text-left"
+                      >
+                        <span className="text-sm font-medium text-slate-700">{svc.name}</span>
+                        <span className="text-sm font-bold text-[#1c2938]">${svc.price}</span>
+                      </button>
+                    ))}
+                    <button 
+                      onClick={() => addItem()}
+                      className="text-center p-2 text-sm text-[#27bea5] font-medium hover:underline"
+                    >
+                      + Agregar ítem en blanco
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Items List */}
+              <div className="space-y-3">
+                {draft.items.map((item, idx) => (
+                  <div key={item.id} className="flex gap-2 items-start group">
+                    <div className="flex-1 space-y-2">
+                      <input 
+                        value={item.description}
+                        onChange={(e) => updateItem(idx, 'description', e.target.value)}
+                        placeholder="Descripción del servicio/producto"
+                        className="w-full p-2 font-medium border-b border-transparent focus:border-[#27bea5] bg-transparent outline-none placeholder:text-slate-300"
+                      />
+                      <div className="flex gap-2">
+                         <div className="w-20">
+                           <input 
+                             type="number"
+                             value={item.quantity}
+                             onChange={(e) => updateItem(idx, 'quantity', parseFloat(e.target.value))}
+                             className="w-full p-2 bg-slate-50 rounded-lg text-sm text-center outline-none focus:ring-1 focus:ring-[#27bea5]"
+                             placeholder="Cant"
+                           />
+                         </div>
+                         <div className="flex-1 relative">
+                            <span className="absolute left-3 top-2 text-slate-400 text-sm">{draft.currency === 'EUR' ? '€' : '$'}</span>
+                            <input 
+                              type="number"
+                              value={item.price}
+                              onChange={(e) => updateItem(idx, 'price', parseFloat(e.target.value))}
+                              className="w-full p-2 pl-6 bg-slate-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-[#27bea5]"
+                              placeholder="Precio"
+                            />
+                         </div>
+                      </div>
+                    </div>
+                    <button onClick={() => removeItem(idx)} className="p-2 text-slate-300 hover:text-red-500 transition-colors">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+                
+                {draft.items.length === 0 && (
+                  <div onClick={() => setShowCatalog(true)} className="p-6 border-2 border-dashed border-slate-100 rounded-xl text-center text-slate-400 cursor-pointer hover:border-[#27bea5] hover:text-[#27bea5] transition-colors">
+                    <p className="text-sm font-medium">No hay ítems. Toca para agregar.</p>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {/* 3. Conditions Section */}
+            <section className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                <FileText className="w-4 h-4" /> Condiciones
+              </h3>
+              
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                 <div>
+                   <label className="block text-xs font-bold text-slate-500 mb-1">
+                     {docType === 'Quote' ? 'Válida hasta' : 'Vencimiento'}
+                   </label>
+                   <div className="relative">
+                     <Calendar className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                     <input 
+                       type="date"
+                       value={draft.validityDate}
+                       onChange={(e) => setDraft({...draft, validityDate: e.target.value})}
+                       className="w-full pl-9 p-2 rounded-xl border border-slate-200 bg-slate-50 outline-none text-sm"
+                     />
+                   </div>
+                 </div>
+                 <div>
+                   <label className="block text-xs font-bold text-slate-500 mb-1">Moneda del Doc.</label>
+                   <div className="relative">
+                      <Coins className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                      <select 
+                        value={draft.currency}
+                        onChange={(e) => setDraft({...draft, currency: e.target.value})}
+                        className="w-full pl-9 p-2 rounded-xl border border-slate-200 bg-slate-50 outline-none text-sm appearance-none cursor-pointer"
+                      >
+                         {['USD', 'EUR', 'MXN', 'ARS', 'COP'].map(c => (
+                            <option key={c} value={c}>{c}</option>
+                         ))}
+                      </select>
+                   </div>
+                 </div>
+              </div>
+              
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">Notas / Condiciones</label>
+                <textarea 
+                   value={draft.notes}
+                   onChange={(e) => setDraft({...draft, notes: e.target.value})}
+                   placeholder={docType === 'Quote' ? "Ej: Anticipo del 50% requerido. Entrega en 5 días." : "Gracias por su compra."}
+                   className="w-full p-3 rounded-xl border border-slate-200 bg-slate-50 outline-none text-sm h-20 resize-none"
+                />
+              </div>
+            </section>
+          </div>
+
+          {/* RIGHT/BOTTOM: LIVE PREVIEW & MATH (Sticky & Fixed) */}
+          <div className="lg:w-[380px] flex-shrink-0 z-10">
+             <div className="bg-[#1c2938] text-white p-6 rounded-3xl shadow-xl lg:h-auto overflow-y-auto lg:overflow-visible">
+                <div className="flex justify-between items-start mb-6">
+                   <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
+                     <Calculator className="w-5 h-5 text-[#27bea5]" />
+                   </div>
+                   <div className="text-right">
+                     <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Total Estimado</p>
+                     <p className="text-3xl font-bold">{draft.currency === 'EUR' ? '€' : (draft.currency === 'USD' ? '$' : draft.currency)} {totals.total.toFixed(2)}</p>
+                   </div>
+                </div>
+
+                <div className="space-y-3 text-sm border-t border-white/10 pt-4 mb-8">
+                  <div className="flex justify-between text-slate-300">
+                    <span>Subtotal</span>
+                    <span>{totals.subtotal.toFixed(2)}</span>
+                  </div>
+                  {totals.discountAmount > 0 && (
+                    <div className="flex justify-between text-green-400">
+                      <span>Descuento ({draft.discountRate}%)</span>
+                      <span>- {totals.discountAmount.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-slate-300">
+                    <span>IVA (21%)</span>
+                    <span>{totals.taxAmount.toFixed(2)}</span>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={handleSave}
+                  disabled={!draft.clientName || totals.total === 0}
+                  className="w-full bg-white text-[#1c2938] py-4 rounded-xl font-bold hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg flex items-center justify-center gap-2 group"
+                >
+                  {isOffline ? 'Guardar en Cola' : (docType === 'Quote' ? 'Finalizar Cotización' : 'Emitir Factura')}
+                  <Send className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </button>
+                
+                {isOffline && (
+                   <p className="text-center text-xs text-amber-400 mt-3 font-medium">Modo Offline Activo ⚡️</p>
+                )}
+             </div>
+             
+             {/* Mini Preview of Sender */}
+             <div className="mt-4 p-4 rounded-2xl bg-white border border-slate-100 hidden lg:block opacity-60 hover:opacity-100 transition-opacity">
+               <p className="text-xs font-bold text-slate-400 uppercase mb-2">Emisor (Tú)</p>
+               <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center">
+                    <Building2 className="w-4 h-4 text-slate-500" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-slate-800">{currentUser.name}</p>
+                    <p className="text-xs text-slate-500">{currentUser.taxId}</p>
+                  </div>
+               </div>
+             </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default InvoiceWizard;
