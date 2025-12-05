@@ -36,6 +36,18 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack }
     }, 2000);
   };
 
+  const getStatusStyle = (status: string) => {
+    switch(status) {
+      case 'Aceptada': return 'bg-green-50 text-green-700 border-green-200';
+      case 'Rechazada': return 'bg-red-50 text-red-700 border-red-200';
+      case 'Negociacion': return 'bg-purple-50 text-purple-700 border-purple-200';
+      case 'Seguimiento': return 'bg-blue-50 text-blue-700 border-blue-200';
+      case 'Enviada': return 'bg-sky-50 text-sky-700 border-sky-200';
+      case 'PendingSync': return 'bg-amber-50 text-amber-700 border-amber-200';
+      default: return 'bg-slate-50 text-slate-600 border-slate-200'; // Borrador, Creada
+    }
+  };
+
   // --- TEMPLATE RENDERERS ---
 
   const renderModern = () => (
@@ -96,11 +108,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack }
 
             {/* Status Badge */}
             <div className="mt-4 flex justify-end">
-              <span className={`px-4 py-1.5 rounded-full text-sm font-bold border uppercase tracking-wide ${
-                  invoice.status === 'Paid' ? 'bg-green-50 text-green-700 border-green-200' :
-                  invoice.status === 'Sent' || invoice.status === 'Viewed' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                  'bg-slate-50 text-slate-600 border-slate-200'
-              }`}>
+              <span className={`px-4 py-1.5 rounded-full text-sm font-bold border uppercase tracking-wide ${getStatusStyle(invoice.status)}`}>
                 {invoice.status === 'PendingSync' ? 'Offline' : invoice.status}
               </span>
             </div>

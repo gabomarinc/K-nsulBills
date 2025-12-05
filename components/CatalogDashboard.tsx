@@ -12,7 +12,7 @@ import { analyzePriceMarket, enhanceProductDescription } from '../services/gemin
 interface CatalogDashboardProps {
   items: CatalogItem[];
   userCountry: string;
-  apiKey?: string;
+  apiKey?: { gemini?: string; openai?: string }; // Updated type
   onUpdate: (items: CatalogItem[]) => void;
 }
 
@@ -83,6 +83,7 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
     setIsAnalyzing(true);
     setAnalysis(null);
     
+    // Pass full apiKey object
     const result = await analyzePriceMarket(formData.name, userCountry || 'Global', apiKey);
     setAnalysis(result);
     setIsAnalyzing(false);
@@ -91,6 +92,7 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
   const handleEnhanceDescription = async () => {
     if (!formData.name || !formData.description) return;
     setIsEnhancing(true);
+    // Pass full apiKey object
     const improvedText = await enhanceProductDescription(formData.description, formData.name, descFormat, apiKey);
     setFormData(prev => ({ ...prev, description: improvedText }));
     setIsEnhancing(false);

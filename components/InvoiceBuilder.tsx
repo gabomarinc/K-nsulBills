@@ -1,14 +1,17 @@
+
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Save, WifiOff, CheckCircle2, Sparkles } from 'lucide-react';
-import { Invoice, InvoiceItem, ParsedInvoiceData } from '../types';
+import { Invoice, InvoiceItem, ParsedInvoiceData, UserProfile } from '../types';
 import MagicInput from './MagicInput';
 
 interface InvoiceBuilderProps {
   isOffline: boolean;
   onSave: (invoice: Invoice) => void;
+  // Though this component seems deprecated by InvoiceWizard, updating for consistency
+  currentUser?: UserProfile; 
 }
 
-const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({ isOffline, onSave }) => {
+const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({ isOffline, onSave, currentUser }) => {
   const [clientName, setClientName] = useState('');
   const [items, setItems] = useState<InvoiceItem[]>([
     { id: '1', description: '', quantity: 1, price: 0, tax: 21 }
@@ -67,13 +70,18 @@ const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({ isOffline, onSave }) =>
   };
 
   const handleSave = () => {
+    // Basic ID generation for legacy builder - normally this should use the centralized logic in App.tsx
+    // For now we use a timestamp based ID with correct prefix
+    const prefix = type === 'Invoice' ? 'FAC' : (type === 'Quote' ? 'COT' : 'EXP');
+    const randomSuffix = Math.floor(Math.random() * 9000) + 1000;
+    
     const newInvoice: Invoice = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: `${prefix}-${randomSuffix}`,
       clientName,
       date: new Date().toISOString(),
       items,
       total: calculateTotal(),
-      status: isOffline ? 'PendingSync' : 'Sent',
+      status: isOffline ? 'PendingSync' : 'Enviada',
       currency,
       type
     };
@@ -89,7 +97,7 @@ const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({ isOffline, onSave }) =>
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      <MagicInput onParsed={handleMagicParsed} />
+      <MagicInput onParsed={handleMagicParsed} apiKeys={currentUser?.apiKeys} />
 
       {notification && (
         <div className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-in slide-in-from-top-2 ${notification.includes('Offline') ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-green-100 text-green-800 border border-green-200'}`}>

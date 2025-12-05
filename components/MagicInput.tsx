@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Mic, Send, Sparkles, Loader2 } from 'lucide-react';
 import { parseInvoiceRequest } from '../services/geminiService';
@@ -5,9 +6,10 @@ import { ParsedInvoiceData } from '../types';
 
 interface MagicInputProps {
   onParsed: (data: ParsedInvoiceData) => void;
+  apiKeys?: { gemini?: string; openai?: string };
 }
 
-const MagicInput: React.FC<MagicInputProps> = ({ onParsed }) => {
+const MagicInput: React.FC<MagicInputProps> = ({ onParsed, apiKeys }) => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -17,7 +19,8 @@ const MagicInput: React.FC<MagicInputProps> = ({ onParsed }) => {
 
     setIsLoading(true);
     try {
-      const result = await parseInvoiceRequest(input);
+      // Pass apiKeys to service
+      const result = await parseInvoiceRequest(input, apiKeys);
       if (result) {
         onParsed(result);
         setInput(''); // Clear on success

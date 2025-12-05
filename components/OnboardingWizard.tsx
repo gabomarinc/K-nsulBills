@@ -25,10 +25,13 @@ import {
   Zap,
   ArrowRight,
   PenLine,
-  User
+  User,
+  CheckCircle2,
+  Hash
 } from 'lucide-react';
 import { UserProfile, CatalogItem, EmailConfig } from '../types';
 import { suggestCatalogItems, generateEmailTemplate } from '../services/geminiService';
+import { consultarRucDGI } from '../services/dgiService'; // NEW DGI IMPORT
 
 interface OnboardingWizardProps {
   onComplete: (profileData: Partial<UserProfile>) => void;
@@ -88,42 +91,50 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
 
   const handlePersonTypeSelect = (type: 'NATURAL' | 'JURIDICA') => {
     setPersonType(type);
+    // BYPASS DGI SEARCH: Default directly to manual entry for now
+    setManualEntryMode(true); 
     setTaxId('');
     setCompanyName('');
     setAddress('');
-    setManualEntryMode(false);
     setLookupAttempted(false);
   };
 
-  const handleSearchDGI = () => {
+  /* DGI LOGIC HIDDEN FOR NOW
+  const handleSearchDGI = async () => {
     if (!taxId) return;
     setIsLoading(true);
     setLookupAttempted(true);
+    setManualEntryMode(false);
 
-    // Simulate API Call to DGI Panama
-    setTimeout(() => {
-      // Mock Success Logic: Valid length simulates finding data
-      const isValidLength = taxId.length > 5; 
+    try {
+      // Use the DGI Service Adapter
+      const contribuyente = await consultarRucDGI(taxId);
       
-      if (isValidLength) {
-        // Success Case - Mock Data for Panama
-        setManualEntryMode(false);
-        if (personType === 'JURIDICA') {
-            setCompanyName('Grupo Inversiones del Istmo S.A.');
-            setAddress('Torre Global, Calle 50, Ciudad de Panamá');
-        } else {
-            setCompanyName('Juan Pérez (Servicios Profesionales)');
-            setAddress('Condado del Rey, Panamá');
+      if (contribuyente && contribuyente.estado === 'ACTIVO') {
+        // Success
+        setCompanyName(contribuyente.razonSocial);
+        setAddress(contribuyente.direccion || 'Panamá, Panamá');
+        // Auto-correct Tax ID format if returned cleaner
+        if (contribuyente.dv) {
+           // If user typed just RUC, append DV for display if available
+           if (!taxId.includes('DV')) {
+             setTaxId(`${contribuyente.ruc} DV ${contribuyente.dv}`);
+           }
         }
       } else {
-        // Fail Case -> Trigger Manual Entry
+        // Not Found or Inactive
         setManualEntryMode(true);
         setCompanyName(''); 
         setAddress('');
       }
+    } catch (error) {
+      console.error("Error connecting to DGI:", error);
+      setManualEntryMode(true);
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
+  */
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -281,7 +292,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
            <span>🇵🇦</span> Edición Panamá
         </div>
         <h2 className="text-4xl font-bold text-[#1c2938] mb-3">Tu Identidad Fiscal</h2>
-        <p className="text-slate-500 text-lg">Selecciona tu tipo de entidad para validar en la DGI.</p>
+        <p className="text-slate-500 text-lg">Selecciona tu tipo de entidad para configurar tu perfil.</p>
       </div>
 
       <div className="bg-white p-8 md:p-10 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 max-w-2xl mx-auto">
@@ -319,103 +330,66 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
            </button>
         </div>
 
-        {/* Tax ID Input - Magic Search */}
-        {personType && (
-          <div className="animate-in fade-in slide-in-from-bottom-4">
-             <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 ml-1">
-               {personType === 'NATURAL' ? 'Ingresa tu Cédula' : 'Ingresa tu RUC'}
-             </label>
-             
-             <div className="relative group">
-               <div className={`flex items-center p-2 rounded-2xl border-2 transition-all duration-300 ${
-                 manualEntryMode ? 'border-slate-200 bg-white' : 
-                 companyName ? 'border-green-500/50 bg-green-50/30' : 
-                 'border-slate-200 focus-within:border-[#27bea5] focus-within:ring-4 focus-within:ring-[#27bea5]/10 bg-white'
-               }`}>
-                 <input 
-                   value={taxId}
-                   onChange={(e) => setTaxId(e.target.value.toUpperCase())}
-                   placeholder={personType === 'NATURAL' ? 'Ej: 8-123-456' : 'Ej: 15569888-2-2021 DV 55'}
-                   className="flex-1 text-2xl font-mono font-bold text-[#1c2938] bg-transparent outline-none p-4 placeholder:text-slate-200 uppercase"
-                   autoFocus
-                   disabled={!!companyName && !manualEntryMode}
-                 />
-                 
-                 {!manualEntryMode && !companyName && (
-                   <button 
-                     onClick={handleSearchDGI}
-                     disabled={!taxId || isLoading}
-                     className="bg-[#1c2938] text-white p-4 rounded-xl hover:bg-[#27bea5] disabled:opacity-50 disabled:hover:bg-[#1c2938] transition-all flex items-center gap-2"
-                   >
-                     {isLoading ? <Loader2 className="animate-spin w-6 h-6" /> : <Search className="w-6 h-6" />}
-                   </button>
-                 )}
-
-                 {companyName && (
-                   <div className="pr-4 text-green-500 animate-in zoom-in">
-                     <Check className="w-8 h-8" />
-                   </div>
-                 )}
-               </div>
-               
-               {/* Magic Feedback */}
-               {!manualEntryMode && !companyName && lookupAttempted && !isLoading && (
-                 <div className="absolute -bottom-8 left-0 text-amber-500 text-sm font-medium flex items-center gap-2 animate-in slide-in-from-top-2">
-                   <AlertCircle className="w-4 h-4" /> No encontrado en DGI. Ingresa manualmente.
-                 </div>
-               )}
-               {isLoading && (
-                 <div className="absolute -bottom-8 left-0 text-slate-400 text-xs font-medium flex items-center gap-2 animate-in slide-in-from-top-2">
-                   <Server className="w-3 h-3" /> Conectando con DGI Panamá...
-                 </div>
-               )}
-             </div>
-          </div>
-        )}
-
-        {/* Results / Manual Entry - The "Card" reveal */}
-        {(companyName || manualEntryMode) && (
+        {/* Manual Entry Form - Now Default */}
+        {(personType) && (
           <div className="mt-8 bg-slate-50 p-6 rounded-3xl border border-slate-100 animate-in slide-in-from-bottom-6">
              <div className="flex justify-between items-center mb-6">
                 <h3 className="font-bold text-[#1c2938] flex items-center gap-2">
-                  <Building2 className="w-5 h-5 text-[#27bea5]" /> 
-                  Datos del Contribuyente
+                  <PenLine className="w-5 h-5 text-[#27bea5]" /> 
+                  Datos Oficiales
                 </h3>
-                {!manualEntryMode && (
-                   <span className="text-[10px] font-bold bg-green-100 text-green-700 px-3 py-1 rounded-full uppercase tracking-wide flex items-center gap-1">
-                     <Check className="w-3 h-3" /> Validado DGI
-                   </span>
-                )}
              </div>
 
              <div className="space-y-4">
+               {/* 1. Tax ID - Moved here from Search Bar */}
                <div>
-                  <label className="text-xs font-bold text-slate-400 uppercase">Razón Social / Nombre</label>
-                  {manualEntryMode ? (
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1 block">
+                    {personType === 'NATURAL' ? 'Cédula de Identidad' : 'RUC (Registro Único)'}
+                  </label>
+                  <div className="relative group/input">
+                    <Hash className="absolute left-4 top-3.5 w-5 h-5 text-slate-400 group-focus-within/input:text-[#27bea5] transition-colors" />
+                    <input 
+                      value={taxId}
+                      onChange={(e) => setTaxId(e.target.value.toUpperCase())}
+                      className="w-full pl-12 p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#27bea5] outline-none font-mono font-bold text-[#1c2938] placeholder:text-slate-300 uppercase"
+                      placeholder={personType === 'NATURAL' ? "Ej: 8-123-456" : "Ej: 15569888-2-2021 DV 55"}
+                      autoFocus
+                    />
+                  </div>
+               </div>
+
+               {/* 2. Name */}
+               <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1 block">
+                    {personType === 'NATURAL' ? 'Nombre Completo' : 'Razón Social'}
+                  </label>
+                  <div className="relative group/input">
+                    {personType === 'NATURAL' ? (
+                       <User className="absolute left-4 top-3.5 w-5 h-5 text-slate-400 group-focus-within/input:text-[#27bea5] transition-colors" />
+                    ) : (
+                       <Building2 className="absolute left-4 top-3.5 w-5 h-5 text-slate-400 group-focus-within/input:text-[#27bea5] transition-colors" />
+                    )}
                     <input 
                       value={companyName}
                       onChange={(e) => setCompanyName(e.target.value)}
-                      className="w-full mt-1 p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#27bea5] outline-none font-bold text-[#1c2938]"
+                      className="w-full pl-12 p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#27bea5] outline-none font-bold text-[#1c2938] placeholder:text-slate-300"
                       placeholder={personType === 'JURIDICA' ? "Nombre de la Sociedad" : "Tu Nombre Completo"}
                     />
-                  ) : (
-                    <p className="text-xl font-bold text-[#1c2938]">{companyName}</p>
-                  )}
+                  </div>
                </div>
+
+               {/* 3. Address */}
                <div>
-                  <label className="text-xs font-bold text-slate-400 uppercase">Dirección Fiscal</label>
-                  {manualEntryMode ? (
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1 block">Dirección Fiscal</label>
+                  <div className="relative group/input">
+                    <MapPin className="absolute left-4 top-3.5 w-5 h-5 text-slate-400 group-focus-within/input:text-[#27bea5] transition-colors" />
                     <input 
                       value={address}
                       onChange={(e) => setAddress(e.target.value)}
-                      className="w-full mt-1 p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#27bea5] outline-none text-slate-700"
+                      className="w-full pl-12 p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#27bea5] outline-none text-slate-700 placeholder:text-slate-300"
                       placeholder="Calle, Corregimiento, Ciudad de Panamá"
                     />
-                  ) : (
-                    <p className="text-lg text-slate-600 flex items-center gap-2">
-                       <MapPin className="w-4 h-4 text-slate-400" /> {address}
-                    </p>
-                  )}
+                  </div>
                </div>
              </div>
           </div>
@@ -425,7 +399,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
         <div className="mt-10 flex justify-end">
            <button 
             onClick={() => setStep(2)}
-            disabled={!companyName || !address}
+            disabled={!companyName || !address || !taxId}
             className="group w-full md:w-auto bg-[#1c2938] text-white py-4 px-10 rounded-2xl font-bold text-lg hover:bg-[#27bea5] disabled:opacity-30 disabled:hover:bg-[#1c2938] transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 active:translate-y-0 flex items-center justify-center gap-3 cursor-pointer"
           >
             Siguiente <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
@@ -992,13 +966,6 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
       </div>
     </div>
   );
-
-  // --- HELPER ICON ---
-  function CheckCircle2(props: any) {
-    return (
-      <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
-    );
-  }
 
   // --- MAIN LAYOUT ---
   return (

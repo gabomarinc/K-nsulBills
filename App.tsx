@@ -10,15 +10,16 @@ import UserProfileSettings from './components/UserProfileSettings'; // Import Se
 import DocumentList from './components/DocumentList'; // Import New Document List
 import ReportsDashboard from './components/ReportsDashboard'; // Import New Reports Dashboard
 import CatalogDashboard from './components/CatalogDashboard'; // Import New Catalog Dashboard
+import ClientList from './components/ClientList'; // Import New Client List
 import { AppView, ProfileType, UserProfile, Invoice, CatalogItem } from './types';
-import { fetchInvoicesFromDb, saveInvoiceToDb } from './services/neon'; // Import Neon Service
+import { fetchInvoicesFromDb, saveInvoiceToDb, deleteInvoiceFromDb } from './services/neon'; // Import Neon Service
 
 // Mock Profiles
 const FREELANCE_PROFILE: UserProfile = {
   id: 'p1',
   name: 'Juan Pérez',
   type: ProfileType.FREELANCE,
-  taxId: '12345678A',
+  taxId: '8-123-456',
   avatar: '',
   isOnboardingComplete: false, // Start here to show onboarding
   defaultServices: [
@@ -30,14 +31,20 @@ const FREELANCE_PROFILE: UserProfile = {
   defaultCurrency: 'USD',
   plan: 'Emprendedor Pro',
   renewalDate: '15 Nov 2024',
-  country: 'México'
+  country: 'Panamá',
+  documentSequences: {
+    invoicePrefix: 'FAC',
+    invoiceNextNumber: 150, // Simulator starting point
+    quotePrefix: 'COT',
+    quoteNextNumber: 45
+  }
 };
 
 const COMPANY_PROFILE: UserProfile = {
   id: 'p2',
   name: 'JP Studio SAS',
   type: ProfileType.COMPANY,
-  taxId: 'B87654321',
+  taxId: '15569888-2-2021',
   avatar: '',
   isOnboardingComplete: true,
   defaultServices: [
@@ -48,7 +55,13 @@ const COMPANY_PROFILE: UserProfile = {
   defaultCurrency: 'USD',
   plan: 'Empresa Scale',
   renewalDate: '01 Dic 2024',
-  country: 'España'
+  country: 'Panamá',
+  documentSequences: {
+    invoicePrefix: 'F',
+    invoiceNextNumber: 1024,
+    quotePrefix: 'Q',
+    quoteNextNumber: 200
+  }
 };
 
 // --- DATA GENERATOR (ROBUST MOCK FALLBACK) ---
@@ -57,6 +70,10 @@ const generateMockInvoices = (): Invoice[] => {
   const now = new Date();
   const clients = ['TechSolutions SRL', 'Restaurante El Sol', 'Agencia Creativa One', 'Consultora Global', 'Startup X', 'Juan Pérez', 'Empresa Demo'];
   
+  // Counters to simulate sequence history
+  let invSeq = 110;
+  let quoteSeq = 20;
+
   // Helper to create a single invoice
   const createItem = (idSuffix: number, daysAgo: number): Invoice => {
      const d = new Date(now);
@@ -68,19 +85,43 @@ const generateMockInvoices = (): Invoice[] => {
      const rand = Math.random();
      const type = rand > 0.3 ? 'Invoice' : (rand > 0.15 ? 'Quote' : 'Expense');
      
-     let status: Invoice['status'] = 'Draft';
+     // ID Generation based on type
+     let docId = '';
      if (type === 'Invoice') {
-        // Biased towards Paid/Sent for "Success" feeling
-        status = Math.random() > 0.3 ? 'Paid' : (Math.random() > 0.4 ? 'Sent' : 'PendingSync');
+       docId = `FAC-${String(invSeq++).padStart(4, '0')}`;
+     } else if (type === 'Quote') {
+       docId = `COT-${String(quoteSeq++).padStart(4, '0')}`;
+     } else {
+       docId = `EXP-${String(idSuffix).padStart(4, '0')}`;
      }
-     if (type === 'Quote') status = Math.random() > 0.3 ? 'Viewed' : 'Draft';
-     if (type === 'Expense') status = 'Paid';
+
+     // UPDATED STATUS LOGIC
+     let status: Invoice['status'] = 'Borrador';
+     
+     if (type === 'Invoice') {
+        // Biased towards Aceptada/Enviada for "Success" feeling
+        const r = Math.random();
+        if (r > 0.4) status = 'Aceptada'; // Paid
+        else if (r > 0.2) status = 'Enviada'; // Sent
+        else if (r > 0.1) status = 'Seguimiento'; // Follow-up
+        else status = 'Creada';
+     } else if (type === 'Quote') {
+        const r = Math.random();
+        if (r > 0.7) status = 'Negociacion';
+        else if (r > 0.5) status = 'Seguimiento'; // Viewed
+        else if (r > 0.3) status = 'Enviada';
+        else if (r > 0.1) status = 'Rechazada';
+        else status = 'Borrador';
+     } else {
+        // Expense
+        status = 'Aceptada';
+     }
 
      // Amounts: varied but realistic
      const amount = Math.floor(Math.random() * 2500) + 150;
 
      return {
-        id: `INV-${1000 + idSuffix}`,
+        id: docId,
         clientName: clients[Math.floor(Math.random() * clients.length)],
         clientTaxId: `TAX-${Math.floor(Math.random() * 9999)}`,
         date: d.toISOString(),
@@ -104,22 +145,19 @@ const generateMockInvoices = (): Invoice[] => {
 
   let idCounter = 0;
 
-  // 1. RECENT ACTIVITY (Last 30 Days) - Ensure dense data for "30D" view
-  // Generate ~15 items distributed in the last month
+  // 1. RECENT ACTIVITY (Last 30 Days)
   for (let i = 0; i < 15; i++) {
     const daysAgo = Math.floor(Math.random() * 30);
     items.push(createItem(idCounter++, daysAgo));
   }
 
-  // 2. QUARTERLY ACTIVITY (Last 31-90 Days) - Ensure data for "90D" view
-  // Generate ~20 items
+  // 2. QUARTERLY ACTIVITY (Last 31-90 Days)
   for (let i = 0; i < 20; i++) {
     const daysAgo = Math.floor(Math.random() * 60) + 31; // 31 to 90
     items.push(createItem(idCounter++, daysAgo));
   }
 
-  // 3. YEARLY ACTIVITY (Last 91-365 Days) - Ensure data for "12M" view
-  // Generate ~40 items spread out to show a "curve"
+  // 3. YEARLY ACTIVITY (Last 91-365 Days)
   for (let i = 0; i < 40; i++) {
     const daysAgo = Math.floor(Math.random() * 270) + 91; // 91 to 365
     items.push(createItem(idCounter++, daysAgo));
@@ -176,7 +214,7 @@ const App: React.FC = () => {
            id: Date.now().toString(), 
            type: 'CREATED', 
            title: 'Documento Creado', 
-           description: 'Creado exitosamente', 
+           description: 'Generado exitosamente', 
            timestamp: new Date().toISOString() 
          }
       ],
@@ -186,13 +224,129 @@ const App: React.FC = () => {
     // Update Local State Optimistically
     setInvoices([invoiceWithTimeline, ...invoices]);
     setSelectedInvoice(invoiceWithTimeline);
+
+    // Update Sequence Counters in Profile
+    if (newInvoice.type === 'Invoice') {
+      setCurrentProfile(prev => ({
+        ...prev,
+        documentSequences: {
+          ...prev.documentSequences!,
+          invoiceNextNumber: (prev.documentSequences?.invoiceNextNumber || 0) + 1
+        }
+      }));
+    } else if (newInvoice.type === 'Quote') {
+      setCurrentProfile(prev => ({
+        ...prev,
+        documentSequences: {
+          ...prev.documentSequences!,
+          quoteNextNumber: (prev.documentSequences?.quoteNextNumber || 0) + 1
+        }
+      }));
+    }
     
-    // Persist to Neon DB (Fire and forget style for UI responsiveness)
+    // Persist to Neon DB
     if (isDbConnected || !isOffline) {
        saveInvoiceToDb(invoiceWithTimeline).then(success => {
          if (success) console.log("✅ Saved to Neon DB");
          else console.warn("❌ Failed to save to Neon DB");
        });
+    }
+  };
+
+  const handleDeleteInvoice = async (id: string) => {
+    if (window.confirm("¿Estás seguro de que quieres eliminar este documento? Esta acción no se puede deshacer.")) {
+      // 1. Optimistic Update
+      const newInvoices = invoices.filter(i => i.id !== id);
+      setInvoices(newInvoices);
+      if (selectedInvoice?.id === id) setSelectedInvoice(null);
+
+      // 2. DB Delete
+      if (isDbConnected || !isOffline) {
+        const success = await deleteInvoiceFromDb(id);
+        if (success) {
+           console.log("✅ Deleted from Neon DB");
+        } else {
+           console.warn("❌ Failed to delete from DB");
+           // Ideally rollback here, but kept simple for prototype
+        }
+      }
+    }
+  };
+
+  // --- ACTIONS FOR DOCUMENT LIST ---
+  const handleMarkAsPaid = async (id: string) => {
+    const updatedInvoices = invoices.map(inv => {
+      if (inv.id === id) {
+        return {
+          ...inv,
+          status: 'Aceptada' as const,
+          timeline: [
+            ...(inv.timeline || []),
+            {
+              id: Date.now().toString(),
+              type: 'PAID' as const,
+              title: 'Pago Registrado',
+              timestamp: new Date().toISOString(),
+              description: 'Pago registrado manualmente'
+            }
+          ]
+        };
+      }
+      return inv;
+    });
+    setInvoices(updatedInvoices);
+    
+    // Sync update to DB
+    const updatedInv = updatedInvoices.find(i => i.id === id);
+    if (updatedInv && (isDbConnected || !isOffline)) {
+      saveInvoiceToDb(updatedInv);
+    }
+  };
+
+  const handleConvertQuote = async (quoteId: string) => {
+    const quote = invoices.find(i => i.id === quoteId);
+    if (!quote) return;
+
+    // 1. Mark Quote as Accepted
+    const updatedInvoices = invoices.map(inv => 
+      inv.id === quoteId ? { ...inv, status: 'Aceptada' as const } : inv
+    );
+
+    // 2. Create new Invoice based on Quote
+    const nextInvId = `${currentProfile.documentSequences?.invoicePrefix}-${String(currentProfile.documentSequences?.invoiceNextNumber).padStart(4, '0')}`;
+    
+    const newInvoice: Invoice = {
+      ...quote,
+      id: nextInvId,
+      type: 'Invoice',
+      status: 'Creada', // Start as created
+      date: new Date().toISOString(),
+      timeline: [
+        {
+          id: Date.now().toString(),
+          type: 'CREATED',
+          title: 'Factura Generada',
+          description: `Convertida desde cotización ${quote.id}`,
+          timestamp: new Date().toISOString()
+        }
+      ]
+    };
+
+    setInvoices([newInvoice, ...updatedInvoices]);
+    
+    // Increment sequence
+    setCurrentProfile(prev => ({
+      ...prev,
+      documentSequences: {
+        ...prev.documentSequences!,
+        invoiceNextNumber: (prev.documentSequences?.invoiceNextNumber || 0) + 1
+      }
+    }));
+    
+    // Sync both to DB
+    if (isDbConnected || !isOffline) {
+       await saveInvoiceToDb({...quote, status: 'Aceptada'});
+       await saveInvoiceToDb(newInvoice);
     }
   };
 
@@ -205,7 +359,14 @@ const App: React.FC = () => {
     setCurrentProfile(prev => ({
       ...prev,
       ...data,
-      isOnboardingComplete: true
+      isOnboardingComplete: true,
+      // Ensure defaults if not provided
+      documentSequences: prev.documentSequences || {
+        invoicePrefix: 'FAC',
+        invoiceNextNumber: 1,
+        quotePrefix: 'COT',
+        quoteNextNumber: 1
+      }
     }));
   };
 
@@ -291,6 +452,18 @@ const App: React.FC = () => {
             invoices={invoices} 
             onSelectInvoice={handleInvoiceSelect}
             onCreateNew={() => setCurrentView(AppView.WIZARD)}
+            onMarkPaid={handleMarkAsPaid}
+            onConvertQuote={handleConvertQuote}
+            onDeleteInvoice={handleDeleteInvoice} // NEW PROP
+            currencySymbol={currentProfile.defaultCurrency === 'EUR' ? '€' : '$'}
+          />
+        )}
+
+        {/* Client List View */}
+        {currentView === AppView.CLIENTS && (
+          <ClientList 
+            invoices={invoices} 
+            onCreateDocument={() => setCurrentView(AppView.WIZARD)}
             currencySymbol={currentProfile.defaultCurrency === 'EUR' ? '€' : '$'}
           />
         )}
@@ -300,7 +473,7 @@ const App: React.FC = () => {
           <CatalogDashboard 
             items={currentProfile.defaultServices || []}
             userCountry={currentProfile.country || 'Global'}
-            apiKey={currentProfile.apiKeys?.gemini}
+            apiKey={currentProfile.apiKeys} // Pass full key object
             onUpdate={handleCatalogUpdate}
           />
         )}
@@ -310,7 +483,7 @@ const App: React.FC = () => {
           <ReportsDashboard 
             invoices={invoices}
             currencySymbol={currentProfile.defaultCurrency === 'EUR' ? '€' : '$'}
-            apiKey={currentProfile.apiKeys?.gemini}
+            apiKey={currentProfile.apiKeys} // Pass full key object
           />
         )}
         

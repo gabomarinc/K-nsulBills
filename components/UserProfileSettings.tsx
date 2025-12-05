@@ -1,11 +1,11 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Building2, MapPin, CreditCard, Palette, UploadCloud, 
   Save, Crown, Calendar, Globe,
   Coins, Sparkles, Key, Eye, EyeOff, ShieldCheck,
   Smartphone, Mail, ChevronRight,
-  LayoutTemplate, Check
+  LayoutTemplate, Check, Database
 } from 'lucide-react';
 import { UserProfile } from '../types';
 
@@ -18,7 +18,14 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
   const [profile, setProfile] = useState<UserProfile>(currentUser);
   const [isSaving, setIsSaving] = useState(false);
   const [showKeys, setShowKeys] = useState<{ [key: string]: boolean }>({});
+  const [dbUrl, setDbUrl] = useState(''); // Local state for DB URL
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Load DB URL from local storage on mount
+  useEffect(() => {
+    const storedUrl = localStorage.getItem('NEON_DATABASE_URL');
+    if (storedUrl) setDbUrl(storedUrl);
+  }, []);
 
   const handleInputChange = (field: keyof UserProfile, value: any) => {
     setProfile(prev => ({ ...prev, [field]: value }));
@@ -55,10 +62,20 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
 
   const saveChanges = () => {
     setIsSaving(true);
+    
+    // Save DB URL to localStorage
+    if (dbUrl) {
+      localStorage.setItem('NEON_DATABASE_URL', dbUrl);
+    } else {
+      localStorage.removeItem('NEON_DATABASE_URL');
+    }
+
     // Simulate API call
     setTimeout(() => {
       onUpdate(profile);
       setIsSaving(false);
+      // Force reload to pick up new DB connection if changed
+      window.location.reload(); 
     }, 800);
   };
 
@@ -196,10 +213,37 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                Tu Cerebro Digital
              </h3>
              <p className="text-sm text-slate-400 mb-8 ml-14 max-w-lg">
-               Conecta tus propias llaves de API para darle superpoderes ilimitados a tu asistente. Tus llaves se guardan encriptadas localmente.
+               Conecta tus herramientas para darle superpoderes ilimitados a tu asistente.
              </p>
              
              <div className="space-y-6 relative z-10">
+                {/* Neon DB */}
+                <div className="space-y-2">
+                   <label className="flex justify-between items-center text-xs font-bold text-slate-400 uppercase tracking-wider">
+                      <span>Neon Database URL</span>
+                      <span className="text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded text-[10px]">Cloud Data</span>
+                   </label>
+                   <div className="relative group/input">
+                      <Database className="absolute left-4 top-3.5 w-5 h-5 text-slate-500 group-focus-within/input:text-blue-400 transition-colors" />
+                      <input 
+                        type={showKeys['neon'] ? "text" : "password"}
+                        value={dbUrl}
+                        onChange={(e) => setDbUrl(e.target.value)}
+                        placeholder="postgres://user:pass@ep-xyz.neon.tech/neondb..."
+                        className="w-full pl-12 pr-12 p-3.5 bg-white/5 border border-white/10 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none text-white placeholder:text-slate-600 font-mono text-sm transition-all focus:bg-white/10"
+                      />
+                      <button 
+                        onClick={() => toggleKeyVisibility('neon')}
+                        className="absolute right-3 top-3.5 p-1 text-slate-500 hover:text-white transition-colors rounded-lg hover:bg-white/10"
+                      >
+                        {showKeys['neon'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                   </div>
+                   <p className="text-[10px] text-slate-500 pl-2">Pega aquí tu "Connection String" de Neon para sincronizar datos reales.</p>
+                </div>
+
+                <div className="h-px bg-white/10 my-4"></div>
+
                 {/* Gemini */}
                 <div className="space-y-2">
                    <label className="flex justify-between items-center text-xs font-bold text-slate-400 uppercase tracking-wider">

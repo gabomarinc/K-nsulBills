@@ -11,7 +11,8 @@ import {
   Building2,
   Briefcase,
   PieChart, 
-  ShoppingBag // Added icon
+  ShoppingBag,
+  Users // Added icon
 } from 'lucide-react';
 import { AppView, ProfileType, UserProfile } from '../types';
 
@@ -60,6 +61,12 @@ const Layout: React.FC<LayoutProps> = ({
             label="Documentos" 
             isActive={activeView === AppView.INVOICES}
             onClick={() => onNavigate(AppView.INVOICES)}
+          />
+          <NavItem 
+            icon={<Users size={24} />} 
+            label="Clientes" 
+            isActive={activeView === AppView.CLIENTS}
+            onClick={() => onNavigate(AppView.CLIENTS)}
           />
           <NavItem 
             icon={<ShoppingBag size={24} />} 

@@ -3,6 +3,7 @@ export enum AppView {
   DASHBOARD = 'DASHBOARD',
   WIZARD = 'WIZARD', // New AI Flow
   INVOICES = 'INVOICES',
+  CLIENTS = 'CLIENTS', // New Clients View
   SETTINGS = 'SETTINGS',
   INVOICE_DETAIL = 'INVOICE_DETAIL', // New View
   REPORTS = 'REPORTS', // New Reports View
@@ -43,6 +44,13 @@ export interface EmailConfig {
   useSSL?: boolean;
 }
 
+export interface DocumentSequences {
+  invoicePrefix: string;
+  invoiceNextNumber: number;
+  quotePrefix: string;
+  quoteNextNumber: number;
+}
+
 export interface UserProfile {
   id: string;
   name: string;
@@ -63,6 +71,9 @@ export interface UserProfile {
 
   // Catalog
   defaultServices?: CatalogItem[];
+
+  // Sequencing
+  documentSequences?: DocumentSequences;
 
   // Comms
   toneOfVoice?: 'Formal' | 'Casual';
@@ -105,6 +116,16 @@ export interface TimelineEvent {
   icon?: string; // Optional custom icon hint
 }
 
+export type InvoiceStatus = 
+  | 'Borrador'      // Draft
+  | 'Creada'        // Created
+  | 'Enviada'       // Sent
+  | 'Seguimiento'   // Follow-up/Viewed
+  | 'Negociacion'   // Negotiation
+  | 'Rechazada'     // Rejected
+  | 'Aceptada'      // Accepted/Paid
+  | 'PendingSync';  // Internal: Offline
+
 export interface Invoice {
   id: string;
   clientName: string;
@@ -112,7 +133,7 @@ export interface Invoice {
   date: string;
   items: InvoiceItem[];
   total: number;
-  status: 'Draft' | 'Sent' | 'Paid' | 'PendingSync' | 'Viewed';
+  status: InvoiceStatus;
   currency: string;
   type: 'Invoice' | 'Quote' | 'Expense'; 
   

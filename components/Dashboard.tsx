@@ -33,19 +33,25 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
 
+    // Only "Aceptada" (Paid) counts as Revenue
     const thisMonthInvoices = recentInvoices.filter(inv => {
       const d = new Date(inv.date);
-      return d.getMonth() === currentMonth && d.getFullYear() === currentYear && inv.type === 'Invoice' && inv.status !== 'Draft';
+      return d.getMonth() === currentMonth && 
+             d.getFullYear() === currentYear && 
+             inv.type === 'Invoice' && 
+             inv.status === 'Aceptada';
     });
 
     const monthlyRevenue = thisMonthInvoices.reduce((acc, curr) => acc + curr.total, 0);
 
     // Detailed Breakdown for "Requires Attention"
-    const draftsCount = recentInvoices.filter(inv => inv.status === 'Draft').length;
-    const viewedQuotesCount = recentInvoices.filter(inv => inv.type === 'Quote' && inv.status === 'Viewed').length;
-    const pendingSyncCount = recentInvoices.filter(inv => inv.status === 'PendingSync').length; // Offline items
+    const draftsCount = recentInvoices.filter(inv => inv.status === 'Borrador').length;
+    const negotiationCount = recentInvoices.filter(inv => inv.status === 'Negociacion').length;
+    const followupCount = recentInvoices.filter(inv => inv.status === 'Seguimiento').length;
+    const pendingSyncCount = recentInvoices.filter(inv => inv.status === 'PendingSync').length; 
     
-    const pendingReview = draftsCount + viewedQuotesCount + pendingSyncCount;
+    // Total Attention Items
+    const pendingReview = draftsCount + negotiationCount + followupCount + pendingSyncCount;
 
     // Simulate a "Growth" percentage for visceral satisfaction
     const growth = 12.5; 
@@ -56,11 +62,24 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
       attention: {
         total: pendingReview,
         drafts: draftsCount,
-        viewed: viewedQuotesCount,
+        negotiation: negotiationCount,
+        followup: followupCount,
         sync: pendingSyncCount
       }
     };
   }, [recentInvoices]);
+
+  const getStatusColor = (status: string) => {
+    switch(status) {
+      case 'Aceptada': return 'bg-green-50 text-green-700';
+      case 'Rechazada': return 'bg-red-50 text-red-700';
+      case 'Negociacion': return 'bg-purple-50 text-purple-700';
+      case 'Seguimiento': return 'bg-blue-50 text-blue-700';
+      case 'Enviada': return 'bg-sky-50 text-sky-700';
+      case 'PendingSync': return 'bg-amber-50 text-amber-700';
+      default: return 'bg-slate-100 text-slate-500'; // Borrador, Creada
+    }
+  };
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in pb-12">
@@ -176,22 +195,35 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
                  {/* Drafts Breakdown */}
                  <div className="flex items-center justify-between text-sm group/item">
                     <div className="flex items-center gap-3 text-slate-600">
-                       <div className="w-2 h-2 rounded-full bg-amber-400"></div>
-                       <span className="font-medium">Borradores sin enviar</span>
+                       <div className="w-2 h-2 rounded-full bg-slate-400"></div>
+                       <span className="font-medium">Borradores</span>
                     </div>
-                    <span className="font-bold text-[#1c2938] bg-slate-50 px-2 py-0.5 rounded-lg group-hover/item:bg-amber-50 group-hover/item:text-amber-600 transition-colors">
+                    <span className="font-bold text-[#1c2938] bg-slate-50 px-2 py-0.5 rounded-lg group-hover/item:bg-slate-200 transition-colors">
                        {stats.attention.drafts}
                     </span>
                  </div>
 
-                 {/* Viewed Quotes Breakdown */}
+                 {/* Negotiation Breakdown */}
+                 {stats.attention.negotiation > 0 && (
+                   <div className="flex items-center justify-between text-sm group/item">
+                      <div className="flex items-center gap-3 text-slate-600">
+                         <div className="w-2 h-2 rounded-full bg-purple-400"></div>
+                         <span className="font-medium">En Negociación</span>
+                      </div>
+                      <span className="font-bold text-[#1c2938] bg-slate-50 px-2 py-0.5 rounded-lg group-hover/item:bg-purple-50 group-hover/item:text-purple-600 transition-colors">
+                         {stats.attention.negotiation}
+                      </span>
+                   </div>
+                 )}
+
+                 {/* Follow-up Breakdown */}
                  <div className="flex items-center justify-between text-sm group/item">
                     <div className="flex items-center gap-3 text-slate-600">
                        <div className="w-2 h-2 rounded-full bg-blue-400"></div>
-                       <span className="font-medium">Cotizaciones vistas</span>
+                       <span className="font-medium">En Seguimiento</span>
                     </div>
                     <span className="font-bold text-[#1c2938] bg-slate-50 px-2 py-0.5 rounded-lg group-hover/item:bg-blue-50 group-hover/item:text-blue-600 transition-colors">
-                       {stats.attention.viewed}
+                       {stats.attention.followup}
                     </span>
                  </div>
 
@@ -256,11 +288,7 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
                      <span className="font-bold text-[#1c2938] text-lg tracking-tight">
                         ${inv.total.toLocaleString()}
                      </span>
-                     <span className={`px-3 py-1 rounded-full text-[10px] uppercase font-bold tracking-wide ${
-                        inv.status === 'Paid' ? 'bg-green-50 text-green-700' :
-                        inv.status === 'PendingSync' ? 'bg-amber-50 text-amber-700' :
-                        'bg-slate-100 text-slate-500'
-                     }`}>
+                     <span className={`px-3 py-1 rounded-full text-[10px] uppercase font-bold tracking-wide ${getStatusColor(inv.status)}`}>
                         {inv.status === 'PendingSync' ? 'Cola Offline' : inv.status}
                      </span>
                   </div>

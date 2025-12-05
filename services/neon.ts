@@ -4,23 +4,28 @@ import { Invoice } from '../types';
 
 /**
  * NEON DATABASE CONFIGURATION
- * Project ID: rapid-firefly-64178234
  * 
  * NOTE: In a real production app, never expose credentials in the frontend code.
  * This should be handled by a backend API. For this prototype, we use the serverless driver.
+ * 
+ * We allow looking up the URL from localStorage for easier testing in browser environments
+ * without env var injection.
  */
 
-// Intentamos obtener la URL de la variable de entorno, si no, usamos una estructura base
-// El usuario debe proveer la contraseña o la URL completa en el entorno.
-const DATABASE_URL = process.env.DATABASE_URL; 
+const getDbClient = () => {
+  // 1. Try Environment Variable
+  const envUrl = process.env.DATABASE_URL;
+  // 2. Try Local Storage (User Settings)
+  const localUrl = localStorage.getItem('NEON_DATABASE_URL');
+  
+  const url = envUrl || localUrl;
 
-export const getDbClient = () => {
-  if (!DATABASE_URL) {
+  if (!url) {
     console.warn("Neon DB: No DATABASE_URL found. Running in Offline/Mock mode.");
     return null;
   }
   
-  const client = new Client(DATABASE_URL);
+  const client = new Client(url);
   return client;
 };
 
@@ -41,13 +46,14 @@ export const fetchInvoicesFromDb = async (): Promise<Invoice[] | null> => {
     // Transform SQL rows back to Application Type
     return rows.map((row: any) => {
       // Merge the structured columns with the JSONB blob 'data' which contains items, timeline, etc.
+      // Priority to SQL columns if needed, but data blob is usually source of truth for complex fields
       return {
-        ...row.data, // Spread the JSONB data (items, timeline, etc)
+        ...row.data, 
         id: row.id,
         clientName: row.client_name,
         total: parseFloat(row.total),
         status: row.status,
-        date: row.date,
+        date: row.date, // Ensure date object or string consistency
         type: row.type
       } as Invoice;
     });
@@ -96,6 +102,24 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
 
   } catch (error) {
     console.error("Neon DB Save Error:", error);
+    return false;
+  }
+};
+
+/**
+ * Deletes an invoice from Neon DB
+ */
+export const deleteInvoiceFromDb = async (id: string): Promise<boolean> => {
+  const client = getDbClient();
+  if (!client) return false;
+
+  try {
+    await client.connect();
+    await client.query('DELETE FROM invoices WHERE id = $1', [id]);
+    await client.end();
+    return true;
+  } catch (error) {
+    console.error("Neon DB Delete Error:", error);
     return false;
   }
 };
