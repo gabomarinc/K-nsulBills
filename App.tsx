@@ -13,11 +13,11 @@ import ReportsDashboard from './components/ReportsDashboard';
 import CatalogDashboard from './components/CatalogDashboard'; 
 import ClientList from './components/ClientList'; 
 import ExpenseTracker from './components/ExpenseTracker'; 
-import ExpenseWizard from './components/ExpenseWizard'; // New Import
+import ExpenseWizard from './components/ExpenseWizard'; 
 import { AppView, ProfileType, UserProfile, Invoice, CatalogItem } from './types';
 import { fetchInvoicesFromDb, saveInvoiceToDb, deleteInvoiceFromDb } from './services/neon'; 
 
-// Mock Profiles (kept for fallback if needed, but Login overwrites)
+// Mock Profiles (kept for fallback)
 const FREELANCE_PROFILE: UserProfile = {
   id: 'p1',
   name: 'Juan Pérez',
@@ -142,17 +142,14 @@ const App: React.FC = () => {
   // LOAD DATA HELPER
   const refreshData = async () => {
     setIsLoadingData(true);
-    
-    // Attempt fetch (will use localStorage DB string if available)
     const dbData = await fetchInvoicesFromDb();
     
     if (dbData && dbData.length > 0) {
-      console.log("✅ Connected to Neon DB. Loaded", dbData.length, "invoices.");
+      console.log("✅ Connected to Neon DB. Loaded", dbData.length, "docs (Invoices + Expenses).");
       setInvoices(dbData);
       setIsDbConnected(true);
     } else {
-      console.warn("⚠️ Could not connect to Neon (or empty). Using robust mock data.");
-      // Keep existing mock data if we already had it and db failed, or generate new
+      console.warn("⚠️ Using robust mock data.");
       if (invoices.length === 0) {
         setInvoices(generateMockInvoices());
       }
@@ -161,7 +158,7 @@ const App: React.FC = () => {
     setIsLoadingData(false);
   };
 
-  // LOAD DATA EFFECT (Only runs after Auth)
+  // LOAD DATA EFFECT
   useEffect(() => {
     if (!isAuthenticated) return;
     refreshData();
@@ -172,15 +169,7 @@ const App: React.FC = () => {
     setIsAuthenticated(true);
   };
 
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-    setInvoices([]);
-    setCurrentView(AppView.DASHBOARD);
-  };
-
   const toggleProfile = () => {
-    // For demo purposes, switching profile just toggles the mock data object if we aren't using real auth
-    // In real app, this might re-fetch user data
     setCurrentProfile(prev => prev.id === 'p1' ? COMPANY_PROFILE : FREELANCE_PROFILE);
   };
 
@@ -223,7 +212,13 @@ const App: React.FC = () => {
     
     if (isDbConnected || !isOffline) {
        saveInvoiceToDb(invoiceWithTimeline).then(success => {
-         if (success) console.log("✅ Saved to Neon DB");
+         if (success) {
+            console.log(
+                newInvoice.type === 'Expense' 
+                ? "✅ Expense Saved to 'expenses' table" 
+                : "✅ Document Saved to 'invoices' table"
+            );
+         }
        });
     }
   };
@@ -327,16 +322,12 @@ const App: React.FC = () => {
       }
     };
     setCurrentProfile(newProfile);
-    setIsAuthenticated(true); // Auto-login after register
+    setIsAuthenticated(true);
     setShowRegister(false);
   };
 
-  // NEW: Async profile update that triggers data refresh
   const handleProfileUpdate = async (updatedProfile: UserProfile) => {
     setCurrentProfile(updatedProfile);
-    
-    // If user saved settings, likely they updated DB connection string.
-    // Let's try to reconnect nicely.
     await refreshData();
   };
 
@@ -351,7 +342,6 @@ const App: React.FC = () => {
 
   // --- RENDER FLOW ---
 
-  // 1. Loading Data Spinner (Initial)
   if (isLoadingData && invoices.length === 0) {
     return (
       <div className="h-screen flex items-center justify-center bg-slate-50 flex-col gap-4">
@@ -361,12 +351,10 @@ const App: React.FC = () => {
     );
   }
 
-  // 2. Auth: Registration (Onboarding)
   if (showRegister || (isAuthenticated && !currentProfile.isOnboardingComplete)) {
     return (
       <div className="antialiased text-[#1c2938] font-sans">
         <OnboardingWizard onComplete={handleOnboardingComplete} />
-        {/* Back to Login option if cancelled/stuck */}
         {!isAuthenticated && (
            <div className="fixed bottom-4 left-4 z-50">
               <button onClick={() => setShowRegister(false)} className="text-slate-400 text-sm hover:text-[#1c2938] font-bold">
@@ -378,7 +366,6 @@ const App: React.FC = () => {
     );
   }
 
-  // 3. Auth: Login Screen
   if (!isAuthenticated) {
     return (
       <div className="antialiased text-[#1c2938] font-sans">
@@ -390,7 +377,6 @@ const App: React.FC = () => {
     );
   }
 
-  // 4. Main App
   return (
     <div className="antialiased text-[#1c2938] font-sans">
       <Layout
@@ -428,7 +414,6 @@ const App: React.FC = () => {
           />
         )}
 
-        {/* EXPENSE WIZARD */}
         {currentView === AppView.EXPENSE_WIZARD && (
           <ExpenseWizard 
             currentUser={currentProfile}
@@ -482,7 +467,6 @@ const App: React.FC = () => {
           />
         )}
 
-        {/* EXPENSES VIEW */}
         {currentView === AppView.EXPENSES && (
           <ExpenseTracker 
             invoices={invoices}
