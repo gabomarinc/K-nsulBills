@@ -5,11 +5,32 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>FacturaZen</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- SATOSHI FONT IMPORT -->
+    <link href="https://api.fontshare.com/v2/css?f[]=satoshi@900,700,500,400,300&display=swap" rel="stylesheet">
+    
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Satoshi', 'sans-serif'],
+            },
+          }
+        }
+      }
+    </script>
+
     <style>
       body {
-        font-family: 'Inter', sans-serif;
+        font-family: 'Satoshi', sans-serif;
+        background-color: #F8FAFC;
       }
+      
+      /* REGLA: Títulos en Super Negrita (900/Black) */
+      h1, h2, h3, h4, h5, h6 {
+        font-weight: 900 !important;
+      }
+
       /* Custom Scrollbar for sleek look */
       ::-webkit-scrollbar {
         width: 8px;
