@@ -52,9 +52,12 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onRegisterCli
         <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-blue-600 rounded-full blur-[150px] opacity-10 translate-y-1/2 -translate-x-1/2 pointer-events-none"></div>
         
         <div className="relative z-10">
-          <div className="w-16 h-16 bg-[#27bea5] rounded-2xl flex items-center justify-center text-3xl font-bold shadow-lg shadow-teal-900/50 mb-8">
-            Z
-          </div>
+          {/* Official Icon (Desktop Large) */}
+          <img 
+            src="https://konsul.digital/wp-content/uploads/2025/07/cropped-3.png" 
+            alt="Kônsul Icon" 
+            className="w-20 h-20 object-contain mb-8 rounded-2xl bg-white/5 p-2 backdrop-blur-sm"
+          />
           <h1 className="text-5xl font-bold tracking-tight leading-tight mb-6">
             Tu negocio, <br/>
             <span className="text-[#27bea5]">en piloto automático.</span>
@@ -86,7 +89,12 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onRegisterCli
         <div className="w-full max-w-md space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
            
            <div className="text-center lg:text-left">
-              <div className="lg:hidden w-12 h-12 bg-[#27bea5] rounded-xl flex items-center justify-center text-2xl font-bold shadow-md mx-auto mb-6 text-white">Z</div>
+              {/* Official Icon (Mobile) */}
+              <img 
+                src="https://konsul.digital/wp-content/uploads/2025/07/cropped-3.png" 
+                alt="Kônsul" 
+                className="lg:hidden w-16 h-16 object-contain mx-auto mb-6" 
+              />
               <h2 className="text-3xl font-bold text-[#1c2938]">Bienvenido de nuevo</h2>
               <p className="text-slate-500 mt-2">Ingresa a tu cuenta para continuar.</p>
            </div>

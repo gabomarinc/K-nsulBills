@@ -15,7 +15,7 @@ import ClientList from './components/ClientList';
 import ExpenseTracker from './components/ExpenseTracker'; 
 import ExpenseWizard from './components/ExpenseWizard'; 
 import { AppView, ProfileType, UserProfile, Invoice, CatalogItem } from './types';
-import { fetchInvoicesFromDb, saveInvoiceToDb, deleteInvoiceFromDb } from './services/neon'; 
+import { fetchInvoicesFromDb, saveInvoiceToDb, deleteInvoiceFromDb, createUserInDb, updateUserProfileInDb } from './services/neon'; 
 
 // Mock Profiles (kept for fallback)
 const FREELANCE_PROFILE: UserProfile = {
@@ -311,7 +311,7 @@ const App: React.FC = () => {
     setCurrentView(AppView.INVOICE_DETAIL);
   };
 
-  const handleOnboardingComplete = (data: Partial<UserProfile>) => {
+  const handleOnboardingComplete = async (data: Partial<UserProfile> & { password?: string, email?: string }) => {
     const newProfile = {
       ...currentProfile,
       ...data,
@@ -321,21 +321,52 @@ const App: React.FC = () => {
         quotePrefix: 'COT', quoteNextNumber: 1
       }
     };
+
+    // Try to create user in DB if password provided
+    if (data.password && data.email) {
+       try {
+         const success = await createUserInDb(newProfile, data.password, data.email);
+         if (success) console.log("User created in DB securely");
+       } catch (e) {
+         console.error("Failed to create user in DB", e);
+         alert("Error al crear usuario en base de datos. Se procederá en modo local.");
+       }
+    }
+
     setCurrentProfile(newProfile);
     setIsAuthenticated(true);
     setShowRegister(false);
   };
 
   const handleProfileUpdate = async (updatedProfile: UserProfile) => {
+    // 1. Optimistic Update
     setCurrentProfile(updatedProfile);
+
+    // 2. Persist to DB
+    if (isDbConnected || !isOffline) {
+       try {
+         const success = await updateUserProfileInDb(updatedProfile);
+         if (success) {
+           console.log("✅ Profile settings synced to DB");
+         } else {
+           console.warn("❌ Failed to sync profile settings to DB");
+         }
+       } catch (e) {
+         console.error("DB Sync Error:", e);
+       }
+    }
+
+    // 3. Refresh Data (Trigger reconnect if DB string changed)
     await refreshData();
   };
 
   const handleCatalogUpdate = (newItems: CatalogItem[]) => {
-    setCurrentProfile(prev => ({
-      ...prev,
+    const updatedProfile = {
+      ...currentProfile,
       defaultServices: newItems
-    }));
+    };
+    // Re-use main update handler to persist changes
+    handleProfileUpdate(updatedProfile);
   };
 
   const pendingCount = invoices.filter(i => i.status === 'PendingSync').length;

@@ -53,6 +53,17 @@ export interface DocumentSequences {
   quoteNextNumber: number;
 }
 
+export interface PaymentIntegration {
+  provider: 'PAGUELOFACIL' | 'YAPPY' | 'BOTH';
+  enabled: boolean;
+  // PagueloFacil
+  cclw?: string; // Codigo de Comercio (Merchant ID)
+  token?: string; // API Token / Key
+  // Yappy
+  yappyMerchantId?: string;
+  yappySecretKey?: string;
+}
+
 export interface UserProfile {
   id: string;
   name: string;
@@ -69,7 +80,8 @@ export interface UserProfile {
   bankAccount?: string; // IBAN / CBU / CLABE
   defaultCurrency?: string; // New: Default currency for user
   paymentTermsDays?: number;
-  acceptsOnlinePayment?: boolean;
+  acceptsOnlinePayment?: boolean; // Legacy flag, migrating to paymentIntegration
+  paymentIntegration?: PaymentIntegration; // New: PagueloFacil/Yappy Config
 
   // Catalog
   defaultServices?: CatalogItem[];

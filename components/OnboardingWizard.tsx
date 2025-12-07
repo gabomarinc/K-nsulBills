@@ -27,14 +27,17 @@ import {
   PenLine,
   User,
   CheckCircle2,
-  Hash
+  Hash,
+  Lock,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { UserProfile, CatalogItem, EmailConfig } from '../types';
 import { suggestCatalogItems, generateEmailTemplate } from '../services/geminiService';
-import { consultarRucDGI } from '../services/dgiService'; // NEW DGI IMPORT
+import { consultarRucDGI } from '../services/dgiService'; 
 
 interface OnboardingWizardProps {
-  onComplete: (profileData: Partial<UserProfile>) => void;
+  onComplete: (profileData: Partial<UserProfile> & { password?: string, email?: string }) => void;
 }
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6;
@@ -50,13 +53,15 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
   const [step, setStep] = useState<Step>(1);
   const [isLoading, setIsLoading] = useState(false);
   
-  // Step 1 State - Panama Exclusive
+  // Step 1 State - Identity & Credentials
   const [personType, setPersonType] = useState<'NATURAL' | 'JURIDICA' | null>(null);
   const [taxId, setTaxId] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [address, setAddress] = useState('');
+  const [email, setEmail] = useState(''); // New
+  const [password, setPassword] = useState(''); // New
+  const [showPassword, setShowPassword] = useState(false);
   const [manualEntryMode, setManualEntryMode] = useState(false);
-  const [lookupAttempted, setLookupAttempted] = useState(false);
 
   // Step 2 State
   const [primaryColor, setPrimaryColor] = useState('#27bea5');
@@ -91,55 +96,15 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
 
   const handlePersonTypeSelect = (type: 'NATURAL' | 'JURIDICA') => {
     setPersonType(type);
-    // BYPASS DGI SEARCH: Default directly to manual entry for now
     setManualEntryMode(true); 
     setTaxId('');
     setCompanyName('');
     setAddress('');
-    setLookupAttempted(false);
   };
-
-  /* DGI LOGIC HIDDEN FOR NOW
-  const handleSearchDGI = async () => {
-    if (!taxId) return;
-    setIsLoading(true);
-    setLookupAttempted(true);
-    setManualEntryMode(false);
-
-    try {
-      // Use the DGI Service Adapter
-      const contribuyente = await consultarRucDGI(taxId);
-      
-      if (contribuyente && contribuyente.estado === 'ACTIVO') {
-        // Success
-        setCompanyName(contribuyente.razonSocial);
-        setAddress(contribuyente.direccion || 'Panamá, Panamá');
-        // Auto-correct Tax ID format if returned cleaner
-        if (contribuyente.dv) {
-           // If user typed just RUC, append DV for display if available
-           if (!taxId.includes('DV')) {
-             setTaxId(`${contribuyente.ruc} DV ${contribuyente.dv}`);
-           }
-        }
-      } else {
-        // Not Found or Inactive
-        setManualEntryMode(true);
-        setCompanyName(''); 
-        setAddress('');
-      }
-    } catch (error) {
-      console.error("Error connecting to DGI:", error);
-      setManualEntryMode(true);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-  */
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Use FileReader to get Base64 string for persistence
       const reader = new FileReader();
       reader.onloadend = () => {
         setLogoPreview(reader.result as string);
@@ -156,7 +121,6 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
     setIsLoading(false);
   };
 
-  // Step 4: Helper to edit generated items
   const updateCatalogItem = (index: number, field: keyof CatalogItem, value: any) => {
     const newItems = [...catalogItems];
     newItems[index] = { ...newItems[index], [field]: value };
@@ -172,33 +136,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
   };
 
   const handleConnectGmail = () => {
-    // Simulate OAuth Popup
-    const width = 500;
-    const height = 600;
-    const left = (window.innerWidth - width) / 2;
-    const top = (window.innerHeight - height) / 2;
-    
-    const popup = window.open(
-      'about:blank', 
-      'Connect Google', 
-      `width=${width},height=${height},top=${top},left=${left}`
-    );
-
-    if (popup) {
-      popup.document.write(`
-        <div style="font-family: sans-serif; text-align: center; padding: 40px;">
-          <h2 style="color: #444;">Google</h2>
-          <p>Conectando FacturaZen...</p>
-          <div style="margin-top: 20px; width: 40px; height: 40px; border: 4px solid #eee; border-top-color: #4285F4; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto;"></div>
-          <style>@keyframes spin { 100% { transform: rotate(360deg); } }</style>
-        </div>
-      `);
-      
-      setTimeout(() => {
-        popup.close();
-        setGmailConnected(true);
-      }, 2000);
-    }
+    setGmailConnected(true);
   };
 
   const finishOnboarding = () => {
@@ -223,12 +161,15 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
       emailConfig,
       whatsappNumber,
       whatsappCountryCode,
-      isOnboardingComplete: true
+      isOnboardingComplete: true,
+      email, // Pass credentials for account creation
+      password
     });
   };
 
   // --- RENDER HELPERS ---
   const renderTemplatePreview = (style: 'Modern' | 'Classic' | 'Minimal') => {
+    // ... (Keep existing preview logic)
     const isSelected = templateStyle === style;
     switch (style) {
       case 'Modern':
@@ -330,7 +271,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
            </button>
         </div>
 
-        {/* Manual Entry Form - Now Default */}
+        {/* Manual Entry Form */}
         {(personType) && (
           <div className="mt-8 bg-slate-50 p-6 rounded-3xl border border-slate-100 animate-in slide-in-from-bottom-6">
              <div className="flex justify-between items-center mb-6">
@@ -341,7 +282,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
              </div>
 
              <div className="space-y-4">
-               {/* 1. Tax ID - Moved here from Search Bar */}
+               {/* 1. Tax ID */}
                <div>
                   <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1 block">
                     {personType === 'NATURAL' ? 'Cédula de Identidad' : 'RUC (Registro Único)'}
@@ -391,6 +332,48 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
                     />
                   </div>
                </div>
+
+               {/* 4. Credentials (NEW) */}
+               <div className="pt-4 border-t border-slate-200">
+                  <h4 className="text-sm font-bold text-[#1c2938] mb-4 flex items-center gap-2">
+                     <ShieldCheck className="w-4 h-4 text-[#27bea5]" /> Crea tu Acceso Seguro
+                  </h4>
+                  <div className="space-y-4">
+                     <div>
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1 block">Correo Electrónico</label>
+                        <div className="relative group/input">
+                           <Mail className="absolute left-4 top-3.5 w-5 h-5 text-slate-400 group-focus-within/input:text-[#27bea5] transition-colors" />
+                           <input 
+                              type="email"
+                              value={email}
+                              onChange={(e) => setEmail(e.target.value)}
+                              className="w-full pl-12 p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#27bea5] outline-none text-slate-700 placeholder:text-slate-300"
+                              placeholder="tu@email.com"
+                           />
+                        </div>
+                     </div>
+                     <div>
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1 block">Contraseña</label>
+                        <div className="relative group/input">
+                           <Lock className="absolute left-4 top-3.5 w-5 h-5 text-slate-400 group-focus-within/input:text-[#27bea5] transition-colors" />
+                           <input 
+                              type={showPassword ? "text" : "password"}
+                              value={password}
+                              onChange={(e) => setPassword(e.target.value)}
+                              className="w-full pl-12 pr-12 p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#27bea5] outline-none text-slate-700 placeholder:text-slate-300"
+                              placeholder="••••••••"
+                           />
+                           <button 
+                              type="button"
+                              onClick={() => setShowPassword(!showPassword)}
+                              className="absolute right-3 top-3.5 text-slate-400 hover:text-[#1c2938] transition-colors"
+                           >
+                              {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                           </button>
+                        </div>
+                     </div>
+                  </div>
+               </div>
              </div>
           </div>
         )}
@@ -399,7 +382,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
         <div className="mt-10 flex justify-end">
            <button 
             onClick={() => setStep(2)}
-            disabled={!companyName || !address || !taxId}
+            disabled={!companyName || !address || !taxId || !email || !password}
             className="group w-full md:w-auto bg-[#1c2938] text-white py-4 px-10 rounded-2xl font-bold text-lg hover:bg-[#27bea5] disabled:opacity-30 disabled:hover:bg-[#1c2938] transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 active:translate-y-0 flex items-center justify-center gap-3 cursor-pointer"
           >
             Siguiente <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
@@ -409,6 +392,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
     </div>
   );
 
+  // ... (Steps 2, 3, 4, 5, 6 remain largely the same visually)
   const renderStep2_Branding = () => (
     <div className="animate-in fade-in slide-in-from-right-8 duration-500">
       <div className="text-center mb-10">
@@ -518,8 +502,6 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
               {/* The "Document" */}
               <div className="flex-1 bg-white rounded-xl shadow-2xl shadow-slate-300/50 overflow-hidden transform transition-all duration-500 hover:scale-[1.02] origin-bottom mx-auto w-full max-w-sm aspect-[3/4] relative">
                  {renderTemplatePreview(templateStyle)}
-                 
-                 {/* Decorative Shine */}
                  <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-tr from-transparent via-white/20 to-transparent opacity-50 pointer-events-none"></div>
               </div>
            </div>
@@ -595,7 +577,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
               </div>
               <div>
                  <h4 className={`font-bold text-lg ${acceptsOnline ? 'text-[#1c2938]' : 'text-slate-600'}`}>Pagos Digitales</h4>
-                 <p className="text-sm text-slate-400">Habilitar enlaces de pago y QR en facturas</p>
+                 <p className="text-sm text-slate-400">Habilitar enlaces de pago y QR</p>
               </div>
            </div>
            
@@ -708,6 +690,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
     </div>
   );
 
+  // ... (Step 5 Comms code remains same)
   const renderStep5_Comms = () => (
     <div className="animate-in fade-in slide-in-from-right-8 duration-500">
       <div className="text-center mb-10">
@@ -716,7 +699,6 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
       </div>
 
       <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-        
         {/* Tone Selectors */}
         <div className="space-y-6">
           {(['Formal', 'Casual'] as const).map((t) => (
@@ -747,20 +729,15 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
 
         {/* Live Preview (Phone Style) */}
         <div className="relative mx-auto">
-           {/* Phone Frame */}
            <div className="w-[320px] h-[580px] bg-[#1c2938] rounded-[3rem] p-4 shadow-2xl relative border-4 border-[#2c3e50]">
               <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-[#1c2938] rounded-b-2xl z-20"></div>
-              
               <div className="bg-slate-50 w-full h-full rounded-[2.2rem] overflow-hidden flex flex-col relative">
-                 {/* Email App Header */}
                  <div className="bg-white p-4 pt-10 border-b border-slate-100 shadow-sm z-10">
                     <div className="flex items-center gap-3">
                        <div className="w-8 h-8 bg-slate-200 rounded-full"></div>
                        <div className="h-2 bg-slate-200 w-24 rounded-full"></div>
                     </div>
                  </div>
-
-                 {/* Email Body */}
                  <div className="p-6 flex-1 overflow-y-auto">
                     {isLoading ? (
                       <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-3">
@@ -785,21 +762,12 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
                     ) : (
                       <div className="h-full flex flex-col items-center justify-center text-slate-300 text-center px-4">
                         <Sparkles className="w-12 h-12 mb-4 opacity-30" />
-                        <p className="font-medium text-sm">Selecciona un estilo a la izquierda para ver la magia.</p>
+                        <p className="font-medium text-sm">Selecciona un estilo.</p>
                       </div>
                     )}
                  </div>
-
-                 {/* Phone Action Bar */}
-                 <div className="p-4 bg-white border-t border-slate-100 flex justify-around text-slate-300">
-                    <div className="w-6 h-6 bg-slate-200 rounded-full"></div>
-                    <div className="w-6 h-6 bg-slate-200 rounded-full"></div>
-                    <div className="w-6 h-6 bg-slate-200 rounded-full"></div>
-                 </div>
               </div>
            </div>
-
-           {/* Next Button Positioned relative to layout */}
            <div className="absolute -bottom-16 left-1/2 -translate-x-1/2 w-full flex justify-center">
               <button 
                 onClick={() => setStep(6)}
@@ -810,7 +778,6 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
               </button>
            </div>
         </div>
-
       </div>
     </div>
   );
@@ -853,7 +820,6 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
               ))}
            </div>
            
-           {/* Dynamic Config Area */}
            <div className="mt-auto">
              {emailProvider === 'GMAIL' && (
                <div className="bg-slate-50 p-6 rounded-2xl text-center animate-in fade-in">
@@ -869,42 +835,6 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
                        <CheckCircle2 className="w-5 h-5" /> Cuenta Vinculada
                      </span>
                   )}
-               </div>
-             )}
-
-             {emailProvider === 'SMTP' && (
-               <div className="bg-slate-50 border border-slate-200 p-6 rounded-2xl space-y-4 animate-in fade-in">
-                  <div className="space-y-4">
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Configuración Servidor</p>
-                    <div className="grid grid-cols-2 gap-3">
-                       <input 
-                          placeholder="Host (ej. smtp.mail.com)" 
-                          value={smtpConfig.host}
-                          onChange={(e) => setSmtpConfig({...smtpConfig, host: e.target.value})}
-                          className="w-full p-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-[#27bea5]" 
-                       />
-                       <input 
-                          placeholder="Puerto (587)" 
-                          value={smtpConfig.port}
-                          type="number"
-                          onChange={(e) => setSmtpConfig({...smtpConfig, port: parseInt(e.target.value) || 587})}
-                          className="w-full p-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-[#27bea5]" 
-                       />
-                    </div>
-                    <input 
-                        placeholder="Usuario / Correo" 
-                        value={smtpConfig.user}
-                        onChange={(e) => setSmtpConfig({...smtpConfig, user: e.target.value})}
-                        className="w-full p-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-[#27bea5]" 
-                     />
-                     <input 
-                        placeholder="Contraseña" 
-                        type="password"
-                        value={smtpConfig.password}
-                        onChange={(e) => setSmtpConfig({...smtpConfig, password: e.target.value})}
-                        className="w-full p-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-[#27bea5]" 
-                     />
-                  </div>
                </div>
              )}
            </div>
@@ -946,13 +876,6 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
                  </div>
               </div>
            </div>
-           
-           <div className="bg-green-50 p-4 rounded-xl mt-6 flex gap-3">
-              <div className="w-1.5 bg-green-400 rounded-full"></div>
-              <p className="text-xs text-green-800 font-medium leading-relaxed">
-                 Generaremos enlaces inteligentes (wa.me) en tus facturas para que los clientes te contacten con un clic.
-              </p>
-           </div>
         </div>
       </div>
 
@@ -978,9 +901,19 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
       {/* Header / Progress */}
       <div className="relative z-10 w-full max-w-6xl mx-auto px-6 pt-8 pb-4 flex justify-between items-center">
         <div className="flex items-center gap-3">
-           <div className="w-12 h-12 bg-[#27bea5] rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-teal-200">Z</div>
+           {/* Official Icon */}
+           <img 
+             src="https://konsul.digital/wp-content/uploads/2025/07/cropped-3.png" 
+             alt="Kônsul Icon" 
+             className="w-12 h-12 object-contain" 
+           />
            <div>
-             <span className="font-bold text-[#1c2938] text-lg block leading-none">FacturaZen</span>
+             {/* Official Logo Text */}
+             <img 
+               src="https://konsul.digital/wp-content/uploads/2025/11/1-min-e1762361628509.avif" 
+               alt="Kônsul" 
+               className="h-6 object-contain block mb-1"
+             />
              <span className="text-xs text-slate-400 font-medium">Asistente de Configuración</span>
            </div>
         </div>
@@ -1010,7 +943,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
         </div>
       </div>
       
-      {/* Footer / Skip - Only for non-critical steps */}
+      {/* Footer / Skip */}
       <div className="text-center pb-8 relative z-10">
          {step > 1 && step < 6 && (
             <button onClick={() => setStep(step + 1 as Step)} className="text-slate-400 hover:text-slate-600 text-sm font-medium">

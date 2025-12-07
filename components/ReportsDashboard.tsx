@@ -8,7 +8,7 @@ import {
   Sparkles, TrendingUp, Loader2, 
   BrainCircuit, Activity, Target, Lightbulb,
   X, TrendingDown, Wallet, FileText,
-  LayoutDashboard, FileBarChart, Users, Funnel
+  LayoutDashboard, FileBarChart, Users, Funnel, Calendar
 } from 'lucide-react';
 import { Invoice, FinancialAnalysisResult, DeepDiveReport } from '../types';
 import { generateFinancialAnalysis, generateDeepDiveReport } from '../services/geminiService';
@@ -19,7 +19,7 @@ interface ReportsDashboardProps {
   apiKey?: { gemini?: string; openai?: string };
 }
 
-type TimeRange = '30D' | '90D' | '12M';
+type TimeRange = '30D' | '90D' | '12M' | 'CUSTOM';
 type ReportTab = 'OVERVIEW' | 'DOCUMENTS' | 'CLIENTS';
 
 const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencySymbol, apiKey }) => {
@@ -32,6 +32,14 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
 
   // Filter State - Default to 12M
   const [timeRange, setTimeRange] = useState<TimeRange>('12M');
+  
+  // Custom Date Range State
+  const [customStart, setCustomStart] = useState<string>(
+    new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().split('T')[0]
+  );
+  const [customEnd, setCustomEnd] = useState<string>(
+    new Date().toISOString().split('T')[0]
+  );
 
   // Deep Dive Report State
   const [deepDiveReport, setDeepDiveReport] = useState<DeepDiveReport | null>(null);
@@ -48,7 +56,8 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
   // --- 1. FILTER LOGIC ---
   const filteredInvoices = useMemo(() => {
     const now = new Date();
-    const startDate = new Date();
+    let startDate = new Date();
+    let endDate = new Date(); // Default to now for relative ranges
 
     if (timeRange === '30D') {
       startDate.setDate(now.getDate() - 30);
@@ -56,13 +65,21 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
       startDate.setDate(now.getDate() - 90);
     } else if (timeRange === '12M') {
       startDate.setDate(now.getDate() - 365);
-    } 
+    } else if (timeRange === 'CUSTOM') {
+      // Create dates from input strings (assuming local time to avoid UTC shifts)
+      startDate = new Date(customStart + 'T00:00:00');
+      const end = new Date(customEnd + 'T23:59:59');
+      endDate = end;
+    }
 
     return invoices.filter(inv => {
       const d = new Date(inv.date);
+      if (timeRange === 'CUSTOM') {
+         return d >= startDate && d <= endDate;
+      }
       return d >= startDate;
     });
-  }, [invoices, timeRange]);
+  }, [invoices, timeRange, customStart, customEnd]);
 
   // --- 2. DATA AGGREGATION ---
   const data = useMemo(() => {
@@ -421,10 +438,10 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
            </p>
         </div>
 
-        <div className="flex items-center gap-4">
-           {/* Date Filter - RESTORED CAPSULE STYLE */}
-           <div className="flex bg-slate-100 p-1.5 rounded-2xl shadow-sm">
-             {(['30D', '90D', '12M'] as TimeRange[]).map((range) => (
+        <div className="flex flex-col sm:flex-row items-center gap-4">
+           {/* Date Filter - CAPSULE STYLE */}
+           <div className="flex bg-slate-100 p-1.5 rounded-2xl shadow-sm overflow-x-auto max-w-full">
+             {(['30D', '90D', '12M'] as const).map((range) => (
                <button
                  key={range}
                  onClick={() => setTimeRange(range)}
@@ -437,7 +454,37 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
                  {range}
                </button>
              ))}
+             <button
+               onClick={() => setTimeRange('CUSTOM')}
+               className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 flex items-center gap-1 ${
+                 timeRange === 'CUSTOM'
+                   ? 'bg-white text-[#1c2938] shadow-sm scale-105' 
+                   : 'text-slate-400 hover:text-slate-600'
+               }`}
+             >
+               <Calendar className="w-3 h-3" />
+               Personalizado
+             </button>
            </div>
+
+           {/* Custom Range Inputs */}
+           {timeRange === 'CUSTOM' && (
+              <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-4 bg-white p-1 rounded-xl border border-slate-100">
+                  <input 
+                    type="date" 
+                    value={customStart}
+                    onChange={(e) => setCustomStart(e.target.value)}
+                    className="px-3 py-2 bg-slate-50 rounded-lg text-xs font-bold text-[#1c2938] outline-none focus:ring-1 focus:ring-[#27bea5]"
+                  />
+                  <span className="text-slate-400 text-xs font-bold">a</span>
+                  <input 
+                    type="date" 
+                    value={customEnd}
+                    onChange={(e) => setCustomEnd(e.target.value)}
+                    className="px-3 py-2 bg-slate-50 rounded-lg text-xs font-bold text-[#1c2938] outline-none focus:ring-1 focus:ring-[#27bea5]"
+                  />
+              </div>
+           )}
         </div>
       </div>
 

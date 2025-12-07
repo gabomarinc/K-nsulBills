@@ -5,14 +5,14 @@ import {
   Save, Crown, Calendar, Globe,
   Coins, Sparkles, Key, Eye, EyeOff, ShieldCheck,
   Smartphone, Mail, ChevronRight,
-  LayoutTemplate, Check, Database, Zap, Loader2, CheckCircle2, XCircle, AlertTriangle
+  LayoutTemplate, Check, Database, Zap, Loader2, CheckCircle2, XCircle, AlertTriangle, Lock, ArrowRight
 } from 'lucide-react';
-import { UserProfile } from '../types';
+import { UserProfile, PaymentIntegration } from '../types';
 import { testAiConnection } from '../services/geminiService';
 
 interface UserProfileSettingsProps {
   currentUser: UserProfile;
-  onUpdate: (updatedProfile: UserProfile) => Promise<void>; // Updated to Promise for smooth async handling
+  onUpdate: (updatedProfile: UserProfile) => Promise<void>;
 }
 
 const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, onUpdate }) => {
@@ -20,12 +20,12 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'IDLE' | 'SUCCESS' | 'ERROR'>('IDLE');
   const [showKeys, setShowKeys] = useState<{ [key: string]: boolean }>({});
-  const [dbUrl, setDbUrl] = useState(''); // Local state for DB URL
+  const [dbUrl, setDbUrl] = useState('');
   const [testStatus, setTestStatus] = useState<{ [key: string]: 'IDLE' | 'LOADING' | 'SUCCESS' | 'ERROR' }>({});
+  const [activePaymentTab, setActivePaymentTab] = useState<'PAGUELOFACIL' | 'YAPPY'>('PAGUELOFACIL');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load DB URL from local storage on mount
   useEffect(() => {
     const storedUrl = localStorage.getItem('NEON_DATABASE_URL');
     if (storedUrl) setDbUrl(storedUrl);
@@ -47,12 +47,61 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
       ...prev,
       apiKeys: { ...prev.apiKeys, [provider]: value }
     }));
-    // Reset test status on change
     setTestStatus(prev => ({ ...prev, [provider]: 'IDLE' }));
   };
 
   const toggleKeyVisibility = (provider: string) => {
     setShowKeys(prev => ({ ...prev, [provider]: !prev[provider] }));
+  };
+
+  const togglePaymentIntegration = () => {
+    setProfile(prev => {
+      const isEnabled = !prev.paymentIntegration?.enabled;
+      return {
+        ...prev,
+        paymentIntegration: {
+          provider: prev.paymentIntegration?.provider || 'PAGUELOFACIL',
+          enabled: isEnabled,
+          cclw: prev.paymentIntegration?.cclw || '',
+          token: prev.paymentIntegration?.token || '',
+          yappyMerchantId: prev.paymentIntegration?.yappyMerchantId || '',
+          yappySecretKey: prev.paymentIntegration?.yappySecretKey || ''
+        }
+      };
+    });
+  };
+
+  // Smart Logic for Coexistence
+  const handlePaymentConfigChange = (field: keyof PaymentIntegration, value: string) => {
+    setProfile(prev => {
+      const currentInt = prev.paymentIntegration || { provider: 'PAGUELOFACIL', enabled: true };
+      
+      // Update specific field
+      const updatedInt = { ...currentInt, [field]: value };
+      
+      // Check which services are fully configured
+      const hasPaguelo = !!updatedInt.cclw && !!updatedInt.token;
+      const hasYappy = !!updatedInt.yappyMerchantId && !!updatedInt.yappySecretKey;
+      
+      // Determine provider mode: If both present -> BOTH
+      let newProvider: 'PAGUELOFACIL' | 'YAPPY' | 'BOTH' = updatedInt.provider;
+      
+      if (hasPaguelo && hasYappy) {
+        newProvider = 'BOTH';
+      } else if (hasYappy) {
+        newProvider = 'YAPPY';
+      } else if (hasPaguelo) {
+        newProvider = 'PAGUELOFACIL';
+      }
+
+      return {
+        ...prev,
+        paymentIntegration: {
+          ...updatedInt,
+          provider: newProvider
+        }
+      };
+    });
   };
 
   const runConnectionTest = async (provider: 'gemini' | 'openai') => {
@@ -63,7 +112,6 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
     const success = await testAiConnection(provider, key);
     setTestStatus(prev => ({ ...prev, [provider]: success ? 'SUCCESS' : 'ERROR' }));
     
-    // Auto-hide success after 3s
     if (success) {
       setTimeout(() => {
         setTestStatus(prev => ({ ...prev, [provider]: 'IDLE' }));
@@ -87,14 +135,12 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
     setSaveStatus('IDLE');
     
     try {
-      // Save DB URL to localStorage
       if (dbUrl) {
         localStorage.setItem('NEON_DATABASE_URL', dbUrl.trim());
       } else {
         localStorage.removeItem('NEON_DATABASE_URL');
       }
 
-      // Propagate update to App.tsx (which handles DB reconnection)
       await onUpdate(profile);
       
       setSaveStatus('SUCCESS');
@@ -106,6 +152,10 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
       setIsSaving(false);
     }
   };
+
+  // Helper statuses for UI
+  const isPagueloConfigured = !!profile.paymentIntegration?.cclw && !!profile.paymentIntegration?.token;
+  const isYappyConfigured = !!profile.paymentIntegration?.yappyMerchantId && !!profile.paymentIntegration?.yappySecretKey;
 
   return (
     <div className="max-w-6xl mx-auto space-y-10 animate-in fade-in pb-12 relative">
@@ -124,7 +174,7 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
         </div>
       )}
 
-      {/* HEADER: Visceral & Reflective - Welcoming and empowering */}
+      {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-4 border-b border-slate-100 pb-6">
         <div>
            <h1 className="text-3xl font-bold text-[#1c2938] tracking-tight">Tu Espacio de Trabajo</h1>
@@ -149,7 +199,7 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         
-        {/* COLUMN 1: PUBLIC IMAGE (Behavioral: High priority items) */}
+        {/* COLUMN 1: PUBLIC IMAGE & FINANCE */}
         <div className="space-y-8 xl:col-span-2">
           
           {/* CARD: BUSINESS IDENTITY */}
@@ -201,7 +251,7 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                       onChange={(e) => handleInputChange('country', e.target.value)}
                       className="w-full pl-12 p-4 bg-slate-50/50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-[#27bea5] focus:bg-white focus:border-transparent outline-none transition-all appearance-none cursor-pointer text-slate-600"
                     >
-                      {['México', 'Argentina', 'España', 'Colombia', 'Otro'].map(c => (
+                      {['México', 'Argentina', 'España', 'Colombia', 'Panamá', 'Otro'].map(c => (
                         <option key={c} value={c}>{c}</option>
                       ))}
                     </select>
@@ -211,46 +261,219 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
              </div>
           </div>
 
-          {/* CARD: FINANCE */}
-          <div className="bg-white p-8 rounded-[2rem] shadow-sm hover:shadow-md transition-shadow duration-300 border border-slate-50 relative group">
-             <div className="absolute top-0 left-0 w-2 h-full bg-blue-500 rounded-l-[2rem] opacity-0 group-hover:opacity-100 transition-opacity"></div>
-
-             <h3 className="text-xl font-bold text-[#1c2938] mb-6 flex items-center gap-3">
-               <div className="p-2 bg-slate-50 rounded-xl text-blue-500">
-                 <CreditCard className="w-6 h-6" />
-               </div>
-               Configuración Financiera
-             </h3>
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Cuenta Bancaria (IBAN/CLABE)</label>
-                  <input 
-                    value={profile.bankAccount || ''}
-                    onChange={(e) => handleInputChange('bankAccount', e.target.value)}
-                    placeholder="Para recibir transferencias"
-                    className="w-full p-4 bg-slate-50/50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:bg-white focus:border-transparent outline-none transition-all font-medium text-slate-600"
-                  />
+          {/* CARD: FINANCIAL VAULT */}
+          <div className="bg-gradient-to-br from-[#1c2938] to-slate-900 p-8 rounded-[2.5rem] shadow-2xl text-white relative overflow-hidden group">
+             <div className="absolute top-0 right-0 w-64 h-64 bg-[#27bea5] rounded-full blur-[80px] opacity-10 -translate-y-1/2 translate-x-1/2"></div>
+             
+             <div className="relative z-10 space-y-8">
+                <div className="flex justify-between items-center">
+                   <div className="flex items-center gap-3">
+                      <div className="p-2 bg-white/10 rounded-xl text-[#27bea5]">
+                         <CreditCard className="w-6 h-6" />
+                      </div>
+                      <h3 className="text-xl font-bold">Bóveda Financiera</h3>
+                   </div>
+                   <span className="text-xs font-bold bg-white/10 px-3 py-1 rounded-full text-slate-300 uppercase tracking-widest border border-white/5">
+                      Seguridad Bancaria
+                   </span>
                 </div>
-                <div className="space-y-2">
-                   <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Moneda Principal</label>
-                   <div className="relative group/input">
-                      <Coins className="absolute left-4 top-4 w-5 h-5 text-slate-300 group-focus-within/input:text-blue-500 transition-colors" />
-                      <select 
-                        value={profile.defaultCurrency || 'USD'}
-                        onChange={(e) => handleInputChange('defaultCurrency', e.target.value)}
-                        className="w-full pl-12 p-4 bg-slate-50/50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:bg-white focus:border-transparent outline-none appearance-none cursor-pointer text-slate-600"
-                      >
-                         {['USD', 'EUR', 'MXN', 'ARS', 'COP'].map(c => (
-                            <option key={c} value={c}>{c}</option>
-                         ))}
-                      </select>
-                      <ChevronRight className="absolute right-4 top-4 w-5 h-5 text-slate-300 rotate-90 pointer-events-none" />
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                   <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block">Cuenta Bancaria (IBAN/ACH)</label>
+                      <input 
+                        value={profile.bankAccount || ''}
+                        onChange={(e) => handleInputChange('bankAccount', e.target.value)}
+                        placeholder="0000 0000 0000 0000"
+                        className="w-full bg-transparent text-xl font-mono text-white placeholder:text-slate-600 outline-none border-b border-slate-600 focus:border-[#27bea5] py-2 transition-colors"
+                      />
+                   </div>
+                   <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block">Moneda Base</label>
+                      <div className="relative">
+                         <select 
+                           value={profile.defaultCurrency || 'USD'}
+                           onChange={(e) => handleInputChange('defaultCurrency', e.target.value)}
+                           className="w-full bg-white/10 text-white p-3 rounded-xl outline-none appearance-none cursor-pointer hover:bg-white/20 transition-colors font-bold border border-white/5 focus:border-[#27bea5]"
+                         >
+                           {['USD', 'EUR', 'MXN', 'ARS', 'COP'].map(c => <option key={c} value={c} className="text-slate-900">{c}</option>)}
+                         </select>
+                         <Coins className="absolute right-3 top-3 w-5 h-5 text-slate-400 pointer-events-none" />
+                      </div>
+                   </div>
+                </div>
+
+                {/* DIGITAL PAYMENTS TOGGLE */}
+                <div className="pt-6 border-t border-white/10">
+                   <div 
+                      onClick={togglePaymentIntegration}
+                      className={`p-4 rounded-2xl border cursor-pointer transition-all duration-300 flex flex-col gap-4 group/toggle ${
+                        profile.paymentIntegration?.enabled 
+                          ? 'bg-[#27bea5]/10 border-[#27bea5] ring-1 ring-[#27bea5]/50' 
+                          : 'bg-white/5 border-white/10 hover:bg-white/10'
+                      }`}
+                   >
+                      <div className="flex items-center justify-between">
+                         <div className="flex items-center gap-4">
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+                               profile.paymentIntegration?.enabled ? 'bg-[#27bea5] text-white' : 'bg-slate-700 text-slate-400'
+                            }`}>
+                               <Zap className="w-5 h-5 fill-current" />
+                            </div>
+                            <div>
+                               <h4 className={`font-bold ${profile.paymentIntegration?.enabled ? 'text-white' : 'text-slate-400'}`}>Pagos Digitales</h4>
+                               <p className="text-xs text-slate-500">Pasarela PagueloFacil / Yappy</p>
+                            </div>
+                         </div>
+                         
+                         {/* Switch UI */}
+                         <div className={`w-12 h-7 rounded-full relative transition-colors ${profile.paymentIntegration?.enabled ? 'bg-[#27bea5]' : 'bg-slate-600'}`}>
+                            <div className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-transform shadow-sm ${profile.paymentIntegration?.enabled ? 'left-6' : 'left-1'}`}></div>
+                         </div>
+                      </div>
+
+                      {/* CONFIG FORM (CONDITIONAL) */}
+                      {profile.paymentIntegration?.enabled && (
+                         <div className="animate-in slide-in-from-top-2 pt-4 space-y-4 border-t border-white/10 mt-4" onClick={(e) => e.stopPropagation()}>
+                            
+                            {/* PROVIDER TABS WITH STATUS INDICATORS */}
+                            <div className="flex p-1 bg-black/20 rounded-xl">
+                               <button
+                                 onClick={() => setActivePaymentTab('PAGUELOFACIL')}
+                                 className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${activePaymentTab === 'PAGUELOFACIL' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+                               >
+                                 PagueloFacil
+                                 {isPagueloConfigured && <CheckCircle2 className="w-3 h-3 text-green-400" />}
+                               </button>
+                               <button
+                                 onClick={() => setActivePaymentTab('YAPPY')}
+                                 className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${activePaymentTab === 'YAPPY' ? 'bg-[#ff6b00] text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+                               >
+                                 Yappy
+                                 {isYappyConfigured && <CheckCircle2 className="w-3 h-3 text-green-400" />}
+                               </button>
+                            </div>
+
+                            {/* PAGUELOFACIL FORM */}
+                            {activePaymentTab === 'PAGUELOFACIL' && (
+                              <div className="space-y-4 animate-in fade-in">
+                                  {/* LOGO */}
+                                  <div className="bg-white p-3 rounded-xl flex items-center justify-center mb-4 shadow-sm">
+                                     <img 
+                                       src="https://assets.paguelofacil.com/images/logos-svg/paguelofacil.svg" 
+                                       alt="PagueloFacil" 
+                                       className="h-8" 
+                                     />
+                                  </div>
+
+                                  <div className="space-y-2">
+                                     <label className="text-[10px] font-bold text-[#27bea5] uppercase tracking-widest flex items-center gap-1">
+                                        <Lock className="w-3 h-3" /> CCLW (Código de Comercio)
+                                     </label>
+                                     <input 
+                                       value={profile.paymentIntegration?.cclw || ''}
+                                       onChange={(e) => handlePaymentConfigChange('cclw', e.target.value)}
+                                       className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-[#27bea5] transition-colors font-mono"
+                                       placeholder="Ej. ABCD12345"
+                                     />
+                                  </div>
+                                  <div className="space-y-2">
+                                     <label className="text-[10px] font-bold text-[#27bea5] uppercase tracking-widest flex items-center gap-1">
+                                        <Key className="w-3 h-3" /> API Token (Llave Secreta)
+                                     </label>
+                                     <div className="relative">
+                                        <input 
+                                          type={showKeys['pf_token'] ? "text" : "password"}
+                                          value={profile.paymentIntegration?.token || ''}
+                                          onChange={(e) => handlePaymentConfigChange('token', e.target.value)}
+                                          className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-[#27bea5] transition-colors font-mono pr-10"
+                                          placeholder="Pegar token de PagueloFacil"
+                                        />
+                                        <button 
+                                          onClick={() => toggleKeyVisibility('pf_token')}
+                                          className="absolute right-3 top-3 text-slate-500 hover:text-white transition-colors"
+                                        >
+                                          {showKeys['pf_token'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                        </button>
+                                     </div>
+                                  </div>
+                                  <div className="flex justify-end">
+                                     <a 
+                                       href="https://developers.paguelofacil.com/api/diccionario-de-datos" 
+                                       target="_blank" 
+                                       rel="noreferrer"
+                                       className="text-[10px] text-slate-400 hover:text-[#27bea5] underline flex items-center gap-1"
+                                     >
+                                       Ver documentación API <ArrowRight className="w-3 h-3" />
+                                     </a>
+                                  </div>
+                              </div>
+                            )}
+
+                            {/* YAPPY FORM */}
+                            {activePaymentTab === 'YAPPY' && (
+                              <div className="space-y-4 animate-in fade-in">
+                                  {/* LOGO IMAGE */}
+                                  <div className="bg-white p-3 rounded-xl flex items-center justify-center mb-4 shadow-sm">
+                                     <img 
+                                       src="https://konsul.digital/wp-content/uploads/2025/12/yappy-color-landscape.avif" 
+                                       alt="Yappy" 
+                                       className="h-10 object-contain" 
+                                     />
+                                  </div>
+
+                                  <div className="space-y-2">
+                                     <label className="text-[10px] font-bold text-[#ff6b00] uppercase tracking-widest flex items-center gap-1">
+                                        <Lock className="w-3 h-3" /> Merchant ID
+                                     </label>
+                                     <input 
+                                       value={profile.paymentIntegration?.yappyMerchantId || ''}
+                                       onChange={(e) => handlePaymentConfigChange('yappyMerchantId', e.target.value)}
+                                       className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-[#ff6b00] transition-colors font-mono"
+                                       placeholder="Ej. ID de Comercio Yappy"
+                                     />
+                                  </div>
+                                  <div className="space-y-2">
+                                     <label className="text-[10px] font-bold text-[#ff6b00] uppercase tracking-widest flex items-center gap-1">
+                                        <Key className="w-3 h-3" /> Secret Key
+                                     </label>
+                                     <div className="relative">
+                                        <input 
+                                          type={showKeys['yappy_secret'] ? "text" : "password"}
+                                          value={profile.paymentIntegration?.yappySecretKey || ''}
+                                          onChange={(e) => handlePaymentConfigChange('yappySecretKey', e.target.value)}
+                                          className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-[#ff6b00] transition-colors font-mono pr-10"
+                                          placeholder="Pegar llave secreta de Yappy"
+                                        />
+                                        <button 
+                                          onClick={() => toggleKeyVisibility('yappy_secret')}
+                                          className="absolute right-3 top-3 text-slate-500 hover:text-white transition-colors"
+                                        >
+                                          {showKeys['yappy_secret'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                        </button>
+                                     </div>
+                                  </div>
+                                  <div className="flex justify-end">
+                                     <a 
+                                       href="https://www.yappy.com.pa/comercial/desarrolladores/boton-de-pago-yappy-nueva-integracion/" 
+                                       target="_blank" 
+                                       rel="noreferrer"
+                                       className="text-[10px] text-slate-400 hover:text-[#ff6b00] underline flex items-center gap-1"
+                                     >
+                                       Guía de Integración <ArrowRight className="w-3 h-3" />
+                                     </a>
+                                  </div>
+                              </div>
+                            )}
+
+                         </div>
+                      )}
                    </div>
                 </div>
              </div>
           </div>
 
-          {/* CARD: AI BRAIN (Reflective: Empowerment) */}
+          {/* CARD: AI BRAIN */}
           <div className="bg-gradient-to-br from-[#1c2938] to-slate-900 p-8 rounded-[2rem] shadow-xl text-white relative overflow-hidden">
              {/* Abstract Decor */}
              <div className="absolute top-0 right-0 w-64 h-64 bg-[#27bea5] rounded-full blur-[80px] opacity-10 -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
