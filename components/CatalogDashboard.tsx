@@ -4,7 +4,7 @@ import {
   Plus, Search, Edit2, Trash2, Tag, 
   Sparkles, Loader2, ArrowRight, TrendingUp, X,
   ShoppingBag, MoreVertical, Wand2, Info,
-  AlignLeft, List, CalendarClock, Package, Check
+  AlignLeft, List, CalendarClock, Package, Check, Calculator, AlertCircle
 } from 'lucide-react';
 import { CatalogItem, PriceAnalysisResult } from '../types';
 import { analyzePriceMarket, enhanceProductDescription } from '../services/geminiService';
@@ -14,9 +14,10 @@ interface CatalogDashboardProps {
   userCountry: string;
   apiKey?: { gemini?: string; openai?: string }; // Updated type
   onUpdate: (items: CatalogItem[]) => void;
+  referenceHourlyRate?: number; // New: Benchmark from ExpenseTracker
 }
 
-const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry, apiKey, onUpdate }) => {
+const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry, apiKey, onUpdate, referenceHourlyRate }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<CatalogItem | null>(null);
@@ -109,6 +110,17 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
         </div>
         
         <div className="flex items-center gap-4 w-full md:w-auto">
+           {/* Reference Benchmark Badge */}
+           {referenceHourlyRate && referenceHourlyRate > 0 && (
+             <div className="hidden md:flex items-center gap-2 bg-blue-50 border border-blue-100 px-4 py-2 rounded-xl text-blue-700" title="Basado en tu calculadora de gastos">
+               <Calculator className="w-4 h-4" />
+               <div className="text-xs">
+                 <span className="block font-bold uppercase tracking-wider opacity-70">Costo Base</span>
+                 <span className="font-bold text-sm">${referenceHourlyRate.toFixed(0)}/hr</span>
+               </div>
+             </div>
+           )}
+
            {/* Search Bar - Floating Pill */}
            <div className="flex-1 md:w-64 bg-white p-1.5 pl-4 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-3 focus-within:ring-2 focus-within:ring-[#27bea5] transition-all">
              <Search className="w-5 h-5 text-slate-400" />
@@ -226,7 +238,15 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
 
                  {/* PRICE SECTION */}
                  <div className="space-y-3">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Estrategia de Precio</label>
+                    <div className="flex justify-between items-center ml-1">
+                       <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Estrategia de Precio</label>
+                       {referenceHourlyRate && referenceHourlyRate > 0 && (
+                          <span className="text-[10px] font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full flex items-center gap-1">
+                             <Calculator className="w-3 h-3" /> Costo Base: ${referenceHourlyRate.toFixed(0)}/hr
+                          </span>
+                       )}
+                    </div>
+                    
                     <div className="flex flex-col gap-4">
                        <div className="flex gap-4 items-stretch">
                          <div className="relative flex-1 group">
@@ -235,7 +255,11 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
                               type="number"
                               value={formData.price}
                               onChange={(e) => setFormData({...formData, price: parseFloat(e.target.value)})}
-                              className="w-full pl-8 p-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-[#27bea5] focus:bg-white outline-none text-xl font-bold text-[#1c2938] h-full"
+                              className={`w-full pl-8 p-4 bg-slate-50 border rounded-2xl focus:ring-2 focus:bg-white outline-none text-xl font-bold text-[#1c2938] h-full ${
+                                 referenceHourlyRate && (formData.price || 0) < referenceHourlyRate 
+                                 ? 'border-amber-200 focus:ring-amber-400 bg-amber-50/50' 
+                                 : 'border-slate-100 focus:ring-[#27bea5]'
+                              }`}
                             />
                          </div>
                          
@@ -250,6 +274,17 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
                            <span className="text-xs font-bold opacity-80">Analizar Precio</span>
                          </button>
                        </div>
+
+                       {/* PROFITABILITY WARNING */}
+                       {referenceHourlyRate && (formData.price || 0) > 0 && (formData.price || 0) < referenceHourlyRate && (
+                          <div className="flex items-start gap-3 p-3 bg-amber-50 text-amber-700 rounded-xl border border-amber-100 animate-in slide-in-from-top-2">
+                             <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                             <div className="text-sm">
+                                <p className="font-bold">¡Atención! Este precio es bajo.</p>
+                                <p className="opacity-90">Estás cobrando menos de tu costo hora calculado (${referenceHourlyRate.toFixed(0)}).</p>
+                             </div>
+                          </div>
+                       )}
 
                        {/* RECURRING TOGGLE */}
                        <label className={`flex items-center gap-4 p-4 border rounded-2xl cursor-pointer transition-all ${formData.isRecurring ? 'border-[#27bea5] bg-[#27bea5]/5' : 'border-slate-100 hover:border-slate-200'}`}>

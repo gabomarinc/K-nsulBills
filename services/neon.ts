@@ -1,7 +1,7 @@
 
 import { Client } from '@neondatabase/serverless';
 import { Invoice, UserProfile } from '../types';
-import * as bcrypt from 'bcryptjs';
+import bcrypt from 'bcryptjs';
 
 /**
  * NEON DATABASE CONFIGURATION
@@ -29,14 +29,15 @@ const getDbClient = () => {
 
 /**
  * SECURITY HELPERS
+ * NOTE: Using synchronous methods to ensure compatibility with browser-based bcryptjs builds
  */
 export const hashPassword = async (password: string): Promise<string> => {
-  const salt = await bcrypt.genSalt(10);
-  return await bcrypt.hash(password, salt);
+  const salt = bcrypt.genSaltSync(10);
+  return bcrypt.hashSync(password, salt);
 };
 
 export const comparePassword = async (plain: string, hashed: string): Promise<boolean> => {
-  return await bcrypt.compare(plain, hashed);
+  return bcrypt.compareSync(plain, hashed);
 };
 
 /**
@@ -80,7 +81,12 @@ export const authenticateUser = async (email: string, password: string): Promise
 
        // Check if password is hashed (bcrypt hashes start with $2a$, $2b$, or $2y$)
        if (storedPassword.startsWith('$2a$') || storedPassword.startsWith('$2b$') || storedPassword.startsWith('$2y$')) {
-          isMatch = await comparePassword(password, storedPassword);
+          try {
+            isMatch = await comparePassword(password, storedPassword);
+          } catch (e) {
+            console.error("Bcrypt compare error:", e);
+            isMatch = false;
+          }
        } else {
           // Legacy plain text check (for older accounts not yet migrated)
           isMatch = storedPassword === password;

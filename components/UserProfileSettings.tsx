@@ -5,10 +5,12 @@ import {
   Save, Crown, Calendar, Globe,
   Coins, Sparkles, Key, Eye, EyeOff, ShieldCheck,
   Smartphone, Mail, ChevronRight,
-  LayoutTemplate, Check, Database, Zap, Loader2, CheckCircle2, XCircle, AlertTriangle, Lock, ArrowRight
+  LayoutTemplate, Check, Database, Zap, Loader2, CheckCircle2, XCircle, AlertTriangle, Lock, ArrowRight,
+  Send
 } from 'lucide-react';
 import { UserProfile, PaymentIntegration } from '../types';
 import { testAiConnection } from '../services/geminiService';
+import { sendEmail } from '../services/resendService';
 
 interface UserProfileSettingsProps {
   currentUser: UserProfile;
@@ -42,7 +44,7 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
     }));
   };
   
-  const handleApiKeyChange = (provider: 'gemini' | 'openai', value: string) => {
+  const handleApiKeyChange = (provider: 'gemini' | 'openai' | 'resend', value: string) => {
     setProfile(prev => ({
       ...prev,
       apiKeys: { ...prev.apiKeys, [provider]: value }
@@ -116,6 +118,21 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
       setTimeout(() => {
         setTestStatus(prev => ({ ...prev, [provider]: 'IDLE' }));
       }, 3000);
+    }
+  };
+
+  const runResendTest = async () => {
+    const key = profile.apiKeys?.resend;
+    if (!key) return;
+
+    setTestStatus(prev => ({ ...prev, resend: 'LOADING' }));
+    // Try sending a test email to the user (or a safe dummy)
+    // For test, we just check if we can reach the API or send a dummy
+    const res = await sendEmail(key, 'delivered@resend.dev', 'Kônsul Connection Test', '<strong>Connection Successful!</strong>');
+    
+    setTestStatus(prev => ({ ...prev, resend: res.success ? 'SUCCESS' : 'ERROR' }));
+    if (res.success) {
+      setTimeout(() => setTestStatus(prev => ({ ...prev, resend: 'IDLE' })), 3000);
     }
   };
 
@@ -555,6 +572,51 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                           testStatus['gemini'] === 'SUCCESS' ? <CheckCircle2 className="w-5 h-5" /> : 
                           testStatus['gemini'] === 'ERROR' ? <XCircle className="w-5 h-5" /> : 
                           <Zap className="w-5 h-5" />}
+                      </button>
+                   </div>
+                </div>
+
+                {/* Resend Email (NEW) */}
+                <div className="space-y-2">
+                   <label className="flex justify-between items-center text-xs font-bold text-slate-400 uppercase tracking-wider">
+                      <span>Resend API Key</span>
+                      <span className="text-white bg-black/30 px-2 py-0.5 rounded text-[10px] flex items-center gap-1">
+                         <Send className="w-3 h-3" /> Emails
+                      </span>
+                   </label>
+                   <div className="relative flex gap-2">
+                      <div className="relative group/input flex-1">
+                        <Key className="absolute left-4 top-3.5 w-5 h-5 text-slate-500 group-focus-within/input:text-white transition-colors" />
+                        <input 
+                          type={showKeys['resend'] ? "text" : "password"}
+                          value={profile.apiKeys?.resend || ''}
+                          onChange={(e) => handleApiKeyChange('resend', e.target.value)}
+                          placeholder="re_123456..."
+                          className="w-full pl-12 pr-12 p-3.5 bg-white/5 border border-white/10 rounded-2xl focus:ring-2 focus:ring-white/30 outline-none text-white placeholder:text-slate-600 font-mono text-sm transition-all focus:bg-white/10"
+                        />
+                        <button 
+                          onClick={() => toggleKeyVisibility('resend')}
+                          className="absolute right-3 top-3.5 p-1 text-slate-500 hover:text-white transition-colors rounded-lg hover:bg-white/10"
+                        >
+                          {showKeys['resend'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                      
+                      {/* TEST BUTTON */}
+                      <button 
+                        onClick={runResendTest}
+                        disabled={!profile.apiKeys?.resend || testStatus['resend'] === 'LOADING'}
+                        className={`p-3.5 rounded-2xl border transition-all flex items-center justify-center ${
+                          testStatus['resend'] === 'SUCCESS' ? 'bg-green-500/20 border-green-500 text-green-400' : 
+                          testStatus['resend'] === 'ERROR' ? 'bg-red-500/20 border-red-500 text-red-400' :
+                          'bg-white/5 border-white/10 hover:bg-white/10'
+                        }`}
+                        title="Enviar correo de prueba"
+                      >
+                         {testStatus['resend'] === 'LOADING' ? <Loader2 className="w-5 h-5 animate-spin" /> : 
+                          testStatus['resend'] === 'SUCCESS' ? <CheckCircle2 className="w-5 h-5" /> : 
+                          testStatus['resend'] === 'ERROR' ? <XCircle className="w-5 h-5" /> : 
+                          <Send className="w-5 h-5" />}
                       </button>
                    </div>
                 </div>

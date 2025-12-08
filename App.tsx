@@ -16,6 +16,7 @@ import ExpenseTracker from './components/ExpenseTracker';
 import ExpenseWizard from './components/ExpenseWizard'; 
 import { AppView, ProfileType, UserProfile, Invoice, CatalogItem } from './types';
 import { fetchInvoicesFromDb, saveInvoiceToDb, deleteInvoiceFromDb, createUserInDb, updateUserProfileInDb } from './services/neon'; 
+import { sendEmail, generateWelcomeHtml } from './services/resendService';
 
 // Mock Profiles (kept for fallback)
 const FREELANCE_PROFILE: UserProfile = {
@@ -83,7 +84,7 @@ const generateMockInvoices = (): Invoice[] => {
      } else if (type === 'Quote') {
         const r = Math.random();
         if (r > 0.7) status = 'Negociacion';
-        else if (r > 0.5) status = 'Seguimiento';
+        else if (r > 0.5) status = 'Seguimiento'; 
         else if (r > 0.3) status = 'Enviada';
         else if (r > 0.1) status = 'Rechazada';
         else status = 'Borrador';
@@ -326,7 +327,20 @@ const App: React.FC = () => {
     if (data.password && data.email) {
        try {
          const success = await createUserInDb(newProfile, data.password, data.email);
-         if (success) console.log("User created in DB securely");
+         if (success) {
+            console.log("User created in DB securely");
+            
+            // Try to send Welcome Email if API Key exists (unlikely for new user unless preset, but good practice)
+            // If the dev sets a global key, we could use that, but we stick to User Profile key principle.
+            if (newProfile.apiKeys?.resend) {
+               await sendEmail(
+                 newProfile.apiKeys.resend, 
+                 data.email, 
+                 'Bienvenido a FacturaZen 🚀', 
+                 generateWelcomeHtml(newProfile.name)
+               );
+            }
+         }
        } catch (e) {
          console.error("Failed to create user in DB", e);
          alert("Error al crear usuario en base de datos. Se procederá en modo local.");
@@ -487,6 +501,7 @@ const App: React.FC = () => {
             userCountry={currentProfile.country || 'Global'}
             apiKey={currentProfile.apiKeys} 
             onUpdate={handleCatalogUpdate}
+            referenceHourlyRate={currentProfile.hourlyRateConfig?.calculatedRate} 
           />
         )}
 
@@ -494,7 +509,8 @@ const App: React.FC = () => {
           <ReportsDashboard 
             invoices={invoices}
             currencySymbol={currentProfile.defaultCurrency === 'EUR' ? '€' : '$'}
-            apiKey={currentProfile.apiKeys} 
+            apiKey={currentProfile.apiKeys}
+            currentUser={currentProfile}
           />
         )}
 
@@ -503,6 +519,8 @@ const App: React.FC = () => {
             invoices={invoices}
             currencySymbol={currentProfile.defaultCurrency === 'EUR' ? '€' : '$'}
             onCreateExpense={() => setCurrentView(AppView.EXPENSE_WIZARD)}
+            currentProfile={currentProfile}
+            onUpdateProfile={handleProfileUpdate}
           />
         )}
         

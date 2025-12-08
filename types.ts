@@ -33,7 +33,7 @@ export interface BrandingConfig {
 }
 
 export interface EmailConfig {
-  provider: 'SYSTEM' | 'GMAIL' | 'SMTP';
+  provider: 'SYSTEM' | 'GMAIL' | 'SMTP' | 'RESEND'; // Added RESEND
   email?: string;
   // SMTP (Sending)
   host?: string;
@@ -64,6 +64,14 @@ export interface PaymentIntegration {
   yappySecretKey?: string;
 }
 
+// New: Configuration for the Hourly Rate Calculator
+export interface HourlyRateConfig {
+  targetIncome: number;
+  monthlyCosts: number;
+  billableHours: number;
+  calculatedRate: number;
+}
+
 export interface UserProfile {
   id: string;
   name: string;
@@ -82,6 +90,7 @@ export interface UserProfile {
   paymentTermsDays?: number;
   acceptsOnlinePayment?: boolean; // Legacy flag, migrating to paymentIntegration
   paymentIntegration?: PaymentIntegration; // New: PagueloFacil/Yappy Config
+  hourlyRateConfig?: HourlyRateConfig; // New: Persisted calculator settings
 
   // Catalog
   defaultServices?: CatalogItem[];
@@ -103,10 +112,11 @@ export interface UserProfile {
   plan?: 'Free' | 'Emprendedor Pro' | 'Empresa Scale';
   renewalDate?: string;
 
-  // AI Configuration
+  // AI & Services Configuration
   apiKeys?: {
     gemini?: string;
     openai?: string;
+    resend?: string; // Added Resend Key
   };
 
   avatar: string;
@@ -144,6 +154,7 @@ export interface Invoice {
   id: string;
   clientName: string;
   clientTaxId?: string;
+  clientEmail?: string; // Added client email for sending
   date: string;
   items: InvoiceItem[];
   total: number;

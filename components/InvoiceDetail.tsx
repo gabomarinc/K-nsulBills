@@ -2,10 +2,11 @@
 import React, { useState } from 'react';
 import { 
   ArrowLeft, Printer, Share2, Download, Building2, 
-  CheckCircle2, Loader2, Send, MessageCircle, Smartphone, Mail, Check
+  CheckCircle2, Loader2, Send, MessageCircle, Smartphone, Mail, Check, AlertTriangle
 } from 'lucide-react';
 import { Invoice, UserProfile } from '../types';
 import DocumentTimeline from './DocumentTimeline';
+import { sendEmail, generateDocumentHtml } from '../services/resendService';
 
 interface InvoiceDetailProps {
   invoice: Invoice;
@@ -16,6 +17,7 @@ interface InvoiceDetailProps {
 const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack }) => {
   const [isSending, setIsSending] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   // Re-calculate derived values for display
   const subtotal = invoice.items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
@@ -26,14 +28,34 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack }
   const color = branding.primaryColor;
   const logo = branding.logoUrl;
 
-  const handleSend = () => {
+  const handleSend = async () => {
     setIsSending(true);
-    // Simulate API call / Email sending
-    setTimeout(() => {
+    setSendError(null);
+
+    const apiKey = issuer.apiKeys?.resend;
+    
+    // Check if API Key exists
+    if (!apiKey) {
+      setSendError('Configura tu API Key de Resend en Ajustes para enviar correos.');
       setIsSending(false);
+      return;
+    }
+
+    // Determine recipient email (mock logic if not present)
+    const recipientEmail = invoice.clientEmail || 'cliente@prueba.com';
+    const subject = `${isQuote ? 'Cotización' : 'Factura'} #${invoice.id} de ${issuer.name}`;
+    const html = generateDocumentHtml(invoice, issuer);
+
+    const result = await sendEmail(apiKey, recipientEmail, subject, html, issuer.name);
+
+    if (result.success) {
       setShowSuccessModal(true);
-      // NOTE: In a real app, we would update the timeline here
-    }, 2000);
+      // NOTE: In a real app, update timeline here via prop callback or context
+    } else {
+      setSendError(result.error || 'Error desconocido al enviar.');
+    }
+    
+    setIsSending(false);
   };
 
   const getStatusStyle = (status: string) => {
@@ -120,6 +142,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack }
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Cliente</p>
             <h3 className="text-2xl font-bold text-[#1c2938]">{invoice.clientName}</h3>
             {invoice.clientTaxId && <p className="text-slate-600 font-mono text-base mt-1">{invoice.clientTaxId}</p>}
+            {invoice.clientEmail && <p className="text-slate-500 text-sm mt-1">{invoice.clientEmail}</p>}
         </div>
 
         {/* Items Table */}
@@ -346,7 +369,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack }
             
             <h3 className="text-2xl font-bold text-[#1c2938] mb-2">¡Enviado con Éxito!</h3>
             <p className="text-slate-500 mb-8">
-              El correo con el documento ha sido entregado a {invoice.clientName}.
+              El correo con el documento ha sido entregado a {invoice.clientName} vía Resend.
             </p>
 
             <div className="space-y-3">
@@ -372,6 +395,15 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack }
         </div>
       )}
 
+      {/* Error Notification */}
+      {sendError && (
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-50 bg-red-100 border border-red-200 text-red-800 px-6 py-3 rounded-full shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-top-4 max-w-lg text-sm">
+          <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+          <span>{sendError}</span>
+          <button onClick={() => setSendError(null)} className="ml-2 font-bold hover:text-red-950">✕</button>
+        </div>
+      )}
+
       {/* Navbar Actions */}
       <div className="flex items-center justify-between mb-6 print:hidden">
         <button 
@@ -393,12 +425,12 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack }
            <button 
              onClick={handleSend}
              disabled={isSending}
-             className="ml-4 flex items-center gap-2 bg-[#27bea5] text-white px-8 py-3 rounded-xl hover:bg-[#22a890] hover:scale-105 active:scale-95 font-bold shadow-lg shadow-teal-200/50 transition-all disabled:opacity-70 disabled:scale-100 disabled:cursor-not-allowed text-lg"
+             className="ml-4 flex items-center gap-2 bg-[#1c2938] text-white px-8 py-3 rounded-xl hover:bg-[#27bea5] hover:scale-105 active:scale-95 font-bold shadow-lg transition-all disabled:opacity-70 disabled:scale-100 disabled:cursor-not-allowed text-lg group"
            >
              {isSending ? (
                <Loader2 className="w-5 h-5 animate-spin" />
              ) : (
-               <Send className="w-5 h-5" />
+               <Send className="w-5 h-5 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 transition-transform" />
              )}
              {isSending ? 'Enviando...' : (isQuote ? 'Enviar Cotización' : 'Enviar Factura')}
            </button>

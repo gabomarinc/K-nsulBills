@@ -1,18 +1,21 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   TrendingDown, TrendingUp, Plus, DollarSign, 
   ArrowRight, Calculator, PieChart, Wallet,
   Calendar, Tag, MoreHorizontal, AlertCircle,
   Lightbulb, ArrowUpRight, ArrowDownRight,
-  Receipt, Sparkles, Truck, Package, LayoutGrid, List, Briefcase, Star
+  Receipt, Sparkles, Truck, Package, LayoutGrid, List, Briefcase, Star,
+  Save, CheckCircle2
 } from 'lucide-react';
-import { Invoice } from '../types';
+import { Invoice, UserProfile } from '../types';
 
 interface ExpenseTrackerProps {
   invoices: Invoice[];
   currencySymbol: string;
   onCreateExpense: () => void;
+  currentProfile?: UserProfile; // New optional prop
+  onUpdateProfile?: (profile: UserProfile) => Promise<void>; // New optional prop
 }
 
 interface ProviderStats {
@@ -25,14 +28,25 @@ interface ProviderStats {
   isTopPartner: boolean;
 }
 
-const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ invoices, currencySymbol, onCreateExpense }) => {
+const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ invoices, currencySymbol, onCreateExpense, currentProfile, onUpdateProfile }) => {
   const [calculatorMode, setCalculatorMode] = useState(false);
   const [activeTab, setActiveTab] = useState<'TRANSACTIONS' | 'PROVIDERS'>('TRANSACTIONS');
   
-  // Calculator State
-  const [targetIncome, setTargetIncome] = useState(3000);
-  const [monthlyCosts, setMonthlyCosts] = useState(500);
-  const [billableHours, setBillableHours] = useState(25); // Per week
+  // Calculator State (Initialize from profile if available)
+  const [targetIncome, setTargetIncome] = useState(currentProfile?.hourlyRateConfig?.targetIncome || 3000);
+  const [monthlyCosts, setMonthlyCosts] = useState(currentProfile?.hourlyRateConfig?.monthlyCosts || 500);
+  const [billableHours, setBillableHours] = useState(currentProfile?.hourlyRateConfig?.billableHours || 25); 
+  const [isSavingRate, setIsSavingRate] = useState(false);
+  const [rateSaved, setRateSaved] = useState(false);
+
+  // Sync state if profile loads later
+  useEffect(() => {
+    if (currentProfile?.hourlyRateConfig) {
+      setTargetIncome(currentProfile.hourlyRateConfig.targetIncome);
+      setMonthlyCosts(currentProfile.hourlyRateConfig.monthlyCosts);
+      setBillableHours(currentProfile.hourlyRateConfig.billableHours);
+    }
+  }, [currentProfile]);
 
   // --- STATS & DATA AGGREGATION ---
   const { totalIncome, totalExpenses, netProfit, expensesList, providers } = useMemo(() => {
@@ -96,6 +110,27 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ invoices, currencySymbo
     const monthlyHours = billableHours * 4; 
     return monthlyHours > 0 ? totalNeeded / monthlyHours : 0;
   }, [targetIncome, monthlyCosts, billableHours]);
+
+  // --- HANDLER: SAVE RATE ---
+  const handleSaveRate = async () => {
+    if (!currentProfile || !onUpdateProfile) return;
+    
+    setIsSavingRate(true);
+    const updatedProfile = {
+      ...currentProfile,
+      hourlyRateConfig: {
+        targetIncome,
+        monthlyCosts,
+        billableHours,
+        calculatedRate: calculatedHourlyRate
+      }
+    };
+
+    await onUpdateProfile(updatedProfile);
+    setIsSavingRate(false);
+    setRateSaved(true);
+    setTimeout(() => setRateSaved(false), 3000);
+  };
 
   // --- HELPER: Random Color for Avatar (Warm Tones for Suppliers) ---
   const getProviderColor = (name: string) => {
@@ -213,7 +248,6 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ invoices, currencySymbo
       {/* CALCULATOR SECTION (Collapsible Dark Mode Tool) */}
       {calculatorMode && (
          <div className="bg-[#1c2938] rounded-[3rem] p-8 md:p-12 shadow-2xl animate-in slide-in-from-top-8 relative overflow-hidden text-white">
-             {/* ... (Calculator Code kept same as before) ... */}
              <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-600 rounded-full blur-[120px] opacity-20 pointer-events-none -translate-y-1/2 translate-x-1/2"></div>
              
              <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
@@ -277,7 +311,7 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ invoices, currencySymbo
                 {/* Result Card */}
                 <div className="bg-white text-[#1c2938] rounded-[2.5rem] p-10 shadow-2xl flex flex-col justify-center items-center text-center relative overflow-hidden">
                    <div className="absolute inset-0 bg-gradient-to-br from-white to-slate-100 opacity-50"></div>
-                   <div className="relative z-10">
+                   <div className="relative z-10 flex flex-col items-center">
                       <div className="w-16 h-16 bg-[#1c2938] rounded-full flex items-center justify-center mb-6 text-white shadow-xl mx-auto">
                           <Lightbulb className="w-8 h-8 text-[#27bea5]" />
                       </div>
@@ -287,11 +321,30 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ invoices, currencySymbo
                           {calculatedHourlyRate.toFixed(0)}
                           <span className="text-xl text-slate-400 font-medium ml-2">/hr</span>
                       </h2>
-                      <div className="bg-slate-100 rounded-xl p-4 mt-2">
+                      <div className="bg-slate-100 rounded-xl p-4 mt-2 mb-6">
                          <p className="text-sm text-slate-500 leading-relaxed max-w-xs mx-auto">
                             Cubre tus costos de <strong>{currencySymbol}{monthlyCosts}</strong> y alcanza tu meta de <strong>{currencySymbol}{targetIncome}</strong>.
                          </p>
                       </div>
+
+                      {/* SAVE BUTTON (Persist to DB) */}
+                      {onUpdateProfile && (
+                        <button 
+                          onClick={handleSaveRate}
+                          disabled={isSavingRate || rateSaved}
+                          className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${
+                            rateSaved 
+                              ? 'bg-green-100 text-green-700 pointer-events-none' 
+                              : 'bg-[#1c2938] text-white hover:bg-[#27bea5] shadow-lg hover:shadow-xl'
+                          }`}
+                        >
+                          {rateSaved ? (
+                            <><CheckCircle2 className="w-4 h-4" /> Estrategia Guardada</>
+                          ) : (
+                            <><Save className="w-4 h-4" /> {isSavingRate ? 'Guardando...' : 'Guardar Estrategia'}</>
+                          )}
+                        </button>
+                      )}
                    </div>
                 </div>
              </div>
