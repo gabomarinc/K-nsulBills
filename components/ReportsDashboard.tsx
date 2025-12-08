@@ -2,13 +2,14 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
-  PieChart, Pie, Cell, AreaChart, Area, ScatterChart, Scatter
+  PieChart, Pie, Cell, AreaChart, Area, ScatterChart, Scatter, LineChart, Line
 } from 'recharts';
 import { 
   Sparkles, TrendingUp, Loader2, 
   BrainCircuit, Activity, Target, Lightbulb,
   X, TrendingDown, Wallet, FileText,
-  LayoutDashboard, FileBarChart, Users, Funnel, Calendar, Download, Share2, Mail, Smartphone, CheckCircle2
+  LayoutDashboard, FileBarChart, Users, Funnel, Calendar, Download, Share2, Mail, Smartphone, CheckCircle2,
+  Clock, AlertTriangle, Percent, Trophy, Grid, ArrowRight
 } from 'lucide-react';
 import { Invoice, FinancialAnalysisResult, DeepDiveReport, UserProfile } from '../types';
 import { generateFinancialAnalysis, generateDeepDiveReport } from '../services/geminiService';
@@ -57,6 +58,7 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
 
   // Deep Dive Report State
   const [deepDiveReport, setDeepDiveReport] = useState<DeepDiveReport | null>(null);
+  const [deepDiveVisual, setDeepDiveVisual] = useState<{ type: string, data: any } | null>(null);
   const [isDeepDiving, setIsDeepDiving] = useState<string | null>(null);
 
   // --- HELPER: Number Formatter for Charts (Anti-Overlap) ---
@@ -76,13 +78,12 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
       
       // Calculate total dimensions including scroll
       const totalHeight = element.scrollHeight;
-      const totalWidth = element.scrollWidth;
-
+      
       // 1. CLONE STRATEGY: Create a clone to render full height without scrolling issues
       const clone = element.cloneNode(true) as HTMLElement;
 
       // 2. Style the clone to sit off-screen but fully expanded
-      clone.style.width = `${element.clientWidth}px`; // Use clientWidth to match visible width layout
+      clone.style.width = `${element.clientWidth}px`; 
       clone.style.height = `${totalHeight}px`; // Force full height
       clone.style.maxHeight = 'none'; // Remove constraints
       clone.style.overflow = 'hidden'; // Hide scrollbars
@@ -118,7 +119,7 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
       // 5. Create PDF (Dynamic Height to fit content exactly)
       const imgData = canvas.toDataURL('image/png');
       
-      // Calculate dimensions in mm (approx 3.78 px per mm at 96 DPI, but we use logic relative to A4 width)
+      // Calculate dimensions in mm (approx 3.78 px per mm at 96 DPI)
       const a4WidthMm = 210; // Standard A4 Width
       const imgHeightPx = canvas.height;
       const imgWidthPx = canvas.width;
@@ -128,7 +129,6 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
       const pdfHeight = (imgHeightPx * a4WidthMm) / imgWidthPx;
 
       // Use custom page size to fit the entire image on one long page (Receipt style)
-      // This prevents awkward page breaks in the middle of charts/text
       const pdf = new jsPDF('p', 'mm', [pdfWidth, pdfHeight]);
       
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
@@ -142,7 +142,15 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
 
   const handleExportPdf = async (ref: React.RefObject<HTMLDivElement>, title: string) => {
     setIsExporting('pdf');
-    const blob = await generatePdfBlob(ref);
+    // Ensure we are exporting the current view, if overview is null, try to export active
+    let targetRef = ref;
+    if (!targetRef.current) {
+        if (activeTab === 'DOCUMENTS') targetRef = documentsRef;
+        if (activeTab === 'CLIENTS') targetRef = clientsRef;
+        if (activeTab === 'OVERVIEW') targetRef = overviewRef;
+    }
+
+    const blob = await generatePdfBlob(targetRef);
     if (blob) {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -171,7 +179,14 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
 
     setEmailStatus('SENDING');
     
-    const blob = await generatePdfBlob(ref);
+    let targetRef = ref;
+    if (!targetRef.current) {
+        if (activeTab === 'DOCUMENTS') targetRef = documentsRef;
+        if (activeTab === 'CLIENTS') targetRef = clientsRef;
+        if (activeTab === 'OVERVIEW') targetRef = overviewRef;
+    }
+
+    const blob = await generatePdfBlob(targetRef);
     if (!blob) {
       setEmailStatus('ERROR');
       return;
@@ -231,22 +246,38 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
     });
   }, [invoices, timeRange, customStart, customEnd]);
 
-  // --- 2. DATA AGGREGATION ---
+  // --- 2. DATA AGGREGATION & REAL KPIs ---
   const data = useMemo(() => {
-    // --- GLOBAL: Timeline ---
+    // A. TIMELINE & CASH FLOW
     const timelineMap = new Map<string, { ingresos: number, gastos: number, date: Date }>();
+    let totalRevenue = 0;
+    let totalExpenses = 0;
+    let paymentDaysSum = 0;
+    let paidInvoicesCount = 0;
+
     filteredInvoices.forEach(inv => {
       const d = new Date(inv.date);
-      // Group by Month-Year for 12M/90D, or Day-Month for 30D could be an improvement, keeping simple for now
       const key = d.toLocaleDateString('es-ES', { month: 'short', year: '2-digit' });
       
       if (!timelineMap.has(key)) timelineMap.set(key, { ingresos: 0, gastos: 0, date: d });
       const entry = timelineMap.get(key)!;
 
-      if (inv.type === 'Invoice' && (inv.status === 'Aceptada' || inv.status === 'Enviada')) {
+      if (inv.type === 'Invoice' && inv.status === 'Aceptada') {
         entry.ingresos += inv.total;
+        totalRevenue += inv.total;
+        
+        // Calculate Payment Velocity (DSO)
+        const createdEvent = inv.timeline?.find(e => e.type === 'CREATED');
+        const paidEvent = inv.timeline?.find(e => e.type === 'PAID'); 
+        
+        if (createdEvent && paidEvent) {
+           const days = (new Date(paidEvent.timestamp).getTime() - new Date(createdEvent.timestamp).getTime()) / (1000 * 3600 * 24);
+           paymentDaysSum += days;
+           paidInvoicesCount++;
+        }
       } else if (inv.type === 'Expense') {
         entry.gastos += inv.total;
+        totalExpenses += inv.total;
       }
     });
 
@@ -254,12 +285,21 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
       .map(([name, val]) => ({ name, ingresos: val.ingresos, gastos: val.gastos, _date: val.date }))
       .sort((a, b) => a._date.getTime() - b._date.getTime());
 
-    // --- DOCUMENTS TAB: Funnel & Scatter ---
+    const avgPaymentDays = paidInvoicesCount > 0 ? Math.round(paymentDaysSum / paidInvoicesCount) : 0;
+    const netMargin = totalRevenue - totalExpenses;
+    const marginPercent = totalRevenue > 0 ? (netMargin / totalRevenue) * 100 : 0;
+
+    // B. OPERATIONAL DOCUMENTS (Funnel & Velocity)
+    const quoteDocs = filteredInvoices.filter(i => i.type === 'Quote');
+    const totalQuotes = quoteDocs.length;
+    const wonQuotes = quoteDocs.filter(i => i.status === 'Aceptada').length;
+    const conversionRate = totalQuotes > 0 ? (wonQuotes / totalQuotes) * 100 : 0;
+
     const funnelData = [
-      { name: 'Creados', value: filteredInvoices.length, fill: '#94a3b8' },
-      { name: 'Enviados', value: filteredInvoices.filter(i => i.status !== 'Borrador' && i.status !== 'Creada').length, fill: '#3b82f6' },
-      { name: 'Negociación', value: filteredInvoices.filter(i => ['Negociacion', 'Seguimiento', 'Aceptada', 'Rechazada'].includes(i.status)).length, fill: '#a855f7' },
-      { name: 'Ganados', value: filteredInvoices.filter(i => i.status === 'Aceptada').length, fill: '#27bea5' },
+      { name: 'Borrador', value: filteredInvoices.filter(i => i.status === 'Borrador').length, fill: '#cbd5e1' },
+      { name: 'Enviadas', value: filteredInvoices.filter(i => i.status === 'Enviada').length, fill: '#3b82f6' },
+      { name: 'Vistas', value: filteredInvoices.filter(i => i.timeline?.some(e => e.type === 'OPENED')).length, fill: '#a855f7' },
+      { name: 'Cobradas', value: filteredInvoices.filter(i => i.status === 'Aceptada').length, fill: '#27bea5' },
     ];
 
     // Scatter: Effort (Items count) vs Reward (Total Amount)
@@ -273,36 +313,72 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
         status: i.status
       }));
 
-    // --- CLIENTS TAB: LTV & ROI ---
-    const clientMap = new Map<string, { revenue: number, count: number }>();
+    // C. CLIENTS (LTV & Churn)
+    const clientMap = new Map<string, { revenue: number, count: number, lastDate: Date }>();
+    const now = new Date();
+    
     filteredInvoices.forEach(inv => {
-      if (!clientMap.has(inv.clientName)) clientMap.set(inv.clientName, { revenue: 0, count: 0 });
+      if (!clientMap.has(inv.clientName)) clientMap.set(inv.clientName, { revenue: 0, count: 0, lastDate: new Date(0) });
       const c = clientMap.get(inv.clientName)!;
-      c.count++;
-      if (inv.status === 'Aceptada' && inv.type === 'Invoice') {
-        c.revenue += inv.total;
+      
+      const invDate = new Date(inv.date);
+      if (invDate > c.lastDate) c.lastDate = invDate;
+
+      if (inv.type === 'Invoice') {
+        c.count++; // Activity count
+        if (inv.status === 'Aceptada') {
+          c.revenue += inv.total;
+        }
       }
     });
 
     const ltvData = Array.from(clientMap.entries())
-      .map(([name, val]) => ({ name, revenue: val.revenue, count: val.count }))
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 7); // Top 7 clients
+      .map(([name, val]) => ({ 
+        name, 
+        revenue: val.revenue, 
+        count: val.count,
+        daysSinceLast: Math.floor((now.getTime() - val.lastDate.getTime()) / (1000 * 3600 * 24))
+      }))
+      .sort((a, b) => b.revenue - a.revenue);
 
-    const clientVsProspect = [
-      { name: 'Clientes', value: ltvData.filter(c => c.revenue > 0).length, color: '#27bea5' },
-      { name: 'Prospectos', value: Array.from(clientMap.values()).filter(c => c.revenue === 0).length, color: '#a855f7' },
+    const churnRiskCount = ltvData.filter(c => c.daysSinceLast > 90).length; // > 90 days inactive
+    const activeClientsCount = ltvData.filter(c => c.daysSinceLast <= 90).length;
+
+    const clientActivityData = [
+      { name: 'Activos (<90d)', value: activeClientsCount, color: '#27bea5' },
+      { name: 'Riesgo (>90d)', value: churnRiskCount, color: '#ef4444' },
     ];
 
-    return { monthlyData, funnelData, scatterData, ltvData, clientVsProspect };
+    return { 
+      monthlyData, funnelData, scatterData, ltvData, clientActivityData,
+      kpis: {
+        totalRevenue,
+        totalExpenses,
+        netMargin,
+        marginPercent,
+        avgPaymentDays,
+        conversionRate,
+        churnRiskCount,
+        activeClientsCount
+      }
+    };
   }, [filteredInvoices]);
 
 
   // --- HANDLERS ---
   const handleAnalyze = async () => {
     setIsAnalyzing(true);
-    const totalRevenue = data.monthlyData.reduce((acc, curr) => acc + curr.ingresos, 0);
-    const summary = `Periodo: ${timeRange}. Ingresos: ${currencySymbol}${totalRevenue}. Docs: ${filteredInvoices.length}`;
+    const { kpis } = data;
+    // Provide explicit computed data to the AI to ensure "Real Value" in text
+    const summary = `
+      Reporte Financiero Real (${timeRange}):
+      - Ingresos Cobrados: ${currencySymbol}${kpis.totalRevenue.toFixed(2)}
+      - Gastos Operativos: ${currencySymbol}${kpis.totalExpenses.toFixed(2)}
+      - Margen Neto: ${kpis.marginPercent.toFixed(1)}%
+      - Tiempo Promedio Cobro (DSO): ${kpis.avgPaymentDays} días
+      - Tasa Conversión Cotizaciones: ${kpis.conversionRate.toFixed(1)}%
+      - Clientes en Riesgo (Inactivos >90d): ${kpis.churnRiskCount}
+    `;
     const result = await generateFinancialAnalysis(summary, apiKey);
     setAnalysis(result);
     setIsAnalyzing(false);
@@ -311,16 +387,11 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
   const handleDeepDive = async (chartId: string, chartTitle: string, chartData: any) => {
     setIsDeepDiving(chartId);
     setDeepDiveReport(null);
-    const context = `Periodo: ${timeRange}. Data: ${JSON.stringify(chartData)}`;
+    setDeepDiveVisual({ type: chartId, data: chartData }); // Set visual context
+    const context = `Periodo: ${timeRange}. Datos Reales: ${JSON.stringify(chartData)}. Contexto KPI: Margen ${data.kpis.marginPercent}%, Conversión ${data.kpis.conversionRate}%`;
     const report = await generateDeepDiveReport(chartTitle, context, apiKey);
     setDeepDiveReport(report);
     setIsDeepDiving(null);
-  };
-
-  const getScoreColor = (score: number) => {
-    if (score >= 80) return 'text-[#27bea5] border-[#27bea5]';
-    if (score >= 50) return 'text-amber-400 border-amber-400';
-    return 'text-red-400 border-red-400';
   };
 
   // --- RENDERERS ---
@@ -328,6 +399,32 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
   const renderOverview = () => (
     <div ref={overviewRef} className="p-4 bg-slate-50/50 rounded-[3rem] -m-4">
       <div className="p-4">
+        {/* KPI CARDS - REAL DATA FIRST */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+           <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-50">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Ingreso Neto</p>
+              <h3 className="text-2xl font-bold text-[#1c2938]">{currencySymbol}{compactNumber(data.kpis.totalRevenue)}</h3>
+              <span className="text-[10px] text-slate-400">Cobrado</span>
+           </div>
+           <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-50">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Margen Real</p>
+              <h3 className={`text-2xl font-bold ${data.kpis.marginPercent > 20 ? 'text-[#27bea5]' : 'text-amber-500'}`}>
+                 {data.kpis.marginPercent.toFixed(0)}%
+              </h3>
+              <span className="text-[10px] text-slate-400">Rentabilidad</span>
+           </div>
+           <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-50">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Gastos</p>
+              <h3 className="text-2xl font-bold text-rose-500">-{currencySymbol}{compactNumber(data.kpis.totalExpenses)}</h3>
+              <span className="text-[10px] text-slate-400">Operativos</span>
+           </div>
+           <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-50">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Utilidad</p>
+              <h3 className="text-2xl font-bold text-[#1c2938]">{currencySymbol}{compactNumber(data.kpis.netMargin)}</h3>
+              <span className="text-[10px] text-slate-400">En caja</span>
+           </div>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4">
             {/* Card: Cash Flow */}
             <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-slate-50 hover:shadow-md transition-shadow">
@@ -337,7 +434,7 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
                       <div className="p-2 bg-slate-50 rounded-xl text-[#27bea5]">
                         <Wallet className="w-5 h-5" />
                       </div>
-                      Flujo de Caja
+                      Flujo de Caja Real
                     </h3>
                   </div>
                   <button id="no-print" onClick={() => handleDeepDive('cashflow', 'Flujo de Caja', data.monthlyData)} disabled={isDeepDiving === 'cashflow'} className="p-3 rounded-xl bg-slate-50 hover:text-[#27bea5] transition-all">
@@ -370,14 +467,14 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
                         contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} 
                       />
                       <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
-                      <Bar dataKey="ingresos" name="Ingresos" fill="#27bea5" radius={[6, 6, 0, 0]} barSize={24} />
-                      <Bar dataKey="gastos" name="Gastos" fill="#ef4444" radius={[6, 6, 0, 0]} barSize={24} />
+                      <Bar dataKey="ingresos" name="Ingresos Cobrados" fill="#27bea5" radius={[6, 6, 0, 0]} barSize={24} />
+                      <Bar dataKey="gastos" name="Gastos Totales" fill="#ef4444" radius={[6, 6, 0, 0]} barSize={24} />
                     </BarChart>
                   </ResponsiveContainer>
               </div>
             </div>
 
-            {/* Card: Trends */}
+            {/* Card: Profit Trends */}
             <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-slate-50 hover:shadow-md transition-shadow">
               <div className="flex justify-between items-start mb-6">
                   <div>
@@ -385,9 +482,12 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
                       <div className="p-2 bg-slate-50 rounded-xl text-blue-500">
                         <TrendingUp className="w-5 h-5" />
                       </div>
-                      Tendencia
+                      Evolución de Ingresos
                     </h3>
                   </div>
+                  <button id="no-print" onClick={() => handleDeepDive('trends', 'Tendencia de Ingresos', data.monthlyData)} disabled={isDeepDiving === 'trends'} className="p-3 rounded-xl bg-slate-50 hover:text-blue-500 transition-all">
+                    {isDeepDiving === 'trends' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
+                  </button>
               </div>
               <div className="h-72 w-full">
                   <ResponsiveContainer width="100%" height="100%">
@@ -430,6 +530,30 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
   const renderDocumentsView = () => (
     <div ref={documentsRef} className="p-4 bg-slate-50/50 rounded-[3rem] -m-4">
       <div className="p-4">
+        {/* OPERATIONAL KPIs */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+           <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-50 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Efectividad de Venta</p>
+                <h3 className="text-2xl font-bold text-[#1c2938]">{data.kpis.conversionRate.toFixed(1)}%</h3>
+                <span className="text-[10px] text-slate-400">Cotizaciones Aceptadas</span>
+              </div>
+              <div className="p-3 bg-purple-50 rounded-full text-purple-500">
+                 <Target className="w-6 h-6" />
+              </div>
+           </div>
+           <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-50 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Velocidad de Cobro</p>
+                <h3 className="text-2xl font-bold text-[#1c2938]">{data.kpis.avgPaymentDays} días</h3>
+                <span className="text-[10px] text-slate-400">Promedio emisión a pago</span>
+              </div>
+              <div className="p-3 bg-blue-50 rounded-full text-blue-500">
+                 <Clock className="w-6 h-6" />
+              </div>
+           </div>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4">
             {/* Funnel Chart */}
             <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-slate-50 hover:shadow-md transition-shadow">
@@ -439,10 +563,13 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
                       <div className="p-2 bg-slate-50 rounded-xl text-indigo-500">
                         <Funnel className="w-5 h-5" />
                       </div>
-                      Embudo
+                      Embudo Real
                     </h3>
-                    <p className="text-slate-400 text-sm mt-1 ml-11">Conversión Documental</p>
+                    <p className="text-slate-400 text-sm mt-1 ml-11">Conversión de Documentos</p>
                   </div>
+                  <button id="no-print" onClick={() => handleDeepDive('funnel', 'Embudo de Ventas', data.funnelData)} disabled={isDeepDiving === 'funnel'} className="p-3 rounded-xl bg-slate-50 hover:text-indigo-500 transition-all">
+                    {isDeepDiving === 'funnel' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
+                  </button>
               </div>
               <div className="h-72 w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -452,7 +579,7 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
                     <YAxis 
                       dataKey="name" 
                       type="category" 
-                      width={110} 
+                      width={80} 
                       tick={{fontSize: 11, fontWeight: 600, fill: '#64748b'}} 
                       axisLine={false} 
                       tickLine={false} 
@@ -476,10 +603,13 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
                       <div className="p-2 bg-slate-50 rounded-xl text-rose-500">
                         <Activity className="w-5 h-5" />
                       </div>
-                      Esfuerzo vs. Resultado
+                      Distribución de Valor
                     </h3>
-                    <p className="text-slate-400 text-sm mt-1 ml-11">Ítems vs Monto</p>
+                    <p className="text-slate-400 text-sm mt-1 ml-11">Relación Ítems vs Monto</p>
                   </div>
+                  <button id="no-print" onClick={() => handleDeepDive('scatter', 'Distribución de Valor', data.scatterData)} disabled={isDeepDiving === 'scatter'} className="p-3 rounded-xl bg-slate-50 hover:text-rose-500 transition-all">
+                    {isDeepDiving === 'scatter' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
+                  </button>
               </div>
               <div className="h-72 w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -512,6 +642,30 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
   const renderClientsView = () => (
     <div ref={clientsRef} className="p-4 bg-slate-50/50 rounded-[3rem] -m-4">
       <div className="p-4">
+        {/* CLIENT KPIs */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+           <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-50 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Clientes Activos</p>
+                <h3 className="text-2xl font-bold text-[#1c2938]">{data.kpis.activeClientsCount}</h3>
+                <span className="text-[10px] text-slate-400">Compra reciente (&lt;90 días)</span>
+              </div>
+              <div className="p-3 bg-teal-50 rounded-full text-teal-500">
+                 <Users className="w-6 h-6" />
+              </div>
+           </div>
+           <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-50 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Riesgo de Fuga</p>
+                <h3 className="text-2xl font-bold text-rose-500">{data.kpis.churnRiskCount}</h3>
+                <span className="text-[10px] text-slate-400">Sin compra &gt;90 días</span>
+              </div>
+              <div className="p-3 bg-rose-50 rounded-full text-rose-500">
+                 <AlertTriangle className="w-6 h-6" />
+              </div>
+           </div>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4">
           {/* LTV Chart */}
           <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-slate-50 hover:shadow-md transition-shadow">
@@ -521,13 +675,17 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
                     <div className="p-2 bg-slate-50 rounded-xl text-amber-500">
                       <Users className="w-5 h-5" />
                     </div>
-                    Top Clientes (LTV)
+                    Top Clientes (LTV Real)
                   </h3>
+                  <p className="text-slate-400 text-sm mt-1 ml-11">Ingresos cobrados históricamente</p>
                 </div>
+                <button id="no-print" onClick={() => handleDeepDive('ltv', 'Valor de Clientes', data.ltvData.slice(0,10))} disabled={isDeepDiving === 'ltv'} className="p-3 rounded-xl bg-slate-50 hover:text-amber-500 transition-all">
+                    {isDeepDiving === 'ltv' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
+                </button>
               </div>
               <div className="h-72 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={data.ltvData} margin={{ top: 20, left: 0, right: 0 }}>
+                  <BarChart data={data.ltvData.slice(0, 7)} margin={{ top: 20, left: 0, right: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} />
                       <XAxis 
                         dataKey="name" 
@@ -538,14 +696,18 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
                         tickFormatter={(val) => val.length > 8 ? val.slice(0, 8) + '..' : val}
                       />
                       <YAxis hide />
-                      <Tooltip cursor={{fill: 'transparent'}} contentStyle={{ borderRadius: '12px', border: 'none' }} />
+                      <Tooltip 
+                        cursor={{fill: 'transparent'}} 
+                        contentStyle={{ borderRadius: '12px', border: 'none' }}
+                        formatter={(value: number) => [`${currencySymbol}${value.toLocaleString()}`, 'Facturado']}
+                      />
                       <Bar dataKey="revenue" fill="#f59e0b" radius={[8, 8, 0, 0]} barSize={36} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
           </div>
 
-          {/* Client vs Prospect */}
+          {/* Retention Pie */}
           <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-slate-50 hover:shadow-md transition-shadow relative overflow-hidden">
               <div className="flex justify-between items-start mb-2">
                 <div>
@@ -553,15 +715,18 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
                     <div className="p-2 bg-slate-50 rounded-xl text-emerald-500">
                       <Target className="w-5 h-5" />
                     </div>
-                    Cartera
+                    Salud de Cartera
                   </h3>
                 </div>
+                <button id="no-print" onClick={() => handleDeepDive('retention', 'Salud de Cartera', data.clientActivityData)} disabled={isDeepDiving === 'retention'} className="p-3 rounded-xl bg-slate-50 hover:text-emerald-500 transition-all">
+                    {isDeepDiving === 'retention' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
+                </button>
               </div>
               <div className="h-64 w-full relative">
                 <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
-                        data={data.clientVsProspect}
+                        data={data.clientActivityData}
                         cx="50%"
                         cy="50%"
                         innerRadius={60}
@@ -569,7 +734,7 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
                         paddingAngle={5}
                         dataKey="value"
                       >
-                        {data.clientVsProspect.map((entry, index) => (
+                        {data.clientActivityData.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={entry.color} strokeWidth={0} />
                         ))}
                       </Pie>
@@ -589,27 +754,29 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
   );
 
   return (
-    <div className="max-w-7xl mx-auto space-y-10 animate-in fade-in pb-12">
+    <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in pb-12">
       
-      {/* HEADER WITH ACTIONS */}
-      <div className="flex flex-col xl:flex-row justify-between items-end xl:items-center gap-6 border-b border-slate-100 pb-6">
+      {/* HEADER WITH ACTIONS (Date Filters) */}
+      <div className="flex flex-col xl:flex-row justify-between items-end xl:items-center gap-6 pb-2">
+        {/* Title */}
         <div>
            <h1 className="text-3xl font-bold text-[#1c2938] tracking-tight">Centro de Inteligencia</h1>
            <p className="text-slate-500 mt-1 text-lg font-light">
-             Análisis de <span className="font-medium text-[#27bea5]">{filteredInvoices.length} documentos</span>
+             Radiografía completa de tu negocio basada en <span className="font-bold text-[#1c2938]">{filteredInvoices.length} operaciones</span>.
            </p>
         </div>
 
+        {/* Filters */}
         <div className="flex flex-col sm:flex-row items-center gap-4">
-           {/* Date Filter */}
-           <div className="flex bg-slate-100 p-1.5 rounded-2xl shadow-sm overflow-x-auto max-w-full">
+           {/* Date Filter Buttons */}
+           <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 overflow-x-auto max-w-full">
              {(['30D', '90D', '12M'] as const).map((range) => (
                <button
                  key={range}
                  onClick={() => setTimeRange(range)}
                  className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 ${
                    timeRange === range 
-                     ? 'bg-white text-[#1c2938] shadow-sm scale-105' 
+                     ? 'bg-[#1c2938] text-white shadow-md' 
                      : 'text-slate-400 hover:text-slate-600'
                  }`}
                >
@@ -620,7 +787,7 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
                onClick={() => setTimeRange('CUSTOM')}
                className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 flex items-center gap-1 ${
                  timeRange === 'CUSTOM'
-                   ? 'bg-white text-[#1c2938] shadow-sm scale-105' 
+                   ? 'bg-[#1c2938] text-white shadow-md' 
                    : 'text-slate-400 hover:text-slate-600'
                }`}
              >
@@ -633,8 +800,8 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
 
       {/* Custom Range Inputs */}
       {timeRange === 'CUSTOM' && (
-         <div className="flex justify-end -mt-6 mb-6">
-            <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-4 bg-white p-1 rounded-xl border border-slate-100">
+         <div className="flex justify-end -mt-6 mb-2">
+            <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-4 bg-white p-1 rounded-xl border border-slate-100 shadow-sm">
                 <input 
                   type="date" 
                   value={customStart}
@@ -652,120 +819,151 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
          </div>
       )}
 
-      {/* WRAPPER */}
+      {/* CFO VIRTUAL IA SECTION (Prominent & Top) */}
+      <div className="bg-[#1c2938] rounded-[2.5rem] p-8 md:p-10 shadow-2xl relative overflow-hidden text-white transition-all duration-500">
+         {/* Abstract Background */}
+         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-[#27bea5] rounded-full blur-[120px] opacity-10 -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+         <div className="absolute bottom-0 left-0 w-64 h-64 bg-blue-600 rounded-full blur-[80px] opacity-10 translate-y-1/2 -translate-x-1/2 pointer-events-none"></div>
+
+         <div className="relative z-10">
+            {/* IDLE STATE */}
+            {!analysis && (
+               <div className="flex flex-col md:flex-row items-center justify-between gap-8">
+                  <div className="max-w-2xl">
+                     <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#27bea5]/20 text-[#27bea5] text-xs font-bold uppercase tracking-wider mb-4 border border-[#27bea5]/20">
+                        <Sparkles className="w-3 h-3" /> Inteligencia Artificial
+                     </div>
+                     <h2 className="text-3xl md:text-4xl font-bold mb-4 tracking-tight">CFO Virtual</h2>
+                     <p className="text-slate-300 text-lg leading-relaxed">
+                        Analiza tus tendencias financieras, detecta riesgos de fuga y encuentra oportunidades de crecimiento ocultas en tus datos.
+                     </p>
+                  </div>
+                  <button 
+                    onClick={handleAnalyze}
+                    disabled={isAnalyzing || invoices.length === 0}
+                    className="group bg-white text-[#1c2938] px-8 py-4 rounded-2xl font-bold hover:bg-[#27bea5] hover:text-white transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(39,190,165,0.4)] hover:-translate-y-1 active:translate-y-0 disabled:opacity-50 disabled:transform-none flex-shrink-0 flex items-center gap-3"
+                  >
+                    {isAnalyzing ? <Loader2 className="w-6 h-6 animate-spin" /> : <BrainCircuit className="w-6 h-6" />}
+                    <span className="text-lg">Generar Análisis</span>
+                    {!isAnalyzing && <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />}
+                  </button>
+               </div>
+            )}
+
+            {/* ANALYZED STATE */}
+            {analysis && (
+               <div className="animate-in fade-in slide-in-from-bottom-4">
+                  <div className="flex justify-between items-start mb-8 border-b border-white/10 pb-6">
+                     <div>
+                        <div className="flex items-center gap-3 mb-2">
+                           <BrainCircuit className="w-8 h-8 text-[#27bea5]" />
+                           <h2 className="text-3xl font-bold">Diagnóstico Ejecutivo</h2>
+                        </div>
+                        <p className="text-slate-400">Análisis generado el {new Date().toLocaleDateString()} a las {new Date().toLocaleTimeString()}</p>
+                     </div>
+                     <button onClick={() => setAnalysis(null)} className="p-2 hover:bg-white/10 rounded-full transition-colors text-slate-400 hover:text-white">
+                        <X className="w-6 h-6" />
+                     </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-10 mb-8">
+                     {/* Score Card */}
+                     <div className="lg:col-span-1 bg-white/5 p-6 rounded-3xl border border-white/10 backdrop-blur-sm">
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Salud Financiera</p>
+                        <div className="flex items-center gap-4 mb-4">
+                           <span className={`text-6xl font-bold ${analysis.healthScore >= 80 ? 'text-[#27bea5]' : analysis.healthScore >= 50 ? 'text-amber-400' : 'text-rose-400'}`}>
+                              {analysis.healthScore}
+                           </span>
+                           <span className="text-sm text-slate-400 font-medium bg-white/5 px-3 py-1 rounded-lg">
+                              / 100
+                           </span>
+                        </div>
+                        <div className="w-full bg-black/20 h-2 rounded-full overflow-hidden mb-4">
+                           <div 
+                              className={`h-full rounded-full ${analysis.healthScore >= 80 ? 'bg-[#27bea5]' : analysis.healthScore >= 50 ? 'bg-amber-400' : 'bg-rose-400'}`} 
+                              style={{width: `${analysis.healthScore}%`}}
+                           ></div>
+                        </div>
+                        <p className="font-bold text-lg text-white mb-1">{analysis.healthStatus}</p>
+                        <p className="text-sm text-slate-400">{analysis.projection}</p>
+                     </div>
+
+                     {/* Diagnosis Text */}
+                     <div className="lg:col-span-2 space-y-6">
+                        <div>
+                           <h3 className="text-xl font-bold text-[#27bea5] mb-3">Resumen Estratégico</h3>
+                           <p className="text-lg text-slate-200 leading-relaxed">"{analysis.diagnosis}"</p>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                           {analysis.actionableTips.map((tip, idx) => (
+                              <div key={idx} className="flex gap-3 bg-white/5 p-4 rounded-2xl border border-white/5 hover:bg-white/10 transition-colors">
+                                 <div className="w-6 h-6 rounded-full bg-[#27bea5]/20 flex items-center justify-center flex-shrink-0 text-[#27bea5] mt-0.5">
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                 </div>
+                                 <p className="text-sm text-slate-300">{tip}</p>
+                              </div>
+                           ))}
+                        </div>
+                     </div>
+                  </div>
+
+                  {/* ACTION BUTTONS (Revealed on Generation) */}
+                  <div className="flex flex-wrap gap-4 pt-4 border-t border-white/10">
+                     <button 
+                        onClick={() => handleExportPdf(overviewRef, 'Reporte_CFO_IA')}
+                        disabled={!!isExporting}
+                        className="bg-white text-[#1c2938] px-6 py-3 rounded-xl font-bold hover:bg-[#27bea5] hover:text-white transition-all flex items-center gap-2 shadow-lg disabled:opacity-50"
+                     >
+                        {isExporting === 'pdf' ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+                        Descargar Reporte PDF
+                     </button>
+                     <button 
+                        onClick={() => handleSendEmail(overviewRef, `Reporte CFO ${new Date().toLocaleDateString()}`)}
+                        disabled={emailStatus === 'SENDING'}
+                        className="bg-white/10 text-white px-6 py-3 rounded-xl font-bold hover:bg-white/20 transition-all flex items-center gap-2 border border-white/10 disabled:opacity-50"
+                     >
+                        {emailStatus === 'SENDING' ? <Loader2 className="w-5 h-5 animate-spin" /> : <Mail className="w-5 h-5" />}
+                        Enviar por Email
+                     </button>
+                     <button 
+                        onClick={() => handleShareWhatsapp(`CFO Diagnosis: ${analysis.diagnosis}`)}
+                        className="bg-[#25D366] text-white px-6 py-3 rounded-xl font-bold hover:bg-[#20bd5a] transition-all flex items-center gap-2 shadow-lg"
+                     >
+                        <Smartphone className="w-5 h-5" />
+                        WhatsApp
+                     </button>
+                  </div>
+               </div>
+            )}
+         </div>
+      </div>
+
+      {/* TABS NAVIGATION */}
+      <div id="no-print" className="flex justify-center w-full sticky top-4 z-30">
+         <div className="bg-white/80 backdrop-blur-md p-1.5 rounded-2xl shadow-lg border border-slate-100 flex overflow-x-auto max-w-full custom-scrollbar">
+            {(['OVERVIEW', 'DOCUMENTS', 'CLIENTS'] as const).map(tab => (
+               <button
+                 key={tab}
+                 onClick={() => setActiveTab(tab)}
+                 className={`px-6 py-3 rounded-xl text-sm font-bold transition-all duration-300 whitespace-nowrap flex items-center gap-2 ${
+                   activeTab === tab
+                     ? 'bg-[#1c2938] text-white shadow-md' 
+                     : 'text-slate-500 hover:text-[#1c2938] hover:bg-slate-100'
+                 }`}
+               >
+                 {tab === 'OVERVIEW' ? <LayoutDashboard className="w-4 h-4" /> : tab === 'DOCUMENTS' ? <FileBarChart className="w-4 h-4" /> : <Users className="w-4 h-4" />}
+                 {tab === 'OVERVIEW' ? 'Finanzas' : tab === 'DOCUMENTS' ? 'Operatividad' : 'Clientes'}
+               </button>
+            ))}
+         </div>
+      </div>
+      
+      {/* WRAPPER FOR TAB CONTENT */}
       <div className="space-y-10 p-4 -m-4">
-        
-        {/* TABS NAVIGATION */}
-        <div id="no-print" className="flex justify-center w-full">
-           <div className="bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 flex overflow-x-auto max-w-full custom-scrollbar">
-              {(['OVERVIEW', 'DOCUMENTS', 'CLIENTS'] as const).map(tab => (
-                 <button
-                   key={tab}
-                   onClick={() => setActiveTab(tab)}
-                   className={`px-6 py-3 rounded-xl text-sm font-bold transition-all duration-300 whitespace-nowrap flex items-center gap-2 ${
-                     activeTab === tab
-                       ? 'text-white bg-[#1c2938] shadow-md' 
-                       : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
-                   }`}
-                 >
-                   {tab === 'OVERVIEW' ? <LayoutDashboard className="w-4 h-4" /> : tab === 'DOCUMENTS' ? <FileBarChart className="w-4 h-4" /> : <Users className="w-4 h-4" />}
-                   {tab === 'OVERVIEW' ? 'Finanzas' : tab === 'DOCUMENTS' ? 'Operatividad' : 'Clientes'}
-                 </button>
-              ))}
-           </div>
-        </div>
-        
-        {/* TAB CONTENT */}
         {activeTab === 'OVERVIEW' && renderOverview()}
         {activeTab === 'DOCUMENTS' && renderDocumentsView()}
         {activeTab === 'CLIENTS' && renderClientsView()}
-      </div>
-
-      {/* ACTIONS FOOTER */}
-      <div className="bg-white p-6 rounded-[2.5rem] border border-slate-50 shadow-lg flex flex-col lg:flex-row justify-between items-center gap-6 mt-12">
-        <div className="flex-1">
-          <h3 className="font-bold text-[#1c2938] flex items-center gap-2">
-            <BrainCircuit className="w-5 h-5 text-[#27bea5]" /> 
-            Análisis de IA
-          </h3>
-          <p className="text-sm text-slate-500 mt-1 max-w-xl">
-             Obtén un diagnóstico financiero completo, identificación de riesgos y proyección a futuro.
-          </p>
-        </div>
-
-        {/* AI Output Card */}
-        {analysis && (
-          <div className="w-full lg:w-auto flex-1 bg-slate-50 p-6 rounded-2xl animate-in slide-in-from-right-4 border border-slate-200">
-             <div className="flex justify-between items-start mb-4">
-               <span className={`px-3 py-1 rounded-full text-xs font-bold border ${getScoreColor(analysis.healthScore)}`}>
-                 Salud: {analysis.healthStatus} ({analysis.healthScore}/100)
-               </span>
-               <button onClick={() => setAnalysis(null)} className="text-slate-400 hover:text-[#1c2938]">
-                 <X className="w-4 h-4" />
-               </button>
-             </div>
-             <p className="font-bold text-[#1c2938] mb-2">"{analysis.diagnosis}"</p>
-             <ul className="space-y-2 mb-4">
-               {analysis.actionableTips.map((tip, idx) => (
-                 <li key={idx} className="text-xs text-slate-600 flex gap-2 items-start">
-                   <div className="w-1.5 h-1.5 rounded-full bg-[#27bea5] mt-1.5 flex-shrink-0"></div>
-                   {tip}
-                 </li>
-               ))}
-             </ul>
-             <div className="text-xs font-medium text-slate-500 bg-white p-3 rounded-xl border border-slate-100 flex items-center gap-2">
-                <Target className="w-4 h-4 text-purple-500" />
-                <span className="font-bold text-purple-600">Proyección:</span> {analysis.projection}
-             </div>
-          </div>
-        )}
-
-        <div className="flex items-center gap-3 w-full lg:w-auto">
-           {activeTab === 'OVERVIEW' && (
-              <>
-                 <button 
-                   onClick={() => handleExportPdf(overviewRef, 'Reporte_Financiero')}
-                   className="p-4 rounded-2xl border border-slate-200 text-slate-500 hover:bg-slate-50 transition-all disabled:opacity-50"
-                   disabled={!!isExporting}
-                   title="Descargar PDF"
-                 >
-                   {isExporting === 'pdf' ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
-                 </button>
-
-                 <button 
-                   onClick={() => handleSendEmail(overviewRef, `Reporte Financiero ${new Date().toLocaleDateString()}`)}
-                   className={`p-4 rounded-2xl border transition-all disabled:opacity-50 ${
-                     emailStatus === 'SUCCESS' ? 'bg-green-100 text-green-700 border-green-200' :
-                     emailStatus === 'ERROR' ? 'bg-red-100 text-red-700 border-red-200' :
-                     'border-slate-200 text-slate-500 hover:bg-slate-50'
-                   }`}
-                   disabled={emailStatus === 'SENDING'}
-                   title="Enviar por Email"
-                 >
-                   {emailStatus === 'SENDING' ? <Loader2 className="w-5 h-5 animate-spin" /> : 
-                    emailStatus === 'SUCCESS' ? <CheckCircle2 className="w-5 h-5" /> :
-                    <Mail className="w-5 h-5" />}
-                 </button>
-
-                 <button 
-                   onClick={() => handleShareWhatsapp(`Hola, aquí está mi resumen financiero: Ingresos ${currencySymbol}XXX, Gastos ${currencySymbol}YYY.`)}
-                   className="p-4 rounded-2xl border border-slate-200 text-slate-500 hover:bg-green-50 hover:text-green-600 hover:border-green-200 transition-all"
-                   title="Compartir WhatsApp"
-                 >
-                   <Smartphone className="w-5 h-5" />
-                 </button>
-              </>
-           )}
-
-           <button 
-             onClick={handleAnalyze}
-             disabled={isAnalyzing || invoices.length === 0}
-             className="bg-[#1c2938] text-white px-8 py-4 rounded-2xl font-bold hover:bg-[#27bea5] transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 active:translate-y-0 disabled:opacity-50 flex items-center gap-2 whitespace-nowrap"
-           >
-             {isAnalyzing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-             {isAnalyzing ? 'Analizando...' : 'Analizar con IA'}
-           </button>
-        </div>
       </div>
 
       {/* MODAL: DEEP DIVE REPORT */}
@@ -791,6 +989,111 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
 
               {/* Scrollable Content */}
               <div ref={deepDiveRef} className="p-8 md:p-12 overflow-y-auto custom-scrollbar flex-1 bg-white rounded-b-[2.5rem]">
+                 
+                 {/* VISUAL COMPONENT BASED ON REPORT TYPE */}
+                 {deepDiveVisual && (
+                    <div className="mb-10 animate-in slide-in-from-bottom-4">
+                       
+                       {/* 1. Funnel Visual */}
+                       {deepDiveVisual.type === 'funnel' && (
+                          <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                             <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Conversión Visual</h4>
+                             <div className="flex flex-col gap-3">
+                                {deepDiveVisual.data.map((item: any, idx: number) => (
+                                   <div key={idx} className="flex items-center group">
+                                      <div className="w-24 text-xs font-bold text-slate-500">{item.name}</div>
+                                      <div className="flex-1 h-10 bg-white rounded-xl relative overflow-hidden border border-slate-200 shadow-sm">
+                                         <div 
+                                            className="h-full bg-[#27bea5] opacity-20 transition-all duration-1000 ease-out group-hover:opacity-30" 
+                                            style={{width: `${(item.value / Math.max(...deepDiveVisual.data.map((d:any)=>d.value))) * 100}%`}}
+                                         ></div>
+                                         <div className="absolute inset-0 flex items-center pl-4 font-bold text-[#1c2938] text-sm">
+                                            {item.value} <span className="text-[10px] font-normal text-slate-400 ml-2 uppercase">Documentos</span>
+                                         </div>
+                                      </div>
+                                   </div>
+                                ))}
+                             </div>
+                          </div>
+                       )}
+
+                       {/* 2. Scatter Visual (Matrix) */}
+                       {deepDiveVisual.type === 'scatter' && (
+                          <div className="grid grid-cols-2 gap-4">
+                             <div className="bg-emerald-50 p-6 rounded-3xl border border-emerald-100 text-center">
+                                <p className="text-xs font-bold text-emerald-600 uppercase mb-2">Alta Rentabilidad</p>
+                                <p className="text-3xl font-bold text-emerald-800">
+                                   {deepDiveVisual.data.filter((d:any) => d.y > 1000).length}
+                                </p>
+                                <p className="text-[10px] text-emerald-600 mt-1">Proyectos &gt; $1k</p>
+                             </div>
+                             <div className="bg-blue-50 p-6 rounded-3xl border border-blue-100 text-center">
+                                <p className="text-xs font-bold text-blue-600 uppercase mb-2">Volumen Rápido</p>
+                                <p className="text-3xl font-bold text-blue-800">
+                                   {deepDiveVisual.data.filter((d:any) => d.x < 3).length}
+                                </p>
+                                <p className="text-[10px] text-blue-600 mt-1">&lt; 3 Ítems</p>
+                             </div>
+                          </div>
+                       )}
+
+                       {/* 3. LTV Visual (Podium) */}
+                       {deepDiveVisual.type === 'ltv' && (
+                          <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                             <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                                <Trophy className="w-4 h-4 text-amber-500" /> Salón de la Fama
+                             </h4>
+                             <div className="space-y-3">
+                                {deepDiveVisual.data.slice(0,3).map((client: any, idx: number) => (
+                                   <div key={idx} className="flex items-center justify-between p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
+                                      <div className="flex items-center gap-3">
+                                         <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-white ${idx===0 ? 'bg-amber-400' : idx===1 ? 'bg-slate-400' : 'bg-orange-400'}`}>
+                                            {idx + 1}
+                                         </div>
+                                         <span className="font-bold text-[#1c2938]">{client.name}</span>
+                                      </div>
+                                      <span className="font-mono font-bold text-[#1c2938]">{currencySymbol}{compactNumber(client.revenue)}</span>
+                                   </div>
+                                ))}
+                             </div>
+                          </div>
+                       )}
+
+                       {/* 4. Trends Visual (Summary) */}
+                       {deepDiveVisual.type === 'trends' && (
+                          <div className="flex justify-between gap-4">
+                             <div className="flex-1 bg-[#1c2938] p-6 rounded-3xl text-white text-center">
+                                <p className="text-xs font-bold text-slate-400 uppercase mb-2">Mejor Mes</p>
+                                <p className="text-2xl font-bold text-[#27bea5]">
+                                   {deepDiveVisual.data.reduce((a:any, b:any) => a.ingresos > b.ingresos ? a : b).name}
+                                </p>
+                             </div>
+                             <div className="flex-1 bg-slate-100 p-6 rounded-3xl text-center">
+                                <p className="text-xs font-bold text-slate-400 uppercase mb-2">Promedio Mensual</p>
+                                <p className="text-2xl font-bold text-[#1c2938]">
+                                   {currencySymbol}{compactNumber(deepDiveVisual.data.reduce((acc:number, curr:any) => acc + curr.ingresos, 0) / deepDiveVisual.data.length)}
+                                </p>
+                             </div>
+                          </div>
+                       )}
+
+                       {/* 5. Retention Visual (Health Bar) */}
+                       {deepDiveVisual.type === 'retention' && (
+                          <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 flex items-center justify-around">
+                             {deepDiveVisual.data.map((item: any, idx: number) => (
+                                <div key={idx} className="text-center">
+                                   <div className="w-16 h-16 rounded-full flex items-center justify-center border-4 text-xl font-bold mb-2 bg-white" style={{borderColor: item.color, color: item.color}}>
+                                      {item.value}
+                                   </div>
+                                   <p className="text-xs font-bold text-slate-500 uppercase">{item.name}</p>
+                                </div>
+                             ))}
+                          </div>
+                       )}
+
+                    </div>
+                 )}
+
                  <div className="prose prose-slate max-w-none">
                     <div className="bg-slate-50 p-6 rounded-2xl mb-8 border border-slate-100">
                        <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">Resumen Ejecutivo</h4>
@@ -817,7 +1120,7 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
                        <div className="absolute top-0 right-0 w-32 h-32 bg-[#27bea5] rounded-full blur-[50px] opacity-20 -translate-y-1/2 translate-x-1/2"></div>
                        <div className="relative z-10">
                           <h4 className="font-bold text-[#27bea5] mb-2 flex items-center gap-2">
-                             <Lightbulb className="w-5 h-5" /> Recomendación de IA
+                             <Lightbulb className="w-5 h-5" /> Nota Estratégica (IA)
                           </h4>
                           <p className="text-lg font-light leading-relaxed">{deepDiveReport.recommendation}</p>
                        </div>

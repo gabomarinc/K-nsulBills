@@ -17,6 +17,7 @@ import ExpenseWizard from './components/ExpenseWizard';
 import { AppView, ProfileType, UserProfile, Invoice, CatalogItem } from './types';
 import { fetchInvoicesFromDb, saveInvoiceToDb, deleteInvoiceFromDb, createUserInDb, updateUserProfileInDb } from './services/neon'; 
 import { sendEmail, generateWelcomeHtml } from './services/resendService';
+import { Plus, X, FileText, FileBadge, UserPlus, TrendingDown } from 'lucide-react';
 
 // Mock Profiles (kept for fallback)
 const FREELANCE_PROFILE: UserProfile = {
@@ -139,6 +140,9 @@ const App: React.FC = () => {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [isDbConnected, setIsDbConnected] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
+
+  // MOBILE MENU STATE
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   // LOAD DATA HELPER
   const refreshData = async () => {
@@ -330,8 +334,7 @@ const App: React.FC = () => {
          if (success) {
             console.log("User created in DB securely");
             
-            // Try to send Welcome Email if API Key exists (unlikely for new user unless preset, but good practice)
-            // If the dev sets a global key, we could use that, but we stick to User Profile key principle.
+            // Try to send Welcome Email if API Key exists
             if (newProfile.apiKeys?.resend) {
                await sendEmail(
                  newProfile.apiKeys.resend, 
@@ -353,25 +356,15 @@ const App: React.FC = () => {
   };
 
   const handleProfileUpdate = async (updatedProfile: UserProfile) => {
-    // 1. Optimistic Update
     setCurrentProfile(updatedProfile);
-
-    // 2. Persist to DB
     if (isDbConnected || !isOffline) {
        try {
-         const success = await updateUserProfileInDb(updatedProfile);
-         if (success) {
-           console.log("✅ Profile settings synced to DB");
-         } else {
-           console.warn("❌ Failed to sync profile settings to DB");
-         }
+         await updateUserProfileInDb(updatedProfile);
+         await refreshData();
        } catch (e) {
          console.error("DB Sync Error:", e);
        }
     }
-
-    // 3. Refresh Data (Trigger reconnect if DB string changed)
-    await refreshData();
   };
 
   const handleCatalogUpdate = (newItems: CatalogItem[]) => {
@@ -379,11 +372,16 @@ const App: React.FC = () => {
       ...currentProfile,
       defaultServices: newItems
     };
-    // Re-use main update handler to persist changes
     handleProfileUpdate(updatedProfile);
   };
 
   const pendingCount = invoices.filter(i => i.status === 'PendingSync').length;
+
+  // --- MENU ACTION HANDLERS ---
+  const handleMenuAction = (view: AppView) => {
+    setCurrentView(view);
+    setShowMobileMenu(false);
+  };
 
   // --- RENDER FLOW ---
 
@@ -440,6 +438,7 @@ const App: React.FC = () => {
             pendingCount={pendingCount}
             onNewAction={() => setCurrentView(AppView.WIZARD)}
             onSelectInvoice={handleInvoiceSelect}
+            onNavigate={setCurrentView} // Passed to mobile dashboard
           />
         )}
         
@@ -533,6 +532,74 @@ const App: React.FC = () => {
       </Layout>
 
       <SupportWidget apiKeys={currentProfile.apiKeys} />
+
+      {/* MOBILE FAB & MENU */}
+      <div className="md:hidden">
+         {/* FAB */}
+         {!showMobileMenu && (
+           <button 
+             onClick={() => setShowMobileMenu(true)}
+             className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-16 h-16 bg-[#27bea5] rounded-full flex items-center justify-center text-white shadow-2xl hover:scale-110 transition-transform"
+           >
+             <Plus className="w-8 h-8" />
+           </button>
+         )}
+
+         {/* MENU OVERLAY */}
+         {showMobileMenu && (
+           <div className="fixed inset-0 z-[100] backdrop-blur-md bg-white/30 flex flex-col justify-end pb-24 px-6 animate-in fade-in duration-200">
+              <div className="space-y-4 max-w-sm mx-auto w-full">
+                 <button 
+                   onClick={() => handleMenuAction(AppView.WIZARD)}
+                   className="w-full bg-white p-4 rounded-2xl shadow-xl flex items-center gap-4 text-[#1c2938] hover:bg-slate-50 transition-colors group"
+                 >
+                    <div className="w-12 h-12 rounded-full bg-[#27bea5]/10 flex items-center justify-center text-[#27bea5] group-hover:bg-[#27bea5] group-hover:text-white transition-colors">
+                       <FileText className="w-6 h-6" />
+                    </div>
+                    <span className="font-bold text-lg">Nueva Factura</span>
+                 </button>
+
+                 <button 
+                   onClick={() => handleMenuAction(AppView.WIZARD)}
+                   className="w-full bg-white p-4 rounded-2xl shadow-xl flex items-center gap-4 text-[#1c2938] hover:bg-slate-50 transition-colors group"
+                 >
+                    <div className="w-12 h-12 rounded-full bg-purple-50 flex items-center justify-center text-purple-600 group-hover:bg-purple-600 group-hover:text-white transition-colors">
+                       <FileBadge className="w-6 h-6" />
+                    </div>
+                    <span className="font-bold text-lg">Nueva Cotización</span>
+                 </button>
+
+                 <button 
+                   onClick={() => handleMenuAction(AppView.CLIENTS)}
+                   className="w-full bg-white p-4 rounded-2xl shadow-xl flex items-center gap-4 text-[#1c2938] hover:bg-slate-50 transition-colors group"
+                 >
+                    <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                       <UserPlus className="w-6 h-6" />
+                    </div>
+                    <span className="font-bold text-lg">Nuevo Cliente</span>
+                 </button>
+
+                 <button 
+                   onClick={() => handleMenuAction(AppView.EXPENSE_WIZARD)}
+                   className="w-full bg-white p-4 rounded-2xl shadow-xl flex items-center gap-4 text-[#1c2938] hover:bg-slate-50 transition-colors group"
+                 >
+                    <div className="w-12 h-12 rounded-full bg-rose-50 flex items-center justify-center text-rose-500 group-hover:bg-rose-500 group-hover:text-white transition-colors">
+                       <TrendingDown className="w-6 h-6" />
+                    </div>
+                    <span className="font-bold text-lg">Nuevo Gasto</span>
+                 </button>
+              </div>
+
+              {/* Close Button */}
+              <button 
+                onClick={() => setShowMobileMenu(false)}
+                className="fixed bottom-6 left-1/2 -translate-x-1/2 w-16 h-16 bg-white rounded-full flex items-center justify-center text-slate-400 shadow-xl hover:text-slate-600 transition-colors"
+              >
+                <X className="w-8 h-8" />
+              </button>
+           </div>
+         )}
+      </div>
     </div>
   );
 };
