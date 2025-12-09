@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { 
   Mail, Lock, Eye, EyeOff, ArrowRight, 
@@ -33,7 +32,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onRegisterCli
       if (user) {
         onLoginSuccess(user);
       } else {
-        setError('Credenciales incorrectas. Intenta con: juan@facturazen.com / password123');
+        setError('Credenciales incorrectas. Intenta con: juan@konsulbills.com / password123');
       }
     } catch (err) {
       setError('Error de conexión. Verifica tu internet.');
@@ -174,7 +173,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onRegisterCli
            {/* Mock Credentials Hint for Demo */}
            <div className="mt-8 p-4 bg-slate-100 rounded-xl border border-slate-200 text-xs text-slate-500 text-center">
               <p className="font-bold mb-1 uppercase tracking-wider">Credenciales Demo:</p>
-              <p>juan@facturazen.com / password123</p>
+              <p>juan@konsulbills.com / password123</p>
            </div>
         </div>
       </div>

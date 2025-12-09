@@ -1,10 +1,9 @@
-
 import { Invoice, UserProfile } from '../types';
 
 // Default sender logic
 // 1. Checks for a verified email in environment variables (Recommended for Production)
 // 2. Fallbacks to Resend Sandbox email if no variable is found.
-const getSender = (name: string = 'FacturaZen') => {
+const getSender = (name: string = 'Kônsul Bills') => {
   const verifiedEmail = process.env.RESEND_FROM_EMAIL;
   
   if (verifiedEmail) {
@@ -38,7 +37,7 @@ export const sendEmail = async (
 ): Promise<{ success: boolean; id?: string; error?: string }> => {
   
   try {
-    const sender = getSender(payload.senderName || 'FacturaZen');
+    const sender = getSender(payload.senderName || 'Kônsul Bills');
 
     const body: any = {
       from: sender, 

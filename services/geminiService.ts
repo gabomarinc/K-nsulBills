@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { ParsedInvoiceData, CatalogItem, FinancialAnalysisResult, PriceAnalysisResult, DeepDiveReport } from "../types";
 
@@ -234,7 +233,7 @@ export const parseExpenseImage = async (
 };
 
 export const askSupportBot = async (query: string, keys?: AiKeys): Promise<string> => {
-  const systemPrompt = `Eres 'ZenBot', el agente de soporte nivel 1 de FacturaZen. 
+  const systemPrompt = `Eres 'ZenBot', el agente de soporte nivel 1 de Kônsul Bills. 
   Tu tono es súper amigable, simple y empático. 
   Mantén las respuestas cortas y usa emojis. Responde siempre en Español.`;
 

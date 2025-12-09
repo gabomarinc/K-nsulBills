@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageSquare, X, AlertTriangle, UserCheck, Send, Loader2, Sparkles } from 'lucide-react';
 import { askSupportBot } from '../services/geminiService';
@@ -69,7 +68,7 @@ const SupportWidget: React.FC<SupportWidgetProps> = ({ apiKeys }) => {
             <div className="flex items-center gap-2">
               {mode === 'HUMAN' ? <UserCheck className="w-5 h-5" /> : <MessageSquare className="w-5 h-5" />}
               <div>
-                <span className="font-semibold block leading-none">{mode === 'HUMAN' ? 'Soporte Humano VIP' : 'Ayuda FacturaZen'}</span>
+                <span className="font-semibold block leading-none">{mode === 'HUMAN' ? 'Soporte Humano VIP' : 'Ayuda Kônsul Bills'}</span>
                 {mode === 'BOT' && (
                   <span className="text-[10px] text-slate-300 opacity-80 flex items-center gap-1">
                      <Sparkles className="w-3 h-3" /> IA Híbrida Activa

@@ -1,4 +1,3 @@
-
 import { Client } from '@neondatabase/serverless';
 import { Invoice, UserProfile } from '../types';
 import bcrypt from 'bcryptjs';
@@ -67,7 +66,7 @@ export const authenticateUser = async (email: string, password: string): Promise
          // SPECIAL: Allow Demo Password Bypass if it matches the specific demo email
          // This ensures you can always log in as Juan even if you forgot the DB password, 
          // but critically, it returns the REAL DB USER ID.
-         if (email === 'juan@facturazen.com' && password === 'password123') {
+         if (email === 'juan@konsulbills.com' && password === 'password123') {
             console.log("🔓 Demo Credentials Matched - Bypassing Hash Check");
             isMatch = true;
             
@@ -127,12 +126,12 @@ export const authenticateUser = async (email: string, password: string): Promise
   }
 
   // 2. STATIC FALLBACK (Only if DB failed or user not found AND it's the demo user)
-  if (email === 'juan@facturazen.com' && password === 'password123') {
+  if (email === 'juan@konsulbills.com' && password === 'password123') {
        console.log("🔓 Using Static Demo Profile (DB Unreachable or User Not Found)");
        return {
          id: 'user_demo_p1', 
          name: 'Juan Pérez (Demo)',
-         email: 'juan@facturazen.com',
+         email: 'juan@konsulbills.com',
          type: 'Autónomo' as any,
          taxId: '8-123-456',
          avatar: '',
@@ -256,13 +255,13 @@ export const fetchInvoicesFromDb = async (userId: string): Promise<Invoice[] | n
 
     // FETCH INVOICES
     // FIX: Include rows where userId matches OR where userId is NULL (legacy data adoption)
+    // NOTE: We check both the explicit user_id column AND the JSON blob for backward compatibility
     const invoicesPromise = client.query(
-      `SELECT * FROM invoices WHERE data->>'userId' = $1 OR data->>'userId' IS NULL`, 
+      `SELECT * FROM invoices WHERE user_id = $1 OR data->>'userId' = $1 OR (user_id IS NULL AND data->>'userId' IS NULL)`, 
       [userId]
     );
     
     // FETCH EXPENSES
-    // FIX: Include rows where userId matches OR where userId is NULL (legacy data adoption)
     const expensesPromise = client.query(
       `SELECT * FROM expenses WHERE data->>'userId' = $1 OR data->>'userId' IS NULL`, 
       [userId]
@@ -279,8 +278,9 @@ export const fetchInvoicesFromDb = async (userId: string): Promise<Invoice[] | n
         ...row.data, 
         id: row.id,
         // Ensure the object in memory has the current userId attached if it was missing
-        userId: row.data.userId || userId,
+        userId: row.user_id || row.data.userId || userId,
         clientName: row.client_name,
+        clientTaxId: row.client_tax_id || row.data.clientTaxId, // Fetch from col or json
         total: parseFloat(row.total),
         status: row.status,
         date: row.date,
@@ -313,7 +313,57 @@ export const fetchInvoicesFromDb = async (userId: string): Promise<Invoice[] | n
 };
 
 /**
+ * Saves (Upserts) a client to the clients table.
+ */
+export const saveClientToDb = async (client: { name: string, taxId?: string, email?: string, address?: string }, userId: string, status: 'CLIENT' | 'PROSPECT'): Promise<boolean> => {
+  const clientDb = getDbClient();
+  if (!clientDb) return false;
+
+  try {
+    await clientDb.connect();
+
+    // Create a deterministic ID based on UserID + ClientName to avoid duplicates
+    // Simple sanitization for the ID
+    const safeName = client.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const clientId = `cli_${userId.substring(0,8)}_${safeName}`;
+
+    const query = `
+      INSERT INTO clients (id, user_id, name, tax_id, email, address, status, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+      ON CONFLICT (id) 
+      DO UPDATE SET 
+        name = EXCLUDED.name,
+        tax_id = COALESCE(EXCLUDED.tax_id, clients.tax_id),
+        email = COALESCE(EXCLUDED.email, clients.email),
+        address = COALESCE(EXCLUDED.address, clients.address),
+        status = CASE 
+           WHEN clients.status = 'CLIENT' THEN 'CLIENT' -- Once a client, always a client
+           ELSE EXCLUDED.status
+        END,
+        updated_at = NOW();
+    `;
+
+    await clientDb.query(query, [
+      clientId,
+      userId,
+      client.name,
+      client.taxId || null,
+      client.email || null,
+      client.address || null,
+      status
+    ]);
+
+    await clientDb.end();
+    return true;
+  } catch (error) {
+    console.error("Neon DB Client Save Error:", error);
+    return false;
+  }
+};
+
+/**
  * Saves (Upserts) a document to the correct table based on type.
+ * Updated to save specific columns: user_id, client_tax_id
  */
 export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
   const client = getDbClient();
@@ -356,12 +406,16 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
       ]);
 
     } else {
+      // INVOICE / QUOTE
+      // UPDATED: Now inserts user_id and client_tax_id explicit columns
       const query = `
-        INSERT INTO invoices (id, client_name, total, status, date, type, data)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO invoices (id, user_id, client_name, client_tax_id, total, status, date, type, data)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (id) 
         DO UPDATE SET 
+          user_id = EXCLUDED.user_id,
           client_name = EXCLUDED.client_name,
+          client_tax_id = EXCLUDED.client_tax_id,
           total = EXCLUDED.total,
           status = EXCLUDED.status,
           date = EXCLUDED.date,
@@ -370,7 +424,9 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
 
       await client.query(query, [
         invoice.id,
+        invoiceData.userId, // Explicit User ID
         invoice.clientName,
+        invoice.clientTaxId || null, // Explicit Tax ID
         invoice.total,
         invoice.status,
         invoice.date,

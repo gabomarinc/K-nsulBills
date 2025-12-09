@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
@@ -16,7 +15,7 @@ import ClientDetail from './components/ClientDetail'; // Import new component
 import ExpenseTracker from './components/ExpenseTracker'; 
 import ExpenseWizard from './components/ExpenseWizard'; 
 import { AppView, ProfileType, UserProfile, Invoice, CatalogItem } from './types';
-import { fetchInvoicesFromDb, saveInvoiceToDb, deleteInvoiceFromDb, createUserInDb, updateUserProfileInDb } from './services/neon'; 
+import { fetchInvoicesFromDb, saveInvoiceToDb, deleteInvoiceFromDb, createUserInDb, updateUserProfileInDb, saveClientToDb } from './services/neon'; 
 import { sendWelcomeEmail } from './services/resendService';
 import { Plus, X, FileText, FileBadge, UserPlus, TrendingDown } from 'lucide-react';
 
@@ -58,7 +57,7 @@ const App: React.FC = () => {
 
   // ... (Session and Data Loading logic remains same)
   useEffect(() => {
-    const storedUser = localStorage.getItem('facturazen_user');
+    const storedUser = localStorage.getItem('konsul_bills_user');
     if (storedUser) {
       try {
         const user = JSON.parse(storedUser);
@@ -66,13 +65,13 @@ const App: React.FC = () => {
         setIsAuthenticated(true);
       } catch (e) {
         console.error("Failed to parse stored session", e);
-        localStorage.removeItem('facturazen_user');
+        localStorage.removeItem('konsul_bills_user');
       }
     }
   }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem('facturazen_user');
+    localStorage.removeItem('konsul_bills_user');
     setIsAuthenticated(false);
     setInvoices([]);
     setCurrentProfile(DEFAULT_PROFILE);
@@ -102,7 +101,7 @@ const App: React.FC = () => {
   const handleLoginSuccess = (user: UserProfile) => {
     setCurrentProfile(user);
     setIsAuthenticated(true);
-    localStorage.setItem('facturazen_user', JSON.stringify(user));
+    localStorage.setItem('konsul_bills_user', JSON.stringify(user));
   };
 
   // --- ACTIONS ---
@@ -158,12 +157,12 @@ const App: React.FC = () => {
         if (newInvoice.type === 'Invoice') {
             const updatedProfile = { ...currentProfile, documentSequences: { ...currentProfile.documentSequences!, invoiceNextNumber: (currentProfile.documentSequences?.invoiceNextNumber || 0) + 1 } };
             setCurrentProfile(updatedProfile);
-            localStorage.setItem('facturazen_user', JSON.stringify(updatedProfile));
+            localStorage.setItem('konsul_bills_user', JSON.stringify(updatedProfile));
             updateUserProfileInDb(updatedProfile);
         } else if (newInvoice.type === 'Quote') {
             const updatedProfile = { ...currentProfile, documentSequences: { ...currentProfile.documentSequences!, quoteNextNumber: (currentProfile.documentSequences?.quoteNextNumber || 0) + 1 } };
             setCurrentProfile(updatedProfile);
-            localStorage.setItem('facturazen_user', JSON.stringify(updatedProfile));
+            localStorage.setItem('konsul_bills_user', JSON.stringify(updatedProfile));
             updateUserProfileInDb(updatedProfile);
         }
     }
@@ -172,7 +171,22 @@ const App: React.FC = () => {
     setEditingInvoice(null); // Clear edit state
 
     // DB Save (Upsert handles both insert and update)
-    saveInvoiceToDb(invoiceWithMetadata);
+    await saveInvoiceToDb(invoiceWithMetadata);
+
+    // ALSO SAVE CLIENT TO DB
+    if (invoiceWithMetadata.type === 'Invoice' || invoiceWithMetadata.type === 'Quote') {
+        const clientStatus = invoiceWithMetadata.type === 'Invoice' ? 'CLIENT' : 'PROSPECT';
+        await saveClientToDb(
+            { 
+                name: invoiceWithMetadata.clientName, 
+                taxId: invoiceWithMetadata.clientTaxId, 
+                email: invoiceWithMetadata.clientEmail,
+                address: invoiceWithMetadata.clientAddress
+            },
+            currentProfile.id,
+            clientStatus
+        );
+    }
   };
 
   const handleDeleteInvoice = async (id: string) => {
@@ -207,6 +221,19 @@ const App: React.FC = () => {
     for (const doc of clientDocs) {
         await saveInvoiceToDb(doc);
     }
+
+    // UPDATE CLIENT IN DB TABLE
+    await saveClientToDb(
+        { 
+            name: clientName, 
+            email: newContact.email, 
+            address: newContact.address, 
+            taxId: newContact.taxId 
+        },
+        currentProfile.id,
+        'CLIENT' // Defaulting to Client, database logic will handle if they were prospect
+    );
+
     alert("Datos del cliente actualizados en sus documentos.");
   };
 
@@ -238,7 +265,19 @@ const App: React.FC = () => {
     });
     setInvoices(updatedInvoices);
     const updatedInv = updatedInvoices.find(i => i.id === id);
-    if (updatedInv) saveInvoiceToDb(updatedInv);
+    if (updatedInv) {
+        await saveInvoiceToDb(updatedInv);
+        // Ensure client status becomes CLIENT if they paid
+        await saveClientToDb(
+            { 
+                name: updatedInv.clientName, 
+                taxId: updatedInv.clientTaxId, 
+                email: updatedInv.clientEmail 
+            },
+            currentProfile.id,
+            'CLIENT'
+        );
+    }
   };
 
   const handleConvertQuote = async (quoteId: string) => { 
@@ -279,11 +318,23 @@ const App: React.FC = () => {
       }
     };
     setCurrentProfile(updatedProfile);
-    localStorage.setItem('facturazen_user', JSON.stringify(updatedProfile));
+    localStorage.setItem('konsul_bills_user', JSON.stringify(updatedProfile));
     
     await saveInvoiceToDb({...quote, status: 'Aceptada'});
     await saveInvoiceToDb(newInvoice);
     await handleProfileUpdate(updatedProfile);
+
+    // Update Client Status to CLIENT
+    await saveClientToDb(
+        { 
+            name: quote.clientName, 
+            taxId: quote.clientTaxId, 
+            email: quote.clientEmail,
+            address: quote.clientAddress
+        },
+        currentProfile.id,
+        'CLIENT'
+    );
   };
 
   const handleInvoiceSelect = (invoice: Invoice) => {
@@ -325,7 +376,7 @@ const App: React.FC = () => {
 
   const handleProfileUpdate = async (updatedProfile: UserProfile) => { 
     setCurrentProfile(updatedProfile);
-    localStorage.setItem('facturazen_user', JSON.stringify(updatedProfile));
+    localStorage.setItem('konsul_bills_user', JSON.stringify(updatedProfile));
     try {
       await updateUserProfileInDb(updatedProfile);
     } catch (e) {
