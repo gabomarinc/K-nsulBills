@@ -118,17 +118,20 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
           <div className="pt-2">
              <button 
                onClick={() => onNavigate && onNavigate(AppView.INVOICES)}
-               className="bg-[#1c2938] text-white px-6 py-3 rounded-full text-sm font-bold shadow-lg hover:scale-105 transition-transform flex items-center gap-2 mx-auto"
+               className="bg-[#1c2938] text-white px-6 py-3 rounded-full text-sm font-bold shadow-lg hover:scale-105 active:scale-95 transition-all flex items-center gap-2 mx-auto"
              >
                 <FileText className="w-4 h-4" /> Ver facturas
              </button>
           </div>
        </div>
 
-       {/* Grid: 2x2 Pastel Cards */}
+       {/* Grid: 2x2 Pastel Cards - Now Clickable Buttons */}
        <div className="grid grid-cols-2 gap-4">
-          {/* Card 1: Revenue (Green) */}
-          <div className="bg-[#ecfccb] p-5 rounded-[2rem] flex flex-col justify-between h-40 shadow-sm relative overflow-hidden">
+          {/* Card 1: Revenue (Green) -> Invoices */}
+          <button 
+            onClick={() => onNavigate && onNavigate(AppView.INVOICES)}
+            className="bg-[#ecfccb] p-5 rounded-[2rem] flex flex-col justify-between h-40 shadow-sm relative overflow-hidden text-left active:scale-95 transition-transform"
+          >
              <div className="absolute -right-4 -top-4 w-20 h-20 bg-white/30 rounded-full"></div>
              <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-[#1c2938] shadow-sm mb-2 relative z-10">
                 <Wallet className="w-5 h-5" />
@@ -137,10 +140,13 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
                 <p className="text-2xl font-black text-[#1c2938]">${stats.monthlyRevenue.toLocaleString()}</p>
                 <p className="text-xs font-bold text-slate-700 mt-1">Facturas pagadas</p>
              </div>
-          </div>
+          </button>
 
-          {/* Card 2: Pending (Yellow) */}
-          <div className="bg-[#fef9c3] p-5 rounded-[2rem] flex flex-col justify-between h-40 shadow-sm relative overflow-hidden">
+          {/* Card 2: Pending (Yellow) -> Invoices */}
+          <button 
+            onClick={() => onNavigate && onNavigate(AppView.INVOICES)}
+            className="bg-[#fef9c3] p-5 rounded-[2rem] flex flex-col justify-between h-40 shadow-sm relative overflow-hidden text-left active:scale-95 transition-transform"
+          >
              <div className="absolute -right-4 -top-4 w-20 h-20 bg-white/30 rounded-full"></div>
              <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-[#1c2938] shadow-sm mb-2 relative z-10">
                 <Hourglass className="w-5 h-5" />
@@ -149,10 +155,13 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
                 <p className="text-2xl font-black text-[#1c2938]">${stats.pendingAmount.toLocaleString()}</p>
                 <p className="text-xs font-bold text-slate-700 mt-1">Pendientes</p>
              </div>
-          </div>
+          </button>
 
-          {/* Card 3: Quotes (Blue) */}
-          <div className="bg-[#dbeafe] p-5 rounded-[2rem] flex flex-col justify-between h-40 shadow-sm relative overflow-hidden">
+          {/* Card 3: Quotes (Blue) -> Invoices (Quotes view is part of invoice list usually) */}
+          <button 
+            onClick={() => onNavigate && onNavigate(AppView.INVOICES)}
+            className="bg-[#dbeafe] p-5 rounded-[2rem] flex flex-col justify-between h-40 shadow-sm relative overflow-hidden text-left active:scale-95 transition-transform"
+          >
              <div className="absolute -right-4 -top-4 w-20 h-20 bg-white/30 rounded-full"></div>
              <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-[#1c2938] shadow-sm mb-2 relative z-10">
                 <BarChart3 className="w-5 h-5" />
@@ -161,10 +170,13 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
                 <p className="text-2xl font-black text-[#1c2938]">${stats.quotesAmount.toLocaleString()}</p>
                 <p className="text-xs font-bold text-slate-700 mt-1">{stats.quotesCount} Cotizaciones</p>
              </div>
-          </div>
+          </button>
 
-          {/* Card 4: Clients (Purple) */}
-          <div className="bg-[#f3e8ff] p-5 rounded-[2rem] flex flex-col justify-between h-40 shadow-sm relative overflow-hidden">
+          {/* Card 4: Clients (Purple) -> Clients */}
+          <button 
+            onClick={() => onNavigate && onNavigate(AppView.CLIENTS)}
+            className="bg-[#f3e8ff] p-5 rounded-[2rem] flex flex-col justify-between h-40 shadow-sm relative overflow-hidden text-left active:scale-95 transition-transform"
+          >
              <div className="absolute -right-4 -top-4 w-20 h-20 bg-white/30 rounded-full"></div>
              <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-[#1c2938] shadow-sm mb-2 relative z-10">
                 <Users className="w-5 h-5" />
@@ -173,14 +185,14 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
                 <p className="text-2xl font-black text-[#1c2938]">{stats.uniqueClients}</p>
                 <p className="text-xs font-bold text-slate-700 mt-1">Clientes activos</p>
              </div>
-          </div>
+          </button>
        </div>
 
        {/* Bottom Button */}
        <div>
           <button 
             onClick={() => onNavigate && onNavigate(AppView.REPORTS)}
-            className="w-full bg-white border border-slate-200 text-[#1c2938] py-4 rounded-2xl font-bold shadow-sm hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+            className="w-full bg-white border border-slate-200 text-[#1c2938] py-4 rounded-2xl font-bold shadow-sm hover:bg-slate-50 transition-colors flex items-center justify-center gap-2 active:scale-95"
           >
              <BarChart3 className="w-5 h-5" /> Ver reportes completos
           </button>
@@ -364,7 +376,10 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
               <h3 className="text-xl font-bold text-[#1c2938] flex items-center gap-2">
                 Actividad Reciente
               </h3>
-              <button className="text-[#27bea5] text-sm font-bold hover:underline">
+              <button 
+                onClick={() => onNavigate && onNavigate(AppView.INVOICES)}
+                className="text-[#27bea5] text-sm font-bold hover:underline"
+              >
                 Ver todo el historial
               </button>
           </div>

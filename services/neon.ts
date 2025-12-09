@@ -49,10 +49,11 @@ export const authenticateUser = async (email: string, password: string): Promise
   
   // 1. OFFLINE / NO-DB MODE FALLBACK
   if (!client) {
+    // Basic local fallback for development if env is missing
     if (email === 'juan@facturazen.com' && password === 'password123') {
        return {
          id: 'p1',
-         name: 'Juan Pérez',
+         name: 'Juan Pérez (Local)',
          type: 'Autónomo' as any,
          taxId: '8-123-456',
          avatar: '',
@@ -93,12 +94,6 @@ export const authenticateUser = async (email: string, password: string): Promise
           isMatch = storedPassword === password;
        }
 
-       // --- SAFETY NET FOR DEMO USER ---
-       if (!isMatch && email === 'juan@facturazen.com' && password === 'password123') {
-           console.warn("⚠️ Demo Backdoor Active: Database password check failed, but demo credentials matched.");
-           isMatch = true;
-       }
-
        if (isMatch) {
          // CRITICAL: Merge the JSONB profile_data with the root columns
          // This ensures API Keys, Bank Info, and Payment Integrations (Dual Providers) are loaded into app state
@@ -119,21 +114,6 @@ export const authenticateUser = async (email: string, password: string): Promise
     return null;
   } catch (error) {
     console.error("Neon Auth Error:", error);
-    // 3. EMERGENCY FALLBACK ON CONNECTION ERROR
-    if (email === 'juan@facturazen.com' && password === 'password123') {
-        return {
-             id: 'p1',
-             name: 'Juan Pérez (Offline)',
-             type: 'Autónomo' as any,
-             taxId: '8-123-456',
-             avatar: '',
-             isOnboardingComplete: true,
-             defaultCurrency: 'USD',
-             plan: 'Emprendedor Pro',
-             country: 'Panamá',
-             branding: { primaryColor: '#27bea5', templateStyle: 'Modern' }
-           } as UserProfile;
-    }
     return null;
   }
 };
@@ -238,18 +218,27 @@ export const updateUserProfileInDb = async (profile: UserProfile): Promise<boole
 
 /**
  * Fetches data from BOTH 'invoices' and 'expenses' tables and unifies them.
+ * FILTERS BY userId to ensure data isolation.
  */
-export const fetchInvoicesFromDb = async (): Promise<Invoice[] | null> => {
+export const fetchInvoicesFromDb = async (userId: string): Promise<Invoice[] | null> => {
   const client = getDbClient();
   if (!client) return null;
 
   try {
     await client.connect();
     
-    // 1. Fetch Invoices & Quotes
-    const invoicesPromise = client.query('SELECT * FROM invoices');
-    // 2. Fetch Expenses
-    const expensesPromise = client.query('SELECT * FROM expenses');
+    // 1. Fetch Invoices & Quotes (Filter by userId inside JSONB data)
+    // We use the JSON operator ->> 'userId' to filter
+    const invoicesPromise = client.query(
+      `SELECT * FROM invoices WHERE data->>'userId' = $1`, 
+      [userId]
+    );
+    
+    // 2. Fetch Expenses (Filter by userId inside JSONB data)
+    const expensesPromise = client.query(
+      `SELECT * FROM expenses WHERE data->>'userId' = $1`, 
+      [userId]
+    );
 
     const [invoicesRes, expensesRes] = await Promise.allSettled([invoicesPromise, expensesPromise]);
 
@@ -297,6 +286,7 @@ export const fetchInvoicesFromDb = async (): Promise<Invoice[] | null> => {
 
 /**
  * Saves (Upserts) a document to the correct table based on type.
+ * Ensures data object contains userId.
  */
 export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
   const client = getDbClient();
@@ -304,6 +294,9 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
 
   try {
     await client.connect();
+    
+    // Ensure userId is in the JSON payload
+    const invoiceData = { ...invoice };
     
     if (invoice.type === 'Expense') {
       // --- SAVE TO EXPENSES TABLE ---
@@ -331,7 +324,7 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
         category,
         invoice.receiptUrl || null,
         invoice.status,
-        JSON.stringify(invoice)
+        JSON.stringify(invoiceData)
       ];
 
       await client.query(query, values);
@@ -357,7 +350,7 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
         invoice.status,
         invoice.date,
         invoice.type,
-        JSON.stringify(invoice)
+        JSON.stringify(invoiceData)
       ];
 
       await client.query(query, values);

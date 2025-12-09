@@ -153,6 +153,7 @@ export type InvoiceStatus =
 
 export interface Invoice {
   id: string;
+  userId?: string; // LINK TO USER PROFILE
   clientName: string;
   clientTaxId?: string;
   clientEmail?: string; // Added client email for sending

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
@@ -18,117 +19,25 @@ import { fetchInvoicesFromDb, saveInvoiceToDb, deleteInvoiceFromDb, createUserIn
 import { sendEmail, generateWelcomeHtml } from './services/resendService';
 import { Plus, X, FileText, FileBadge, UserPlus, TrendingDown } from 'lucide-react';
 
-// Mock Profiles (kept for fallback)
-const FREELANCE_PROFILE: UserProfile = {
-  id: 'p1',
-  name: 'Juan Pérez',
+// Fallback profile type for typing, though now we use real data
+const DEFAULT_PROFILE: UserProfile = {
+  id: '',
+  name: '',
   type: ProfileType.FREELANCE,
-  taxId: '8-123-456',
+  taxId: '',
   avatar: '',
   isOnboardingComplete: false, 
   defaultServices: [],
   branding: { primaryColor: '#27bea5', templateStyle: 'Modern' },
   defaultCurrency: 'USD',
-  plan: 'Emprendedor Pro',
-  renewalDate: '15 Nov 2024',
+  plan: 'Free',
   country: 'Panamá',
-};
-
-const COMPANY_PROFILE: UserProfile = {
-  id: 'p2',
-  name: 'JP Studio SAS',
-  type: ProfileType.COMPANY,
-  taxId: '15569888-2-2021',
-  avatar: '',
-  isOnboardingComplete: true,
-  defaultServices: [],
-  branding: { primaryColor: '#1c2938', templateStyle: 'Classic' },
-  defaultCurrency: 'USD',
-  plan: 'Empresa Scale',
-  renewalDate: '01 Dic 2024',
-  country: 'Panamá',
-};
-
-// --- DATA GENERATOR (ROBUST MOCK FALLBACK) ---
-const generateMockInvoices = (): Invoice[] => {
-  const items: Invoice[] = [];
-  const now = new Date();
-  const clients = ['TechSolutions SRL', 'Restaurante El Sol', 'Agencia Creativa One', 'Consultora Global', 'Startup X', 'Juan Pérez', 'Empresa Demo'];
-  let invSeq = 110;
-  let quoteSeq = 20;
-
-  const createItem = (idSuffix: number, daysAgo: number): Invoice => {
-     const d = new Date(now);
-     d.setDate(d.getDate() - daysAgo);
-     d.setHours(Math.floor(Math.random() * 24), Math.floor(Math.random() * 60));
-     
-     const rand = Math.random();
-     const type = rand > 0.3 ? 'Invoice' : (rand > 0.15 ? 'Quote' : 'Expense');
-     
-     let docId = '';
-     if (type === 'Invoice') {
-       docId = `FAC-${String(invSeq++).padStart(4, '0')}`;
-     } else if (type === 'Quote') {
-       docId = `COT-${String(quoteSeq++).padStart(4, '0')}`;
-     } else {
-       docId = `EXP-${String(idSuffix).padStart(4, '0')}`;
-     }
-
-     let status: Invoice['status'] = 'Borrador';
-     if (type === 'Invoice') {
-        const r = Math.random();
-        if (r > 0.4) status = 'Aceptada'; 
-        else if (r > 0.2) status = 'Enviada'; 
-        else if (r > 0.1) status = 'Seguimiento'; 
-        else status = 'Creada';
-     } else if (type === 'Quote') {
-        const r = Math.random();
-        if (r > 0.7) status = 'Negociacion';
-        else if (r > 0.5) status = 'Seguimiento'; 
-        else if (r > 0.3) status = 'Enviada';
-        else if (r > 0.1) status = 'Rechazada';
-        else status = 'Borrador';
-     } else {
-        status = 'Aceptada';
-     }
-
-     const amount = Math.floor(Math.random() * 2500) + 150;
-
-     return {
-        id: docId,
-        clientName: clients[Math.floor(Math.random() * clients.length)],
-        clientTaxId: `TAX-${Math.floor(Math.random() * 9999)}`,
-        date: d.toISOString(),
-        items: [{
-          id: `item-${idSuffix}`,
-          description: type === 'Expense' ? 'Material de Oficina' : 'Servicios Profesionales',
-          quantity: 1,
-          price: amount,
-          tax: 21
-        }],
-        total: amount * 1.21,
-        status: status,
-        currency: 'USD',
-        type: type,
-        successProbability: type === 'Quote' ? Math.floor(Math.random() * 40) + 50 : undefined,
-        timeline: [
-          { id: `t1-${idSuffix}`, type: 'CREATED', title: 'Creado', timestamp: d.toISOString() }
-        ]
-     };
-  };
-
-  let idCounter = 0;
-  for (let i = 0; i < 15; i++) { items.push(createItem(idCounter++, Math.floor(Math.random() * 30))); }
-  for (let i = 0; i < 20; i++) { items.push(createItem(idCounter++, Math.floor(Math.random() * 60) + 31)); }
-  for (let i = 0; i < 40; i++) { items.push(createItem(idCounter++, Math.floor(Math.random() * 270) + 91)); }
-  
-  return items.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 };
 
 const App: React.FC = () => {
   // --- AUTH STATE ---
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [currentProfile, setCurrentProfile] = useState<UserProfile>(FREELANCE_PROFILE);
+  const [currentProfile, setCurrentProfile] = useState<UserProfile>(DEFAULT_PROFILE);
   const [showRegister, setShowRegister] = useState(false);
 
   // --- APP STATE ---
@@ -143,43 +52,72 @@ const App: React.FC = () => {
   // MOBILE MENU STATE
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
-  // LOAD DATA HELPER
+  // --- SESSION MANAGEMENT ---
+  useEffect(() => {
+    // Check for stored session on mount
+    const storedUser = localStorage.getItem('facturazen_user');
+    if (storedUser) {
+      try {
+        const user = JSON.parse(storedUser);
+        setCurrentProfile(user);
+        setIsAuthenticated(true);
+      } catch (e) {
+        console.error("Failed to parse stored session", e);
+        localStorage.removeItem('facturazen_user');
+      }
+    }
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem('facturazen_user');
+    setIsAuthenticated(false);
+    setInvoices([]);
+    setCurrentProfile(DEFAULT_PROFILE);
+    setCurrentView(AppView.DASHBOARD);
+  };
+
+  // --- DATA LOADING ---
   const refreshData = async () => {
+    if (!currentProfile.id) return;
+
     setIsLoadingData(true);
-    const dbData = await fetchInvoicesFromDb();
+    // Fetch only invoices for this specific user
+    const dbData = await fetchInvoicesFromDb(currentProfile.id);
     
-    if (dbData && dbData.length > 0) {
-      console.log("✅ Connected to Neon DB. Loaded", dbData.length, "docs (Invoices + Expenses).");
+    if (dbData) {
+      console.log(`✅ Loaded ${dbData.length} docs from DB for user ${currentProfile.id}`);
       setInvoices(dbData);
       setIsDbConnected(true);
     } else {
-      console.warn("⚠️ Using robust mock data.");
-      if (invoices.length === 0) {
-        setInvoices(generateMockInvoices());
-      }
+      console.warn("⚠️ Failed to fetch DB data or empty. Using empty state.");
+      setInvoices([]); // STRICTLY EMPTY if no DB data
       setIsDbConnected(false);
     }
     setIsLoadingData(false);
   };
 
-  // LOAD DATA EFFECT
+  // Trigger data load when authenticated
   useEffect(() => {
-    if (!isAuthenticated) return;
-    refreshData();
-  }, [isAuthenticated]);
+    if (isAuthenticated && currentProfile.id) {
+      refreshData();
+    }
+  }, [isAuthenticated, currentProfile.id]);
 
   const handleLoginSuccess = (user: UserProfile) => {
     setCurrentProfile(user);
     setIsAuthenticated(true);
+    localStorage.setItem('facturazen_user', JSON.stringify(user));
   };
 
   const toggleProfile = () => {
-    setCurrentProfile(prev => prev.id === 'p1' ? COMPANY_PROFILE : FREELANCE_PROFILE);
+    // Feature disabled for now or could implement profile switching logic here
+    console.log("Switch profile requested");
   };
 
   const handleSaveInvoice = async (newInvoice: Invoice) => {
-    const invoiceWithTimeline: Invoice = {
+    const invoiceWithMetadata: Invoice = {
       ...newInvoice,
+      userId: currentProfile.id, // LINK TO CURRENT USER
       timeline: newInvoice.timeline || [
          { 
            id: Date.now().toString(), 
@@ -192,39 +130,43 @@ const App: React.FC = () => {
       successProbability: newInvoice.type === 'Quote' ? Math.floor(Math.random() * 30) + 60 : undefined
     };
     
-    setInvoices([invoiceWithTimeline, ...invoices]);
-    setSelectedInvoice(invoiceWithTimeline);
+    // Optimistic Update
+    setInvoices([invoiceWithMetadata, ...invoices]);
+    setSelectedInvoice(invoiceWithMetadata);
 
     // Update Sequences only for Sales Docs
     if (newInvoice.type === 'Invoice') {
-      setCurrentProfile(prev => ({
-        ...prev,
+      const updatedProfile = {
+        ...currentProfile,
         documentSequences: {
-          ...prev.documentSequences!,
-          invoiceNextNumber: (prev.documentSequences?.invoiceNextNumber || 0) + 1
+          ...currentProfile.documentSequences!,
+          invoiceNextNumber: (currentProfile.documentSequences?.invoiceNextNumber || 0) + 1
         }
-      }));
+      };
+      setCurrentProfile(updatedProfile);
+      localStorage.setItem('facturazen_user', JSON.stringify(updatedProfile));
+      handleProfileUpdate(updatedProfile); // Sync sequences to DB
     } else if (newInvoice.type === 'Quote') {
-      setCurrentProfile(prev => ({
-        ...prev,
+      const updatedProfile = {
+        ...currentProfile,
         documentSequences: {
-          ...prev.documentSequences!,
-          quoteNextNumber: (prev.documentSequences?.quoteNextNumber || 0) + 1
+          ...currentProfile.documentSequences!,
+          quoteNextNumber: (currentProfile.documentSequences?.quoteNextNumber || 0) + 1
         }
-      }));
+      };
+      setCurrentProfile(updatedProfile);
+      localStorage.setItem('facturazen_user', JSON.stringify(updatedProfile));
+      handleProfileUpdate(updatedProfile);
     }
     
-    if (isDbConnected || !isOffline) {
-       saveInvoiceToDb(invoiceWithTimeline).then(success => {
-         if (success) {
-            console.log(
-                newInvoice.type === 'Expense' 
-                ? "✅ Expense Saved to 'expenses' table" 
-                : "✅ Document Saved to 'invoices' table"
-            );
-         }
-       });
-    }
+    // DB Save
+    saveInvoiceToDb(invoiceWithMetadata).then(success => {
+      if (success) {
+        console.log("✅ Document Saved to DB");
+      } else {
+        console.error("❌ Failed to save document to DB");
+      }
+    });
   };
 
   const handleDeleteInvoice = async (id: string) => {
@@ -233,9 +175,7 @@ const App: React.FC = () => {
       setInvoices(newInvoices);
       if (selectedInvoice?.id === id) setSelectedInvoice(null);
 
-      if (isDbConnected || !isOffline) {
-        await deleteInvoiceFromDb(id);
-      }
+      await deleteInvoiceFromDb(id);
     }
   };
 
@@ -262,7 +202,7 @@ const App: React.FC = () => {
     setInvoices(updatedInvoices);
     
     const updatedInv = updatedInvoices.find(i => i.id === id);
-    if (updatedInv && (isDbConnected || !isOffline)) {
+    if (updatedInv) {
       saveInvoiceToDb(updatedInv);
     }
   };
@@ -280,6 +220,7 @@ const App: React.FC = () => {
     const newInvoice: Invoice = {
       ...quote,
       id: nextInvId,
+      userId: currentProfile.id,
       type: 'Invoice',
       status: 'Creada',
       date: new Date().toISOString(),
@@ -296,18 +237,19 @@ const App: React.FC = () => {
 
     setInvoices([newInvoice, ...updatedInvoices]);
     
-    setCurrentProfile(prev => ({
-      ...prev,
+    const updatedProfile = {
+      ...currentProfile,
       documentSequences: {
-        ...prev.documentSequences!,
-        invoiceNextNumber: (prev.documentSequences?.invoiceNextNumber || 0) + 1
+        ...currentProfile.documentSequences!,
+        invoiceNextNumber: (currentProfile.documentSequences?.invoiceNextNumber || 0) + 1
       }
-    }));
+    };
+    setCurrentProfile(updatedProfile);
+    localStorage.setItem('facturazen_user', JSON.stringify(updatedProfile));
     
-    if (isDbConnected || !isOffline) {
-       await saveInvoiceToDb({...quote, status: 'Aceptada'});
-       await saveInvoiceToDb(newInvoice);
-    }
+    await saveInvoiceToDb({...quote, status: 'Aceptada'});
+    await saveInvoiceToDb(newInvoice);
+    await handleProfileUpdate(updatedProfile);
   };
 
   const handleInvoiceSelect = (invoice: Invoice) => {
@@ -326,26 +268,31 @@ const App: React.FC = () => {
       }
     };
 
-    // Try to create user in DB if password provided
+    // Create user in DB
     if (data.password && data.email) {
        try {
          const success = await createUserInDb(newProfile, data.password, data.email);
          if (success) {
             console.log("User created in DB securely");
-            
-            // Try to send Welcome Email using System Key
-            await sendEmail(
-                data.email, 
-                'Bienvenido a FacturaZen 🚀', 
-                generateWelcomeHtml(newProfile.name)
-            );
+            // Auto Login context by re-authenticating or just setting profile
+            // We need to fetch the ID generated by DB or generate it here.
+            // For now, createUserInDb generates ID internally. 
+            // Ideally we should get the ID back. 
+            // In this flow, user must login after registration for security, 
+            // OR we rely on `createUserInDb` returning the profile.
+            // Simplified: User must login.
+            alert("Cuenta creada con éxito. Por favor inicia sesión.");
+            setShowRegister(false);
+            return; 
          }
        } catch (e) {
          console.error("Failed to create user in DB", e);
-         alert("Error al crear usuario en base de datos. Se procederá en modo local.");
+         alert("Error al crear usuario. Intenta nuevamente.");
+         return;
        }
     }
-
+    
+    // Note: Code normally shouldn't reach here if registration is required
     setCurrentProfile(newProfile);
     setIsAuthenticated(true);
     setShowRegister(false);
@@ -353,13 +300,11 @@ const App: React.FC = () => {
 
   const handleProfileUpdate = async (updatedProfile: UserProfile) => {
     setCurrentProfile(updatedProfile);
-    if (isDbConnected || !isOffline) {
-       try {
-         await updateUserProfileInDb(updatedProfile);
-         await refreshData();
-       } catch (e) {
-         console.error("DB Sync Error:", e);
-       }
+    localStorage.setItem('facturazen_user', JSON.stringify(updatedProfile));
+    try {
+      await updateUserProfileInDb(updatedProfile);
+    } catch (e) {
+      console.error("DB Sync Error:", e);
     }
   };
 
@@ -381,7 +326,7 @@ const App: React.FC = () => {
 
   // --- RENDER FLOW ---
 
-  if (isLoadingData && invoices.length === 0) {
+  if (isLoadingData) {
     return (
       <div className="h-screen flex items-center justify-center bg-slate-50 flex-col gap-4">
         <div className="w-12 h-12 bg-[#27bea5] rounded-xl animate-spin"></div>
@@ -390,7 +335,7 @@ const App: React.FC = () => {
     );
   }
 
-  if (showRegister || (isAuthenticated && !currentProfile.isOnboardingComplete)) {
+  if (showRegister || (isAuthenticated && !currentProfile.isOnboardingComplete && currentProfile.id)) {
     return (
       <div className="antialiased text-[#1c2938] font-sans">
         <OnboardingWizard onComplete={handleOnboardingComplete} />
@@ -426,6 +371,7 @@ const App: React.FC = () => {
         isOffline={isOffline}
         onToggleOffline={() => setIsOffline(!isOffline)}
         pendingInvoicesCount={pendingCount}
+        onLogout={handleLogout} // Pass Logout Handler
       >
         {currentView === AppView.DASHBOARD && (
           <Dashboard 
@@ -434,7 +380,7 @@ const App: React.FC = () => {
             pendingCount={pendingCount}
             onNewAction={() => setCurrentView(AppView.WIZARD)}
             onSelectInvoice={handleInvoiceSelect}
-            onNavigate={setCurrentView} // Passed to mobile dashboard
+            onNavigate={setCurrentView} 
           />
         )}
         
@@ -479,7 +425,7 @@ const App: React.FC = () => {
             onConvertQuote={handleConvertQuote}
             onDeleteInvoice={handleDeleteInvoice} 
             currencySymbol={currentProfile.defaultCurrency === 'EUR' ? '€' : '$'}
-            currentUser={currentProfile} // PASSED FOR AI KEY CHECK
+            currentUser={currentProfile}
           />
         )}
 
@@ -488,7 +434,7 @@ const App: React.FC = () => {
             invoices={invoices} 
             onCreateDocument={() => setCurrentView(AppView.WIZARD)}
             currencySymbol={currentProfile.defaultCurrency === 'EUR' ? '€' : '$'}
-            currentUser={currentProfile} // PASSED FOR AI KEY CHECK
+            currentUser={currentProfile} 
           />
         )}
 
@@ -533,7 +479,6 @@ const App: React.FC = () => {
 
       {/* MOBILE FAB & MENU */}
       <div className="md:hidden">
-         {/* FAB */}
          {!showMobileMenu && (
            <button 
              onClick={() => setShowMobileMenu(true)}
@@ -543,7 +488,6 @@ const App: React.FC = () => {
            </button>
          )}
 
-         {/* MENU OVERLAY */}
          {showMobileMenu && (
            <div className="fixed inset-0 z-[100] backdrop-blur-md bg-white/30 flex flex-col justify-end pb-24 px-6 animate-in fade-in duration-200">
               <div className="space-y-4 max-w-sm mx-auto w-full">
@@ -588,7 +532,6 @@ const App: React.FC = () => {
                  </button>
               </div>
 
-              {/* Close Button */}
               <button 
                 onClick={() => setShowMobileMenu(false)}
                 className="fixed bottom-6 left-1/2 -translate-x-1/2 w-16 h-16 bg-white rounded-full flex items-center justify-center text-slate-400 shadow-xl hover:text-slate-600 transition-colors"

@@ -12,7 +12,8 @@ import {
   ShoppingBag,
   Users,
   TrendingDown,
-  ChevronLeft
+  ChevronLeft,
+  LogOut
 } from 'lucide-react';
 import { AppView, ProfileType, UserProfile } from '../types';
 
@@ -25,6 +26,7 @@ interface LayoutProps {
   isOffline: boolean;
   onToggleOffline: () => void;
   pendingInvoicesCount: number;
+  onLogout?: () => void; // New Prop
 }
 
 const Layout: React.FC<LayoutProps> = ({ 
@@ -35,7 +37,8 @@ const Layout: React.FC<LayoutProps> = ({
   onSwitchProfile,
   isOffline,
   onToggleOffline,
-  pendingInvoicesCount
+  pendingInvoicesCount,
+  onLogout
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -45,7 +48,7 @@ const Layout: React.FC<LayoutProps> = ({
       <aside 
         className={`${isCollapsed ? 'w-20' : 'w-64'} bg-white border-r border-slate-100 flex-shrink-0 flex flex-col transition-all duration-300 relative group/sidebar h-screen sticky top-0 z-40`}
       >
-        {/* Toggle Button (Redesigned) */}
+        {/* Toggle Button */}
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
           className={`
@@ -69,14 +72,12 @@ const Layout: React.FC<LayoutProps> = ({
         {/* Brand Header */}
         <div className={`p-6 flex items-center ${isCollapsed ? 'justify-center' : 'justify-start'} h-24 overflow-hidden`}>
           {isCollapsed ? (
-             // CLOSED STATE: Icon Only
              <img 
                src="https://konsul.digital/wp-content/uploads/2025/07/cropped-3.png" 
                alt="Kônsul Icon" 
                className="w-10 h-10 object-contain transition-all duration-300 animate-in fade-in"
              />
           ) : (
-             // OPEN STATE: Full Logo
              <img 
                src="https://konsul.digital/wp-content/uploads/2025/11/1-min-e1762361628509.avif" 
                alt="Kônsul" 
@@ -156,20 +157,29 @@ const Layout: React.FC<LayoutProps> = ({
             )}
           </button>
 
-          <button 
-            onClick={onSwitchProfile}
-            className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-start'} gap-3 p-2 rounded-xl hover:bg-slate-50 transition-colors group`}
-          >
-            <div className="w-9 h-9 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center flex-shrink-0 border border-slate-200">
+          <div className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-start'} gap-3 p-2 rounded-xl border border-slate-100 bg-slate-50/50`}>
+            <div className="w-9 h-9 rounded-full bg-white text-slate-500 flex items-center justify-center flex-shrink-0 shadow-sm">
               {currentProfile.type === ProfileType.COMPANY ? <Building2 size={16}/> : <Briefcase size={16} />}
             </div>
             {!isCollapsed && (
               <div className="text-left min-w-0 flex-1 animate-in fade-in">
                 <p className="text-xs font-bold text-[#1c2938] truncate">{currentProfile.name}</p>
-                <p className="text-[10px] text-slate-400 truncate">Cambiar perfil</p>
+                <p className="text-[10px] text-slate-400 truncate capitalize">{currentProfile.type}</p>
               </div>
             )}
-          </button>
+          </div>
+
+          {/* LOGOUT BUTTON */}
+          {onLogout && (
+            <button 
+              onClick={onLogout}
+              className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-start'} gap-3 p-3 rounded-xl text-rose-500 hover:bg-rose-50 transition-colors`}
+              title="Cerrar Sesión"
+            >
+              <LogOut size={20} />
+              {!isCollapsed && <span className="text-xs font-bold animate-in fade-in">Salir</span>}
+            </button>
+          )}
         </div>
       </aside>
 
