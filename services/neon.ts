@@ -77,6 +77,58 @@ export const comparePassword = async (plain: string, hashed: string): Promise<bo
 };
 
 /**
+ * GET USER BY ID (Session Restoration)
+ */
+export const getUserById = async (userId: string): Promise<UserProfile | null> => {
+  // 1. Static Demo Check (For session restoration of demo user)
+  if (userId === 'user_demo_p1') {
+       return {
+         id: 'user_demo_p1', 
+         name: 'Juan Pérez (Demo)',
+         email: 'juan@konsulbills.com',
+         type: 'Autónomo' as any,
+         taxId: '8-123-456',
+         avatar: '',
+         isOnboardingComplete: true,
+         defaultCurrency: 'USD',
+         plan: 'Emprendedor Pro',
+         country: 'Panamá',
+         branding: { primaryColor: '#27bea5', templateStyle: 'Modern' },
+         apiKeys: { gemini: '', openai: '' } 
+       } as UserProfile;
+  }
+
+  const client = getDbClient();
+  if (!client) return null;
+
+  try {
+    await client.connect();
+    const query = 'SELECT id, name, email, type, profile_data FROM users WHERE id = $1';
+    const { rows } = await client.query(query, [userId]);
+    await client.end();
+
+    if (rows.length > 0) {
+       const userRow = rows[0];
+       const profileSettings = userRow.profile_data || {};
+
+       return {
+         id: userRow.id,
+         name: userRow.name,
+         email: userRow.email,
+         type: userRow.type === 'COMPANY' ? 'Empresa (SAS/SL)' : 'Autónomo',
+         ...profileSettings,
+         isOnboardingComplete: true
+       } as UserProfile;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error("Neon Get User Error:", error);
+    return null;
+  }
+};
+
+/**
  * AUTHENTICATION: Login User
  */
 export const authenticateUser = async (email: string, password: string): Promise<UserProfile | null> => {

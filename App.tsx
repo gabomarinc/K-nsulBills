@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { AppView, Invoice, UserProfile, CatalogItem } from './types';
 import LoginScreen from './components/LoginScreen';
@@ -21,7 +22,8 @@ import {
   fetchInvoicesFromDb, 
   saveInvoiceToDb, 
   deleteInvoiceFromDb,
-  saveClientToDb
+  saveClientToDb,
+  getUserById // Imported new function
 } from './services/neon';
 
 const App: React.FC = () => {
@@ -32,7 +34,29 @@ const App: React.FC = () => {
   const [selectedClientName, setSelectedClientName] = useState<string | null>(null);
   const [documentToEdit, setDocumentToEdit] = useState<Invoice | null>(null);
   const [isOffline, setIsOffline] = useState(false);
+  const [isSessionLoading, setIsSessionLoading] = useState(true);
   
+  // SESSION RESTORATION LOGIC
+  useEffect(() => {
+    const initSession = async () => {
+        const storedUserId = localStorage.getItem('konsul_session_id');
+        if (storedUserId) {
+            try {
+                const user = await getUserById(storedUserId);
+                if (user) {
+                    setCurrentUser(user);
+                } else {
+                    localStorage.removeItem('konsul_session_id'); // Invalid ID
+                }
+            } catch (error) {
+                console.error("Session restoration failed", error);
+            }
+        }
+        setIsSessionLoading(false);
+    };
+    initSession();
+  }, []);
+
   // Load data when user is set
   useEffect(() => {
     if (currentUser) {
@@ -45,10 +69,12 @@ const App: React.FC = () => {
   }, [currentUser]);
 
   const handleLoginSuccess = (user: UserProfile) => {
+    localStorage.setItem('konsul_session_id', user.id); // Persist session
     setCurrentUser(user);
   };
 
   const handleLogout = () => {
+    localStorage.removeItem('konsul_session_id'); // Clear session
     setCurrentUser(null);
     setInvoices([]);
     setActiveView(AppView.DASHBOARD);
@@ -60,7 +86,7 @@ const App: React.FC = () => {
        const success = await createUserInDb(data, data.password, data.email);
        if (success) {
          const user = await authenticateUser(data.email, data.password);
-         if (user) setCurrentUser(user);
+         if (user) handleLoginSuccess(user); // Use handleLoginSuccess to save session
        } else {
          alert("Error al crear cuenta. El correo podría ya estar registrado.");
        }
@@ -135,6 +161,16 @@ const App: React.FC = () => {
   };
 
   // --- RENDER ---
+
+  // Loading Screen to prevent flicker
+  if (isSessionLoading) {
+    return (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
+            <div className="w-16 h-16 border-4 border-slate-200 border-t-[#27bea5] rounded-full animate-spin mb-4"></div>
+            <p className="text-slate-400 font-medium animate-pulse">Iniciando sesión...</p>
+        </div>
+    );
+  }
 
   if (!currentUser) {
     return (

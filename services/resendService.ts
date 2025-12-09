@@ -1,9 +1,9 @@
 
 import { Invoice, UserProfile } from '../types';
 
-// Default sender logic
-// 1. Checks for a verified email in environment variables (Recommended for Production)
-// 2. Fallbacks to Resend Sandbox email if no variable is found.
+// Strict System Sender Logic
+// Returns a sender string: "Sender Name <system_email>"
+// The email part MUST match the domain verified in Resend (via ENV VAR)
 const getSender = (name: string = 'Kônsul Bills') => {
   const verifiedEmail = process.env.RESEND_FROM_EMAIL;
   
@@ -11,7 +11,7 @@ const getSender = (name: string = 'Kônsul Bills') => {
     return `${name} <${verifiedEmail}>`;
   }
   
-  console.warn("⚠️ RESEND_FROM_EMAIL no está configurado en .env. Usando modo Sandbox (onboarding@resend.dev). Solo podrás enviar correos a ti mismo.");
+  console.warn("⚠️ RESEND_FROM_EMAIL no está configurado en .env. Usando modo Sandbox (onboarding@resend.dev).");
   return `${name} <onboarding@resend.dev>`;
 };
 
@@ -38,6 +38,7 @@ export const sendEmail = async (
 ): Promise<{ success: boolean; id?: string; error?: string }> => {
   
   try {
+    // 1. Construct Sender: Uses User's Name + System Verified Email
     const sender = getSender(payload.senderName || 'Kônsul Bills');
 
     const body: any = {
@@ -111,6 +112,7 @@ export const sendWelcomeEmail = async (user: UserProfile) => {
         to: user.email!,
         subject: 'Bienvenido a Kônsul 🚀',
         html: html,
+        senderName: 'Equipo Kônsul', // System welcome
         data: {
             name: user.name,
             login_url: loginUrl,

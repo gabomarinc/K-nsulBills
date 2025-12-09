@@ -5,7 +5,7 @@ import {
   Save, Crown, Calendar, Globe,
   Coins, Sparkles, Key, Eye, EyeOff, ShieldCheck,
   Check, Zap, Loader2, CheckCircle2, XCircle, AlertTriangle, Lock, ArrowRight,
-  ChevronRight
+  ChevronRight, FileText
 } from 'lucide-react';
 import { UserProfile, PaymentIntegration, ProfileType } from '../types';
 import { testAiConnection } from '../services/geminiService';
@@ -145,17 +145,6 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
   const isPagueloConfigured = !!profile.paymentIntegration?.cclw && !!profile.paymentIntegration?.token;
   const isYappyConfigured = !!profile.paymentIntegration?.yappyMerchantId && !!profile.paymentIntegration?.yappySecretKey;
 
-  // New: Email Configuration Handler
-  const handleEmailConfigChange = (value: string) => {
-    setProfile(prev => ({
-        ...prev,
-        emailConfig: {
-            provider: 'RESEND', // Assuming RESEND when custom email is set here for simplicity
-            email: value
-        }
-    }));
-  };
-
   return (
     <div className="max-w-6xl mx-auto space-y-10 animate-in fade-in pb-12 relative">
       
@@ -221,6 +210,19 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                    className="w-full p-4 bg-slate-50/50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-[#27bea5] focus:bg-white focus:border-transparent outline-none transition-all font-medium text-[#1c2938]"
                    placeholder="Ej. Estudio Creativo"
                  />
+               </div>
+
+               <div className="space-y-2">
+                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Razón Social (Nombre Legal)</label>
+                 <div className="relative group/input">
+                    <FileText className="absolute left-4 top-4 w-5 h-5 text-slate-300 group-focus-within/input:text-[#27bea5] transition-colors" />
+                    <input 
+                      value={profile.legalName || ''}
+                      onChange={(e) => handleInputChange('legalName', e.target.value)}
+                      className="w-full pl-12 p-4 bg-slate-50/50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-[#27bea5] focus:bg-white focus:border-transparent outline-none transition-all font-medium text-slate-700"
+                      placeholder="Ej. Servicios S.A."
+                    />
+                 </div>
                </div>
                
                {/* ENTITY TYPE SELECTOR */}
@@ -288,24 +290,6 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                     />
                  </div>
                </div>
-               
-               {/* NEW: Email Configuration */}
-               <div className="md:col-span-2 space-y-2 pt-2 border-t border-slate-50 mt-2">
-                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Email Remitente Verificado (Resend)</label>
-                 <div className="relative group/input">
-                    <Building2 className="absolute left-4 top-4 w-5 h-5 text-slate-300 group-focus-within/input:text-[#27bea5] transition-colors" />
-                    <input 
-                      value={profile.emailConfig?.email || ''}
-                      onChange={(e) => handleEmailConfigChange(e.target.value)}
-                      placeholder="facturacion@tudominio.com"
-                      className="w-full pl-12 p-4 bg-slate-50/50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-[#27bea5] focus:bg-white focus:border-transparent outline-none transition-all text-slate-600"
-                    />
-                 </div>
-                 <p className="text-[10px] text-slate-400 ml-1">
-                    *Debe coincidir con el dominio verificado en Resend para evitar el modo Sandbox.
-                 </p>
-               </div>
-
              </div>
           </div>
 

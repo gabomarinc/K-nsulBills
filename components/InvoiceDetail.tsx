@@ -136,11 +136,14 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
         const docTypeName = isQuote ? 'Cotización' : 'Factura';
         const emailSubject = `${docTypeName} #${invoice.id} - ${issuer.name}`;
 
-        // 4. Send Email with HTML payload
+        // 4. Send Email
+        // We pass issuer.legalName or issuer.name as the sender name
+        // The service will automatically attach it to the Verified Sender Email (ENV VAR)
         const result = await sendEmail({
             to: invoice.clientEmail, 
             subject: emailSubject, 
-            html: htmlContent, // Sending explicit HTML to satisfy Resend requirement
+            html: htmlContent, 
+            senderName: issuer.legalName || issuer.name, 
             attachments: [{
                 filename: `${docTypeName}_${invoice.id}.pdf`,
                 content: pdfBase64
@@ -231,7 +234,8 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                 )}
               </div>
               <div className="text-sm text-slate-500 space-y-1">
-                {logo && <p className="font-bold text-[#1c2938] text-lg mb-1">{issuer.name}</p>}
+                {/* Prefer Legal Name for Official Documents if available */}
+                {logo && <p className="font-bold text-[#1c2938] text-lg mb-1">{issuer.legalName || issuer.name}</p>}
                 <p>{issuer.address}</p>
                 <p>{issuer.country}</p>
                 <p className="text-xs mt-2">{issuer.fiscalRegime}</p>
@@ -355,7 +359,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
           {logo ? (
              <img src={logo} alt="Logo" className="h-32 mx-auto mb-6 object-contain" />
           ) : (
-             <h1 className="font-serif text-5xl font-bold text-slate-900 mb-2">{issuer.name}</h1>
+             <h1 className="font-serif text-5xl font-bold text-slate-900 mb-2">{issuer.legalName || issuer.name}</h1>
           )}
           <p className="font-serif text-slate-600 text-lg">{issuer.address} • {issuer.taxId}</p>
           {!logo && <p className="font-serif text-slate-600 text-sm">{issuer.country}</p>}
@@ -429,7 +433,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
             ) : (
               <div style={{ backgroundColor: color }} className="w-16 h-16 rounded-full mb-8"></div>
             )}
-            <h1 className="font-bold text-base tracking-tight text-slate-900 uppercase">{issuer.name}</h1>
+            <h1 className="font-bold text-base tracking-tight text-slate-900 uppercase">{issuer.legalName || issuer.name}</h1>
             <p className="text-sm text-slate-500 mt-1">{issuer.address}</p>
             <p className="text-sm text-slate-500">{issuer.taxId}</p>
          </div>

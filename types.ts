@@ -76,6 +76,7 @@ export interface HourlyRateConfig {
 export interface UserProfile {
   id: string;
   name: string;
+  legalName?: string; // New: Razón Social separate from Commercial Name
   email?: string; // Added email property for authentication and messaging
   type: ProfileType;
   taxId: string; // NIF, RFC, CUIT
