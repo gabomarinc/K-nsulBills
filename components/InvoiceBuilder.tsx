@@ -14,7 +14,7 @@ interface InvoiceBuilderProps {
 const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({ isOffline, onSave, currentUser }) => {
   const [clientName, setClientName] = useState('');
   const [items, setItems] = useState<InvoiceItem[]>([
-    { id: '1', description: '', quantity: 1, price: 0, tax: 21 }
+    { id: '1', description: '', quantity: 1, price: 0, tax: 7 }
   ]);
   const [currency, setCurrency] = useState('USD');
   const [type, setType] = useState<'Invoice' | 'Quote' | 'Expense'>('Invoice');
@@ -30,7 +30,7 @@ const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({ isOffline, onSave, curr
           description: 'Consultoría Mensual (Autocompletado)', 
           quantity: 1, 
           price: 500, 
-          tax: 21 
+          tax: 7 
         }]);
       }
     }
@@ -45,14 +45,14 @@ const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({ isOffline, onSave, curr
       description: data.concept,
       quantity: 1,
       price: data.amount,
-      tax: 21 // Default tax
+      tax: 7 // Default tax for Panama
     }]);
     setNotification("✨ Datos autocompletados con IA");
     setTimeout(() => setNotification(null), 3000);
   };
 
   const addItem = () => {
-    setItems([...items, { id: Date.now().toString(), description: '', quantity: 1, price: 0, tax: 21 }]);
+    setItems([...items, { id: Date.now().toString(), description: '', quantity: 1, price: 0, tax: 7 }]);
   };
 
   const updateItem = (index: number, field: keyof InvoiceItem, value: any) => {
@@ -89,7 +89,7 @@ const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({ isOffline, onSave, curr
     
     // Reset form
     setClientName('');
-    setItems([{ id: Date.now().toString(), description: '', quantity: 1, price: 0, tax: 21 }]);
+    setItems([{ id: Date.now().toString(), description: '', quantity: 1, price: 0, tax: 7 }]);
     setType('Invoice');
     setNotification(isOffline ? "Guardado en cola segura (Offline)" : "Factura emitida correctamente");
     setTimeout(() => setNotification(null), 4000);
@@ -161,7 +161,7 @@ const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({ isOffline, onSave, curr
                 <th className="px-4 py-3 rounded-l-lg">Descripción</th>
                 <th className="px-4 py-3 w-24">Cant.</th>
                 <th className="px-4 py-3 w-32">Precio</th>
-                <th className="px-4 py-3 w-24">IVA %</th>
+                <th className="px-4 py-3 w-24">ITBMS %</th>
                 <th className="px-4 py-3 w-32 text-right">Total</th>
                 <th className="px-4 py-3 w-10 rounded-r-lg"></th>
               </tr>

@@ -251,7 +251,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                 <span>${subtotal.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-slate-500 text-lg">
-                <span>Impuestos</span>
+                <span>ITBMS (7%)</span>
                 <span>${taxTotal.toFixed(2)}</span>
               </div>
               <div className="pt-6 border-t-2 border-slate-100 flex justify-between items-end">
@@ -327,7 +327,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                <span>${subtotal.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-slate-600 text-lg">
-               <span>IVA</span>
+               <span>ITBMS</span>
                <span>${taxTotal.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-2xl font-bold text-slate-900 border-t-2 border-slate-900 pt-4 mt-2">
@@ -399,7 +399,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
       <div className="flex justify-end mt-auto">
          <div className="text-right">
             <p className="text-base text-slate-500 mb-2">Subtotal: ${subtotal.toFixed(2)}</p>
-            <p className="text-base text-slate-500 mb-2">Impuestos: ${taxTotal.toFixed(2)}</p>
+            <p className="text-base text-slate-500 mb-2">ITBMS: ${taxTotal.toFixed(2)}</p>
             <p className="text-3xl font-bold text-slate-900 mt-6 border-t pt-6">
               Total: {invoice.currency} ${invoice.total.toFixed(2)}
             </p>

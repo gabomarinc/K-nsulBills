@@ -38,6 +38,9 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
   const [showClientDropdown, setShowClientDropdown] = useState(false);
   const [showCatalog, setShowCatalog] = useState(false);
   
+  // Tax Toggle State
+  const [applyTax, setApplyTax] = useState(true);
+
   const [draft, setDraft] = useState<{
     clientName: string;
     clientTaxId: string;
@@ -64,15 +67,41 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
   // Check AI Access
   const hasAiAccess = !!currentUser.apiKeys?.gemini || !!currentUser.apiKeys?.openai;
 
+  // Sync tax toggle with existing items on load
+  useEffect(() => {
+    if (initialData?.items && initialData.items.length > 0) {
+      // If any item has tax > 0, we assume tax is enabled
+      const hasTax = initialData.items.some(i => i.tax > 0);
+      setApplyTax(hasTax);
+    }
+  }, [initialData]);
+
+  // Handle Tax Toggle Change
+  const handleTaxToggle = (enabled: boolean) => {
+    setApplyTax(enabled);
+    const newRate = enabled ? 7 : 0;
+    
+    // Update all current items
+    setDraft(prev => ({
+      ...prev,
+      items: prev.items.map(item => ({ ...item, tax: newRate }))
+    }));
+  };
+
   // --- LOGIC: Math & Fiscal ---
   const calculateTotals = () => {
     const subtotal = draft.items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
     const discountAmount = subtotal * (draft.discountRate / 100);
     const taxableBase = subtotal - discountAmount;
     
-    // Simplified Tax Logic (Demo)
-    const taxRate = 0.21; // 21% IVA
-    const taxAmount = taxableBase * taxRate;
+    // Calculate Tax based on individual items
+    const taxAmount = draft.items.reduce((acc, item) => {
+       const itemTotal = item.price * item.quantity;
+       // Apply discount proportionally to item (simplified)
+       const itemDiscounted = itemTotal * (1 - (draft.discountRate / 100));
+       return acc + (itemDiscounted * (item.tax / 100));
+    }, 0);
+
     const total = taxableBase + taxAmount;
 
     return { subtotal, discountAmount, taxAmount, total };
@@ -118,7 +147,7 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
           description: result.concept || 'Servicios Profesionales',
           quantity: 1,
           price: result.amount || 0,
-          tax: 21
+          tax: applyTax ? 7 : 0 // Default to 7% or 0 based on toggle
         }];
 
         // Update draft state fully
@@ -201,7 +230,7 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
         description: catalogItem?.name || '',
         quantity: 1,
         price: catalogItem?.price || 0,
-        tax: 21
+        tax: applyTax ? 7 : 0 // Inherit current tax setting
       }]
     }));
     setShowCatalog(false);
@@ -577,8 +606,20 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
                         <span>- {totals.discountAmount.toFixed(2)}</span>
                       </div>
                     )}
-                    <div className="flex justify-between text-slate-300">
-                      <span>IVA (21%)</span>
+                    
+                    {/* Tax Row with Toggle */}
+                    <div className="flex justify-between items-center text-slate-300">
+                      <div className="flex items-center gap-2">
+                         <span>ITBMS (7%)</span>
+                         {/* Toggle Switch */}
+                         <button 
+                           onClick={() => handleTaxToggle(!applyTax)}
+                           className={`w-8 h-4 rounded-full relative transition-colors ${applyTax ? 'bg-[#27bea5]' : 'bg-slate-600'}`}
+                           title={applyTax ? "Desactivar Impuesto" : "Activar ITBMS"}
+                         >
+                            <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${applyTax ? 'left-4.5 translate-x-full' : 'left-0.5'}`} style={{ left: applyTax ? 'calc(100% - 14px)' : '2px' }}></div>
+                         </button>
+                      </div>
                       <span>{totals.taxAmount.toFixed(2)}</span>
                     </div>
                   </div>
