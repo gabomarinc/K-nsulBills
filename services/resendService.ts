@@ -23,7 +23,6 @@ interface EmailPayload {
 
 /**
  * Sends an email by calling the internal Vercel Serverless Function (/api/send).
- * Supports both raw HTML and Resend Template IDs.
  */
 export const sendEmail = async (
   payload: EmailPayload
@@ -36,19 +35,21 @@ export const sendEmail = async (
       subject: payload.subject,
     };
 
-    // Use Template ID if provided, otherwise fallback to HTML
-    if (payload.templateId) {
+    // Priority to HTML content to ensure delivery
+    if (payload.html) {
+        body.html = payload.html;
+    } else if (payload.templateId) {
+        // Fallback for systems that support template_id strictly
         body.template_id = payload.templateId;
         body.data = payload.data || {};
     } else {
-        body.html = payload.html || '<p>No content</p>';
+        body.html = '<p>No content provided</p>';
     }
 
     if (payload.attachments && payload.attachments.length > 0) {
       body.attachments = payload.attachments;
     }
 
-    // Call our own internal API route (Serverless Function)
     const response = await fetch('/api/send', {
       method: 'POST',
       headers: {
@@ -75,19 +76,16 @@ export const sendEmail = async (
 };
 
 /**
- * Sends the Welcome Email using a Template.
- * Configured Alias: 'welcome-to-konsul-bills'
- * Variables exposed to Template: {{name}}, {{login_url}}, {{email}}
+ * Sends the Welcome Email.
  */
 export const sendWelcomeEmail = async (user: UserProfile) => {
-    // Priority: Env Var -> Hardcoded Alias requested by user
-    const templateId = process.env.RESEND_WELCOME_ID || 'welcome-to-konsul-bills';
-    const loginUrl = window.location.origin; // e.g. https://facturazen.vercel.app
+    const loginUrl = window.location.origin; 
+    const html = generateWelcomeHtml(user.name, loginUrl);
 
     return sendEmail({
         to: user.email!,
         subject: 'Bienvenido a Kônsul 🚀',
-        templateId: templateId,
+        html: html,
         data: {
             name: user.name,
             login_url: loginUrl,
@@ -116,80 +114,85 @@ export const sendDocumentEmail = async (
 };
 
 /**
- * Generates an HTML Template for an Invoice or Quote.
+ * Generates the Professional HTML Template for Invoice/Quote.
  */
 export const generateDocumentHtml = (invoice: Invoice, issuer: UserProfile): string => {
   const isQuote = invoice.type === 'Quote';
-  const color = issuer.branding?.primaryColor || '#27bea5';
+  const docTypeLabel = isQuote ? 'Cotización' : 'Factura';
+  const color = issuer.branding?.primaryColor || '#1c2938';
   
-  const itemsHtml = invoice.items.map(item => `
-    <tr style="border-bottom: 1px solid #f1f5f9;">
-      <td style="padding: 12px 0; color: #1e293b;">${item.description}</td>
-      <td style="padding: 12px 0; text-align: center; color: #64748b;">${item.quantity}</td>
-      <td style="padding: 12px 0; text-align: right; color: #64748b;">$${item.price.toFixed(2)}</td>
-      <td style="padding: 12px 0; text-align: right; font-weight: bold; color: #1e293b;">$${(item.quantity * item.price).toFixed(2)}</td>
-    </tr>
-  `).join('');
-
   return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <style>
-        body { font-family: sans-serif; background-color: #f8fafc; margin: 0; padding: 40px; }
-        .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
-        .header { background-color: ${color}; padding: 40px; text-align: center; color: white; }
-        .content { padding: 40px; }
-        .table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        .total { font-size: 24px; font-weight: bold; color: ${color}; text-align: right; margin-top: 20px; border-top: 2px solid #f1f5f9; padding-top: 20px; }
-        .footer { text-align: center; padding: 20px; background-color: #f1f5f9; color: #94a3b8; font-size: 12px; }
-        .btn { display: inline-block; background-color: ${color}; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; margin-top: 20px; }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h1 style="margin:0;">${isQuote ? 'Nueva Cotización' : 'Nueva Factura'}</h1>
-          <p style="opacity:0.9;">${issuer.name}</p>
-        </div>
-        <div class="content">
-          <p>Hola <strong>${invoice.clientName}</strong>,</p>
-          <p>Te enviamos el documento <strong>#${invoice.id}</strong> emitido el ${new Date(invoice.date).toLocaleDateString()}.</p>
-          
-          <table class="table">
-            <thead>
-              <tr style="text-align: left; color: #94a3b8; font-size: 12px; text-transform: uppercase;">
-                <th>Descripción</th>
-                <th style="text-align: center;">Cant</th>
-                <th style="text-align: right;">Precio</th>
-                <th style="text-align: right;">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${itemsHtml}
-            </tbody>
-          </table>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nuevo Documento</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f3f4f6;">
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="min-width: 100%;">
+        <tr>
+            <td style="padding: 40px 0; text-align: center;">
+                <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="600" style="margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                    
+                    <!-- ENCABEZADO -->
+                    <tr>
+                        <td style="background-color: ${color}; padding: 40px; text-align: center;">
+                            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px;">
+                                ${issuer.name}
+                            </h1>
+                        </td>
+                    </tr>
 
-          <div class="total">
-            Total: ${invoice.currency} ${invoice.total.toLocaleString()}
-          </div>
+                    <!-- CUERPO -->
+                    <tr>
+                        <td style="padding: 40px;">
+                            <p style="color: #64748b; font-size: 16px; margin-bottom: 24px;">
+                                Hola <strong>${invoice.clientName}</strong>,
+                            </p>
+                            <p style="color: #334155; font-size: 18px; line-height: 1.6; margin-bottom: 32px;">
+                                Te enviamos la <strong>${docTypeLabel} #${invoice.id}</strong>.
+                                <br>
+                                Encontrarás el documento PDF adjunto a este correo para tu revisión.
+                            </p>
 
-          <div style="text-align: center;">
-             <a href="#" class="btn">Ver Documento Online</a>
-          </div>
-        </div>
-        <div class="footer">
-          Enviado con Kônsul por ${issuer.name}
-        </div>
-      </div>
-    </body>
-    </html>
+                            <!-- TARJETA DE RESUMEN -->
+                            <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
+                                <tr>
+                                    <td style="padding: 24px; text-align: center;">
+                                        <p style="color: #64748b; font-size: 12px; text-transform: uppercase; font-weight: 700; margin: 0 0 8px 0;">Total a Pagar</p>
+                                        <p style="color: #1c2938; font-size: 32px; font-weight: 800; margin: 0;">
+                                            ${invoice.currency} ${invoice.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })}
+                                        </p>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <p style="color: #94a3b8; font-size: 14px; margin-top: 32px; text-align: center;">
+                                Si tienes alguna pregunta, no dudes en responder a este correo.
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- PIE DE PAGINA -->
+                    <tr>
+                        <td style="background-color: #f1f5f9; padding: 24px; text-align: center;">
+                            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+                                Enviado a través de Kônsul por ${issuer.name}
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
   `;
 };
 
 /**
- * Generates a Welcome HTML Email (Legacy Fallback).
+ * Generates a Welcome HTML Email
  */
 export const generateWelcomeHtml = (userName: string, url: string): string => {
   return `

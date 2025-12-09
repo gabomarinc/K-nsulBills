@@ -17,7 +17,7 @@ interface DocumentListProps {
   onMarkPaid?: (id: string) => void;
   onConvertQuote?: (id: string) => void;
   onDeleteInvoice?: (id: string) => void; 
-  onEditInvoice?: (invoice: Invoice) => void; // Added Prop
+  onEditInvoice?: (invoice: Invoice) => void; 
   currencySymbol: string;
   currentUser?: UserProfile;
 }
@@ -140,12 +140,12 @@ const DocumentList: React.FC<DocumentListProps> = ({
                >
                   <div className="h-2 w-full transition-colors" style={{ backgroundColor: getCardColor(doc.status) }}></div>
                   
-                  {/* ACTIONS OVERLAY */}
+                  {/* ACTIONS OVERLAY - Positioned Top Right */}
                   <div className="absolute top-4 right-4 flex gap-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
                      {onEditInvoice && (
                         <button 
                           onClick={(e) => { e.stopPropagation(); onEditInvoice(doc); }}
-                          className="p-2 bg-slate-50 text-slate-400 rounded-full hover:bg-[#27bea5] hover:text-white transition-all shadow-sm"
+                          className="p-2 bg-white text-slate-400 rounded-xl hover:bg-[#27bea5] hover:text-white transition-all shadow-md border border-slate-100"
                           title="Editar"
                         >
                           <Edit2 className="w-4 h-4" />
@@ -154,7 +154,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
                      {onDeleteInvoice && (
                         <button 
                           onClick={(e) => { e.stopPropagation(); onDeleteInvoice(doc.id); }}
-                          className="p-2 bg-slate-50 text-slate-400 rounded-full hover:bg-red-50 hover:text-red-500 transition-all shadow-sm"
+                          className="p-2 bg-white text-slate-400 rounded-xl hover:bg-red-50 hover:text-red-500 transition-all shadow-md border border-slate-100"
                           title="Eliminar"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -163,7 +163,8 @@ const DocumentList: React.FC<DocumentListProps> = ({
                   </div>
 
                   <div className="p-6 flex-1 flex flex-col justify-between relative z-10">
-                     <div className="flex justify-between items-start">
+                     {/* Header: Icon + Status grouped on LEFT to avoid button overlap */}
+                     <div className="flex items-center gap-3">
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
                            doc.type === 'Quote' ? 'bg-purple-50 text-purple-500' : 'bg-slate-50 text-slate-500'
                         }`}>
@@ -246,7 +247,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
 
       {/* KPI Section */}
       <div className="hidden md:grid grid-cols-4 gap-6">
-        {/* ... (Keep existing KPIs) ... */}
+        {/* Card 1 */}
         <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 relative overflow-hidden group hover:shadow-md transition-all">
            <div className="absolute top-0 right-0 w-24 h-24 bg-green-50 rounded-full -translate-y-1/2 translate-x-1/2"></div>
            <div className="relative z-10">
@@ -258,6 +259,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
               <h3 className="text-2xl font-bold text-[#1c2938] mt-1 tracking-tight">{currencySymbol} {totalPaid.toLocaleString()}</h3>
            </div>
         </div>
+        {/* Card 2 */}
         <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 relative overflow-hidden group hover:shadow-md transition-all">
            <div className="absolute top-0 right-0 w-24 h-24 bg-amber-50 rounded-full -translate-y-1/2 translate-x-1/2"></div>
            <div className="relative z-10">
@@ -268,6 +270,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
               <h3 className="text-2xl font-bold text-[#1c2938] mt-1 tracking-tight">{currencySymbol} {totalPending.toLocaleString()}</h3>
            </div>
         </div>
+        {/* Card 3 */}
         <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 relative overflow-hidden group hover:shadow-md transition-all">
            <div className="absolute top-0 right-0 w-24 h-24 bg-purple-50 rounded-full -translate-y-1/2 translate-x-1/2"></div>
            <div className="relative z-10">
@@ -278,6 +281,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
               <h3 className="text-2xl font-bold text-[#1c2938] mt-1 tracking-tight">{currencySymbol} {totalPipeline.toLocaleString()}</h3>
            </div>
         </div>
+        {/* Card 4 */}
         <div className="bg-[#1c2938] p-6 rounded-[2rem] shadow-lg relative overflow-hidden group text-white">
            <div className="absolute top-0 right-0 w-32 h-32 bg-[#27bea5] rounded-full blur-[40px] opacity-20 -translate-y-1/2 translate-x-1/2"></div>
            <div className="relative z-10 h-full flex flex-col justify-between">

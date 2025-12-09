@@ -8,13 +8,13 @@ import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { Invoice, UserProfile } from '../types';
 import DocumentTimeline from './DocumentTimeline';
-import { sendEmail } from '../services/resendService';
+import { sendEmail, generateDocumentHtml } from '../services/resendService';
 
 interface InvoiceDetailProps {
   invoice: Invoice;
   issuer: UserProfile;
   onBack: () => void;
-  onEdit?: (invoice: Invoice) => void; // New Prop
+  onEdit?: (invoice: Invoice) => void;
 }
 
 const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, onEdit }) => {
@@ -72,23 +72,16 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
         // Get raw base64 without data prefix
         const pdfBase64 = pdf.output('datauristring').split(',')[1];
 
-        // 3. Prepare Data for Resend Template
+        // 3. Generate HTML content locally (Guaranteed to work)
+        const htmlContent = generateDocumentHtml(invoice, issuer);
         const docTypeName = isQuote ? 'Cotización' : 'Factura';
         const emailSubject = `${docTypeName} #${invoice.id} - ${issuer.name}`;
 
-        // 4. Send Email
+        // 4. Send Email with HTML payload
         const result = await sendEmail({
             to: invoice.clientEmail, 
             subject: emailSubject, 
-            templateId: 'document-notification', // Resend Template Alias
-            data: {
-                client_name: invoice.clientName,
-                document_type: docTypeName,
-                document_number: invoice.id,
-                amount: invoice.total.toLocaleString('es-ES', { minimumFractionDigits: 2 }),
-                currency: invoice.currency,
-                issuer_name: issuer.name
-            },
+            html: htmlContent, // Sending explicit HTML to satisfy Resend requirement
             attachments: [{
                 filename: `${docTypeName}_${invoice.id}.pdf`,
                 content: pdfBase64
