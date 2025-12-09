@@ -1,12 +1,11 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   Mic, Send, Sparkles, Check, ArrowLeft, Edit2, Loader2, 
   FileText, FileBadge, Calendar, User, Search, Plus, Trash2, 
   ShoppingBag, Calculator, ChevronDown, Building2, Eye,
-  Coins, Lock, AlertTriangle, Settings
+  Coins, Lock, AlertTriangle, Settings, Save, Archive
 } from 'lucide-react';
-import { Invoice, ParsedInvoiceData, UserProfile, InvoiceItem } from '../types';
+import { Invoice, ParsedInvoiceData, UserProfile, InvoiceItem, InvoiceStatus } from '../types';
 import { parseInvoiceRequest, AI_ERROR_BLOCKED } from '../services/geminiService';
 
 interface InvoiceWizardProps {
@@ -58,6 +57,7 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
   });
 
   const [generatedId, setGeneratedId] = useState('');
+  const [savedStatus, setSavedStatus] = useState<InvoiceStatus>('Creada');
 
   // Check AI Access
   const hasAiAccess = !!currentUser.apiKeys?.gemini || !!currentUser.apiKeys?.openai;
@@ -150,8 +150,8 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
     setStep('SMART_EDITOR');
   };
 
-  const handleSave = () => {
-    if (!draft.clientName || totals.total === 0) return;
+  const handleSave = (targetStatus: 'Borrador' | 'Creada') => {
+    if (!draft.clientName) return;
 
     // --- SEQUENTIAL ID GENERATION ---
     const sequences = currentUser.documentSequences || {
@@ -170,17 +170,19 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
       id: newId,
       clientName: draft.clientName,
       clientTaxId: draft.clientTaxId,
+      clientEmail: draft.clientEmail,
       date: new Date().toISOString(),
       items: draft.items,
       total: totals.total,
-      // Default to 'Creada' for new invoices unless offline
-      status: isOffline ? 'PendingSync' : 'Creada',
+      // If offline, prioritize pending sync, otherwise use target status
+      status: isOffline ? 'PendingSync' : targetStatus,
       currency: draft.currency,
       type: docType
     };
     
     onSave(finalInvoice);
     setGeneratedId(newId);
+    setSavedStatus(targetStatus);
     setStep('SUCCESS');
   };
 
@@ -211,13 +213,15 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
 
   // --- RENDER ---
   if (step === 'SUCCESS') {
+    const isDraft = savedStatus === 'Borrador';
+    
     return (
       <div className="flex flex-col items-center justify-center h-full text-center animate-in zoom-in duration-300">
-        <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-6 shadow-lg shadow-green-200">
-          <Check className="w-12 h-12" />
+        <div className={`w-24 h-24 rounded-full flex items-center justify-center mb-6 shadow-lg ${isDraft ? 'bg-slate-100 text-slate-500 shadow-slate-200' : 'bg-green-100 text-green-600 shadow-green-200'}`}>
+          {isDraft ? <Archive className="w-12 h-12" /> : <Check className="w-12 h-12" />}
         </div>
         <h2 className="text-3xl font-bold text-[#1c2938] mb-2">
-          {docType === 'Quote' ? 'Cotización Lista' : 'Factura Emitida'}
+          {isDraft ? 'Borrador Guardado' : (docType === 'Quote' ? 'Cotización Lista' : 'Factura Creada')}
         </h2>
         <div className="bg-slate-50 px-4 py-2 rounded-lg border border-slate-200 mb-6">
            <span className="font-mono text-xl font-bold text-[#1c2938]">{generatedId}</span>
@@ -225,17 +229,24 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
         <p className="text-lg text-slate-500 mb-8 max-w-md">
           {isOffline 
             ? "Guardada en la cola segura. Se sincronizará automáticamente." 
-            : `El documento para ${draft.clientName} ha sido generado exitosamente.`}
+            : isDraft 
+              ? "Puedes editarla y enviarla más tarde desde tu lista de documentos."
+              : `El documento para ${draft.clientName} está listo para ser enviado.`
+          }
         </p>
         <div className="flex gap-4">
-           <button onClick={onCancel} className="text-slate-500 font-medium hover:text-slate-800 px-6">Cerrar</button>
-           
-           <button 
-             onClick={() => onViewDetail && onViewDetail()}
-             className="bg-[#27bea5] text-white px-8 py-3 rounded-xl font-bold hover:bg-[#22a890] transition-all shadow-lg flex items-center gap-2"
-           >
-             <Eye className="w-5 h-5" /> Ver Documento
+           <button onClick={onCancel} className="text-slate-500 font-medium hover:text-slate-800 px-6">
+             {isDraft ? 'Volver al Inicio' : 'Cerrar'}
            </button>
+           
+           {!isDraft && (
+             <button 
+               onClick={() => onViewDetail && onViewDetail()}
+               className="bg-[#27bea5] text-white px-8 py-3 rounded-xl font-bold hover:bg-[#22a890] transition-all shadow-lg flex items-center gap-2"
+             >
+               <Eye className="w-5 h-5" /> Previsualizar y Enviar
+             </button>
+           )}
         </div>
       </div>
     );
@@ -568,46 +579,59 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
 
           {/* RIGHT/BOTTOM: LIVE PREVIEW & MATH (Sticky & Fixed) */}
           <div className="lg:w-[380px] flex-shrink-0 z-10">
-             <div className="bg-[#1c2938] text-white p-6 rounded-3xl shadow-xl lg:h-auto overflow-y-auto lg:overflow-visible">
-                <div className="flex justify-between items-start mb-6">
-                   <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
-                     <Calculator className="w-5 h-5 text-[#27bea5]" />
-                   </div>
-                   <div className="text-right">
-                     <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Total Estimado</p>
-                     <p className="text-3xl font-bold">{draft.currency === 'EUR' ? '€' : (draft.currency === 'USD' ? '$' : draft.currency)} {totals.total.toFixed(2)}</p>
-                   </div>
-                </div>
-
-                <div className="space-y-3 text-sm border-t border-white/10 pt-4 mb-8">
-                  <div className="flex justify-between text-slate-300">
-                    <span>Subtotal</span>
-                    <span>{totals.subtotal.toFixed(2)}</span>
-                  </div>
-                  {totals.discountAmount > 0 && (
-                    <div className="flex justify-between text-green-400">
-                      <span>Descuento ({draft.discountRate}%)</span>
-                      <span>- {totals.discountAmount.toFixed(2)}</span>
+             <div className="bg-[#1c2938] text-white p-6 rounded-3xl shadow-xl lg:h-auto overflow-y-auto lg:overflow-visible flex flex-col justify-between">
+                <div>
+                  <div className="flex justify-between items-start mb-6">
+                    <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
+                      <Calculator className="w-5 h-5 text-[#27bea5]" />
                     </div>
-                  )}
-                  <div className="flex justify-between text-slate-300">
-                    <span>IVA (21%)</span>
-                    <span>{totals.taxAmount.toFixed(2)}</span>
+                    <div className="text-right">
+                      <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Total Estimado</p>
+                      <p className="text-3xl font-bold">{draft.currency === 'EUR' ? '€' : (draft.currency === 'USD' ? '$' : draft.currency)} {totals.total.toFixed(2)}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 text-sm border-t border-white/10 pt-4 mb-8">
+                    <div className="flex justify-between text-slate-300">
+                      <span>Subtotal</span>
+                      <span>{totals.subtotal.toFixed(2)}</span>
+                    </div>
+                    {totals.discountAmount > 0 && (
+                      <div className="flex justify-between text-green-400">
+                        <span>Descuento ({draft.discountRate}%)</span>
+                        <span>- {totals.discountAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-slate-300">
+                      <span>IVA (21%)</span>
+                      <span>{totals.taxAmount.toFixed(2)}</span>
+                    </div>
                   </div>
                 </div>
 
-                <button 
-                  onClick={handleSave}
-                  disabled={!draft.clientName || totals.total === 0}
-                  className="w-full bg-white text-[#1c2938] py-4 rounded-xl font-bold hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg flex items-center justify-center gap-2 group"
-                >
-                  {isOffline ? 'Guardar en Cola' : (docType === 'Quote' ? 'Finalizar Cotización' : 'Emitir Factura')}
-                  <Send className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </button>
-                
-                {isOffline && (
-                   <p className="text-center text-xs text-amber-400 mt-3 font-medium">Modo Offline Activo ⚡️</p>
-                )}
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <button 
+                      onClick={() => handleSave('Borrador')}
+                      disabled={!draft.clientName}
+                      className="bg-transparent border border-slate-500 text-slate-300 py-3 rounded-xl font-bold hover:bg-white/5 disabled:opacity-50 transition-all flex items-center justify-center gap-2 text-sm"
+                    >
+                      <Save className="w-4 h-4" /> Borrador
+                    </button>
+                    
+                    <button 
+                      onClick={() => handleSave('Creada')}
+                      disabled={!draft.clientName || totals.total === 0}
+                      className="bg-white text-[#1c2938] py-3 rounded-xl font-bold hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 group text-sm"
+                    >
+                      Finalizar <Check className="w-4 h-4" />
+                    </button>
+                  </div>
+                  
+                  {isOffline && (
+                    <p className="text-center text-xs text-amber-400 mt-2 font-medium">Modo Offline Activo ⚡️</p>
+                  )}
+                </div>
              </div>
              
              {/* Mini Preview of Sender */}

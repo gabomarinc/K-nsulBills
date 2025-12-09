@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { 
   ArrowLeft, Printer, Share2, Download, Building2, 
@@ -38,7 +37,12 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack }
     const html = generateDocumentHtml(invoice, issuer);
 
     // Using system env var in service, no key passing needed
-    const result = await sendEmail(recipientEmail, subject, html, issuer.name);
+    const result = await sendEmail({
+      to: recipientEmail, 
+      subject: subject, 
+      html: html, 
+      senderName: issuer.name
+    });
 
     if (result.success) {
       setShowSuccessModal(true);
@@ -107,8 +111,8 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack }
               <div className="flex justify-end gap-4">
                 <span className="text-slate-400">Fecha:</span>
                 <span className="font-medium text-slate-800">
-                  {new Date(invoice.date).toLocaleDateString()}
-                </span>
+                  {new Date(invoice.date).toLocaleDateString()
+                }</span>
               </div>
               {isQuote && (
                 <div className="flex justify-end gap-4">

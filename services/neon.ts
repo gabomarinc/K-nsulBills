@@ -54,20 +54,29 @@ export const authenticateUser = async (email: string, password: string): Promise
       await client.connect();
       const query = 'SELECT id, name, email, password, type, profile_data FROM users WHERE email = $1';
       const { rows } = await client.query(query, [email]);
-      await client.end();
-
+      
+      // Keep client open for potential password update
+      
       if (rows.length > 0) {
          const userRow = rows[0];
          const storedPassword = userRow.password || ''; 
 
          let isMatch = false;
+         let needsPasswordUpdate = false;
 
          // SPECIAL: Allow Demo Password Bypass if it matches the specific demo email
          // This ensures you can always log in as Juan even if you forgot the DB password, 
          // but critically, it returns the REAL DB USER ID.
          if (email === 'juan@facturazen.com' && password === 'password123') {
-            console.log("🔓 Demo Credentials Matched - Bypassing Hash Check to Load Real Data");
+            console.log("🔓 Demo Credentials Matched - Bypassing Hash Check");
             isMatch = true;
+            
+            // Auto-heal: If the stored hash isn't valid for 'password123', mark for update
+            // This fixes the issue where the DB might have an old/different password
+            const isHashCorrect = await comparePassword('password123', storedPassword).catch(() => false);
+            if (!isHashCorrect) {
+               needsPasswordUpdate = true;
+            }
          } else {
             // Normal Password Check
             if (storedPassword.startsWith('$2a$') || storedPassword.startsWith('$2b$') || storedPassword.startsWith('$2y$')) {
@@ -84,6 +93,20 @@ export const authenticateUser = async (email: string, password: string): Promise
 
          if (isMatch) {
            console.log(`✅ User Authenticated: ${userRow.id}`);
+           
+           // Sync password in DB if needed (Auto-repair)
+           if (needsPasswordUpdate) {
+              try {
+                console.log("🔄 Syncing Demo Password Hash in DB...");
+                const newHash = await hashPassword('password123');
+                await client.query('UPDATE users SET password = $1 WHERE id = $2', [newHash, userRow.id]);
+              } catch (err) {
+                console.warn("Failed to auto-update password hash", err);
+              }
+           }
+
+           await client.end(); // Now close connection
+
            const profileSettings = userRow.profile_data || {};
 
            return {
@@ -96,6 +119,7 @@ export const authenticateUser = async (email: string, password: string): Promise
            } as UserProfile;
          }
       }
+      await client.end(); // Close if no user found or no match
     } catch (error) {
       console.error("Neon Auth Error:", error);
       // Don't return null yet, try fallback if it's the demo user
@@ -230,15 +254,17 @@ export const fetchInvoicesFromDb = async (userId: string): Promise<Invoice[] | n
     
     console.log(`Fetching data for User ID: ${userId}`);
 
-    // 1. Fetch Invoices & Quotes
+    // FETCH INVOICES
+    // FIX: Include rows where userId matches OR where userId is NULL (legacy data adoption)
     const invoicesPromise = client.query(
-      `SELECT * FROM invoices WHERE data->>'userId' = $1`, 
+      `SELECT * FROM invoices WHERE data->>'userId' = $1 OR data->>'userId' IS NULL`, 
       [userId]
     );
     
-    // 2. Fetch Expenses
+    // FETCH EXPENSES
+    // FIX: Include rows where userId matches OR where userId is NULL (legacy data adoption)
     const expensesPromise = client.query(
-      `SELECT * FROM expenses WHERE data->>'userId' = $1`, 
+      `SELECT * FROM expenses WHERE data->>'userId' = $1 OR data->>'userId' IS NULL`, 
       [userId]
     );
 
@@ -252,6 +278,8 @@ export const fetchInvoicesFromDb = async (userId: string): Promise<Invoice[] | n
       const mappedInvoices = invoicesRes.value.rows.map((row: any) => ({
         ...row.data, 
         id: row.id,
+        // Ensure the object in memory has the current userId attached if it was missing
+        userId: row.data.userId || userId,
         clientName: row.client_name,
         total: parseFloat(row.total),
         status: row.status,
@@ -265,6 +293,7 @@ export const fetchInvoicesFromDb = async (userId: string): Promise<Invoice[] | n
       const mappedExpenses = expensesRes.value.rows.map((row: any) => ({
         ...row.data,
         id: row.id,
+        userId: row.data.userId || userId,
         clientName: row.provider_name, 
         total: parseFloat(row.total),
         status: row.status, 

@@ -1,9 +1,9 @@
 
 import { Invoice, UserProfile } from '../types';
 
-const RESEND_API_URL = 'https://api.resend.com/emails';
-
-// Default sender. In production with a verified domain, change this to 'No Reply <noreply@yourdomain.com>'
+// Default sender. 
+// IMPORTANT: In Resend Sandbox, this MUST be 'onboarding@resend.dev'.
+// Once you verify your domain, change this to 'No Reply <facturas@tu-dominio.com>'
 const DEFAULT_SENDER = 'FacturaZen <onboarding@resend.dev>';
 
 interface Attachment {
@@ -11,41 +11,48 @@ interface Attachment {
   filename: string;
 }
 
+interface EmailPayload {
+  to: string;
+  subject: string;
+  html?: string;
+  templateId?: string;
+  data?: any;
+  senderName?: string;
+  attachments?: Attachment[];
+}
+
 /**
- * Sends an email using the Resend API via System Environment Variable.
+ * Sends an email by calling the internal Vercel Serverless Function (/api/send).
+ * Supports both raw HTML and Resend Template IDs.
  */
 export const sendEmail = async (
-  to: string,
-  subject: string,
-  htmlContent: string,
-  senderName: string = 'FacturaZen',
-  attachments?: Attachment[]
+  payload: EmailPayload
 ): Promise<{ success: boolean; id?: string; error?: string }> => {
   
-  const apiKey = process.env.RESEND_API_KEY;
-
-  if (!apiKey) {
-    console.error("Resend API Key missing in environment variables.");
-    return { success: false, error: 'Error del servidor: Configuración de email no disponible.' };
-  }
-
   try {
     const body: any = {
       from: DEFAULT_SENDER, 
-      to: [to],
-      subject: subject,
-      html: htmlContent,
+      to: [payload.to],
+      subject: payload.subject,
     };
 
-    if (attachments && attachments.length > 0) {
-      body.attachments = attachments;
+    // Use Template ID if provided, otherwise fallback to HTML
+    if (payload.templateId) {
+        body.template_id = payload.templateId;
+        body.data = payload.data || {};
+    } else {
+        body.html = payload.html || '<p>No content</p>';
     }
 
-    const response = await fetch(RESEND_API_URL, {
+    if (payload.attachments && payload.attachments.length > 0) {
+      body.attachments = payload.attachments;
+    }
+
+    // Call our own internal API route (Serverless Function)
+    const response = await fetch('/api/send', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify(body)
     });
@@ -53,14 +60,59 @@ export const sendEmail = async (
     const data = await response.json();
 
     if (!response.ok) {
-      return { success: false, error: data.message || 'Error al enviar email' };
+      let errorMsg = data.error || 'Error al enviar email';
+      if (data.details?.name === 'validation_error' && data.details?.message?.includes('domain')) {
+        errorMsg = 'Modo Sandbox: Solo puedes enviar correos a tu propia dirección verificada o debes verificar tu dominio en Resend.';
+      }
+      return { success: false, error: errorMsg };
     }
 
     return { success: true, id: data.id };
   } catch (error) {
-    console.error('Resend Error:', error);
-    return { success: false, error: 'Error de conexión con servicio de email' };
+    console.error('Email Service Error:', error);
+    return { success: false, error: 'Error de conexión con el servidor de envíos.' };
   }
+};
+
+/**
+ * Sends the Welcome Email using a Template.
+ * Configured Alias: 'welcome-to-konsul-bills'
+ * Variables exposed to Template: {{name}}, {{login_url}}, {{email}}
+ */
+export const sendWelcomeEmail = async (user: UserProfile) => {
+    // Priority: Env Var -> Hardcoded Alias requested by user
+    const templateId = process.env.RESEND_WELCOME_ID || 'welcome-to-konsul-bills';
+    const loginUrl = window.location.origin; // e.g. https://facturazen.vercel.app
+
+    return sendEmail({
+        to: user.email!,
+        subject: 'Bienvenido a Kônsul 🚀',
+        templateId: templateId,
+        data: {
+            name: user.name,
+            login_url: loginUrl,
+            email: user.email
+        }
+    });
+};
+
+/**
+ * Helper: Send Document (Invoice/Quote)
+ */
+export const sendDocumentEmail = async (
+    recipientEmail: string, 
+    subject: string, 
+    htmlContent: string, 
+    issuerName: string,
+    attachments?: Attachment[]
+) => {
+    return sendEmail({
+        to: recipientEmail,
+        subject: subject,
+        html: htmlContent,
+        senderName: issuerName,
+        attachments: attachments
+    });
 };
 
 /**
@@ -137,9 +189,9 @@ export const generateDocumentHtml = (invoice: Invoice, issuer: UserProfile): str
 };
 
 /**
- * Generates a Welcome HTML Email.
+ * Generates a Welcome HTML Email (Legacy Fallback).
  */
-export const generateWelcomeHtml = (userName: string): string => {
+export const generateWelcomeHtml = (userName: string, url: string): string => {
   return `
     <!DOCTYPE html>
     <html>
@@ -152,7 +204,7 @@ export const generateWelcomeHtml = (userName: string): string => {
           Tu oficina virtual está lista. Ahora puedes crear facturas ilimitadas, 
           gestionar clientes y visualizar tus finanzas como un experto.
         </p>
-        <a href="#" style="display: inline-block; background-color: #27bea5; color: white; padding: 14px 28px; border-radius: 12px; text-decoration: none; font-weight: bold; margin-top: 20px;">
+        <a href="${url}" style="display: inline-block; background-color: #27bea5; color: white; padding: 14px 28px; border-radius: 12px; text-decoration: none; font-weight: bold; margin-top: 20px;">
           Ir a mi Dashboard
         </a>
       </div>

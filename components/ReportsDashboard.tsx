@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
@@ -156,7 +155,13 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
       const pureBase64 = base64data.split(',')[1]; 
       
       // Using system env var in service
-      const result = await sendEmail(currentUser.email!, `Reporte: ${title}`, `<p>Adjunto encontrarás el reporte generado desde Kônsul.</p>`, currentUser.name, [{ filename: `${title}.pdf`, content: pureBase64 }]);
+      const result = await sendEmail({
+        to: currentUser.email!, 
+        subject: `Reporte: ${title}`, 
+        html: `<p>Adjunto encontrarás el reporte generado desde Kônsul.</p>`, 
+        senderName: currentUser.name, 
+        attachments: [{ filename: `${title}.pdf`, content: pureBase64 }]
+      });
       
       if (result.success) { setEmailStatus('SUCCESS'); setTimeout(() => setEmailStatus('IDLE'), 3000); } else { setEmailStatus('ERROR'); setTimeout(() => setEmailStatus('IDLE'), 3000); }
     };
