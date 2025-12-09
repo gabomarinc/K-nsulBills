@@ -45,13 +45,68 @@ export const comparePassword = async (plain: string, hashed: string): Promise<bo
  * AUTHENTICATION: Login User
  */
 export const authenticateUser = async (email: string, password: string): Promise<UserProfile | null> => {
+  const client = getDbClient();
   
-  // 0. DEMO SUPER-USER (ALWAYS ALLOWED - BYPASS DB AUTH)
-  // Ensures demo access works regardless of DB connection status
+  // 1. ATTEMPT REAL DB AUTHENTICATION (First Priority)
+  // We do this even for demo credentials to ensure we retrieve the REAL user ID linked to existing data.
+  if (client) {
+    try {
+      await client.connect();
+      const query = 'SELECT id, name, email, password, type, profile_data FROM users WHERE email = $1';
+      const { rows } = await client.query(query, [email]);
+      await client.end();
+
+      if (rows.length > 0) {
+         const userRow = rows[0];
+         const storedPassword = userRow.password || ''; 
+
+         let isMatch = false;
+
+         // SPECIAL: Allow Demo Password Bypass if it matches the specific demo email
+         // This ensures you can always log in as Juan even if you forgot the DB password, 
+         // but critically, it returns the REAL DB USER ID.
+         if (email === 'juan@facturazen.com' && password === 'password123') {
+            console.log("🔓 Demo Credentials Matched - Bypassing Hash Check to Load Real Data");
+            isMatch = true;
+         } else {
+            // Normal Password Check
+            if (storedPassword.startsWith('$2a$') || storedPassword.startsWith('$2b$') || storedPassword.startsWith('$2y$')) {
+                try {
+                  isMatch = await comparePassword(password, storedPassword);
+                } catch (e) {
+                  console.error("Bcrypt compare error:", e);
+                  isMatch = false;
+                }
+            } else {
+                isMatch = storedPassword === password;
+            }
+         }
+
+         if (isMatch) {
+           console.log(`✅ User Authenticated: ${userRow.id}`);
+           const profileSettings = userRow.profile_data || {};
+
+           return {
+             id: userRow.id, // RETURNS THE REAL ID LINKED TO DATA
+             name: userRow.name,
+             email: userRow.email,
+             type: userRow.type === 'COMPANY' ? 'Empresa (SAS/SL)' : 'Autónomo',
+             ...profileSettings, 
+             isOnboardingComplete: true 
+           } as UserProfile;
+         }
+      }
+    } catch (error) {
+      console.error("Neon Auth Error:", error);
+      // Don't return null yet, try fallback if it's the demo user
+    }
+  }
+
+  // 2. STATIC FALLBACK (Only if DB failed or user not found AND it's the demo user)
   if (email === 'juan@facturazen.com' && password === 'password123') {
-       console.log("🔓 Using Demo Credentials Bypass");
+       console.log("🔓 Using Static Demo Profile (DB Unreachable or User Not Found)");
        return {
-         id: 'user_demo_p1', // Stable ID to allow saving real data to DB for this demo user
+         id: 'user_demo_p1', 
          name: 'Juan Pérez (Demo)',
          email: 'juan@facturazen.com',
          type: 'Autónomo' as any,
@@ -62,67 +117,11 @@ export const authenticateUser = async (email: string, password: string): Promise
          plan: 'Emprendedor Pro',
          country: 'Panamá',
          branding: { primaryColor: '#27bea5', templateStyle: 'Modern' },
-         // Empty keys to force "Bring Your Own Key" policy for AI features
          apiKeys: { gemini: '', openai: '' } 
        } as UserProfile;
   }
-
-  const client = getDbClient();
   
-  // 1. OFFLINE / NO-DB MODE FALLBACK
-  if (!client) {
-    return null;
-  }
-
-  // 2. CONNECTED MODE
-  try {
-    await client.connect();
-    // Fetch user and the JSON profile_data column
-    const query = 'SELECT id, name, email, password, type, profile_data FROM users WHERE email = $1';
-    const { rows } = await client.query(query, [email]);
-    await client.end();
-
-    if (rows.length > 0) {
-       const userRow = rows[0];
-       const storedPassword = userRow.password || ''; 
-
-       let isMatch = false;
-
-       // Check if password is hashed (bcrypt hashes start with $2a$, $2b$, or $2y$)
-       if (storedPassword.startsWith('$2a$') || storedPassword.startsWith('$2b$') || storedPassword.startsWith('$2y$')) {
-          try {
-            isMatch = await comparePassword(password, storedPassword);
-          } catch (e) {
-            console.error("Bcrypt compare error:", e);
-            isMatch = false;
-          }
-       } else {
-          // Legacy plain text check (for older accounts not yet migrated)
-          isMatch = storedPassword === password;
-       }
-
-       if (isMatch) {
-         // CRITICAL: Merge the JSONB profile_data with the root columns
-         // This ensures API Keys, Bank Info, and Payment Integrations (Dual Providers) are loaded into app state
-         const profileSettings = userRow.profile_data || {};
-
-         return {
-           id: userRow.id,
-           name: userRow.name,
-           email: userRow.email,
-           type: userRow.type === 'COMPANY' ? 'Empresa (SAS/SL)' : 'Autónomo',
-           // Spread the JSON settings (contains apiKeys, bankAccount, paymentIntegration, etc.)
-           ...profileSettings, 
-           isOnboardingComplete: true 
-         } as UserProfile;
-       }
-    }
-    
-    return null;
-  } catch (error) {
-    console.error("Neon Auth Error:", error);
-    return null;
-  }
+  return null;
 };
 
 /**
@@ -144,8 +143,6 @@ export const createUserInDb = async (profile: Partial<UserProfile>, password: st
     const hashedPassword = await hashPassword(password);
     const userId = `user_${Date.now()}_${Math.floor(Math.random()*1000)}`;
     
-    // Construct profile_data dynamically
-    // Exclude root columns from JSON to avoid duplication
     const profileData = { ...profile };
     delete (profileData as any).id;
     delete (profileData as any).name;
@@ -186,8 +183,6 @@ export const updateUserProfileInDb = async (profile: UserProfile): Promise<boole
   try {
     await client.connect();
 
-    // Prepare JSONB data (Everything except root columns)
-    // This effectively saves apiKeys, paymentIntegration, bankAccount, etc.
     const profileData = { ...profile };
     delete (profileData as any).id;
     delete (profileData as any).name;
@@ -195,7 +190,6 @@ export const updateUserProfileInDb = async (profile: UserProfile): Promise<boole
     delete (profileData as any).type;
     delete (profileData as any).password;
 
-    // Sanitize to ensure clean JSON
     const cleanProfileData = JSON.parse(JSON.stringify(profileData));
 
     const query = `
@@ -234,14 +228,15 @@ export const fetchInvoicesFromDb = async (userId: string): Promise<Invoice[] | n
   try {
     await client.connect();
     
-    // 1. Fetch Invoices & Quotes (Filter by userId inside JSONB data)
-    // We use the JSON operator ->> 'userId' to filter
+    console.log(`Fetching data for User ID: ${userId}`);
+
+    // 1. Fetch Invoices & Quotes
     const invoicesPromise = client.query(
       `SELECT * FROM invoices WHERE data->>'userId' = $1`, 
       [userId]
     );
     
-    // 2. Fetch Expenses (Filter by userId inside JSONB data)
+    // 2. Fetch Expenses
     const expensesPromise = client.query(
       `SELECT * FROM expenses WHERE data->>'userId' = $1`, 
       [userId]
@@ -253,7 +248,6 @@ export const fetchInvoicesFromDb = async (userId: string): Promise<Invoice[] | n
 
     let allDocs: Invoice[] = [];
 
-    // Process Invoices
     if (invoicesRes.status === 'fulfilled') {
       const mappedInvoices = invoicesRes.value.rows.map((row: any) => ({
         ...row.data, 
@@ -262,19 +256,18 @@ export const fetchInvoicesFromDb = async (userId: string): Promise<Invoice[] | n
         total: parseFloat(row.total),
         status: row.status,
         date: row.date,
-        type: row.type // 'Invoice' or 'Quote'
+        type: row.type 
       }));
       allDocs = [...allDocs, ...mappedInvoices];
     }
 
-    // Process Expenses
     if (expensesRes.status === 'fulfilled') {
       const mappedExpenses = expensesRes.value.rows.map((row: any) => ({
         ...row.data,
         id: row.id,
-        clientName: row.provider_name, // Map provider to clientName for frontend consistency
+        clientName: row.provider_name, 
         total: parseFloat(row.total),
-        status: row.status, // Usually 'Aceptada'
+        status: row.status, 
         date: row.date,
         type: 'Expense',
         receiptUrl: row.receipt_url
@@ -282,7 +275,6 @@ export const fetchInvoicesFromDb = async (userId: string): Promise<Invoice[] | n
       allDocs = [...allDocs, ...mappedExpenses];
     }
 
-    // Sort combined list by date desc
     return allDocs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   } catch (error) {
@@ -293,7 +285,6 @@ export const fetchInvoicesFromDb = async (userId: string): Promise<Invoice[] | n
 
 /**
  * Saves (Upserts) a document to the correct table based on type.
- * Ensures data object contains userId.
  */
 export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
   const client = getDbClient();
@@ -302,11 +293,12 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
   try {
     await client.connect();
     
-    // Ensure userId is in the JSON payload
     const invoiceData = { ...invoice };
     
+    // Log for debugging
+    console.log(`Saving ${invoice.type} to DB for User: ${invoiceData.userId}`);
+
     if (invoice.type === 'Expense') {
-      // --- SAVE TO EXPENSES TABLE ---
       const query = `
         INSERT INTO expenses (id, provider_name, date, total, currency, category, receipt_url, status, data)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -322,9 +314,9 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
       
       const category = invoice.items[0]?.description || 'General';
 
-      const values = [
+      await client.query(query, [
         invoice.id,
-        invoice.clientName, // In expense context, this is provider
+        invoice.clientName, 
         invoice.date,
         invoice.total,
         invoice.currency,
@@ -332,12 +324,9 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
         invoice.receiptUrl || null,
         invoice.status,
         JSON.stringify(invoiceData)
-      ];
-
-      await client.query(query, values);
+      ]);
 
     } else {
-      // --- SAVE TO INVOICES TABLE (Invoices & Quotes) ---
       const query = `
         INSERT INTO invoices (id, client_name, total, status, date, type, data)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -350,7 +339,7 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
           data = EXCLUDED.data;
       `;
 
-      const values = [
+      await client.query(query, [
         invoice.id,
         invoice.clientName,
         invoice.total,
@@ -358,9 +347,7 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
         invoice.date,
         invoice.type,
         JSON.stringify(invoiceData)
-      ];
-
-      await client.query(query, values);
+      ]);
     }
 
     await client.end();
@@ -382,10 +369,8 @@ export const deleteInvoiceFromDb = async (id: string): Promise<boolean> => {
   try {
     await client.connect();
     
-    // Optimistic approach: try deleting from invoices first
     const resInv = await client.query('DELETE FROM invoices WHERE id = $1', [id]);
     
-    // If nothing deleted, try expenses
     if (resInv.rowCount === 0) {
        await client.query('DELETE FROM expenses WHERE id = $1', [id]);
     }
