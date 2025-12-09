@@ -3,68 +3,29 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FacturaZen</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- SATOSHI FONT IMPORT -->
-    <link href="https://api.fontshare.com/v2/css?f[]=satoshi@900,700,500,400,300&display=swap" rel="stylesheet">
-    
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: ['Satoshi', 'sans-serif'],
-            },
-          }
-        }
-      }
-    </script>
-
-    <style>
-      body {
-        font-family: 'Satoshi', sans-serif;
-        background-color: #F8FAFC;
-      }
-      
-      /* REGLA: Títulos en Super Negrita (900/Black) */
-      h1, h2, h3, h4, h5, h6 {
-        font-weight: 900 !important;
-      }
-
-      /* Custom Scrollbar for sleek look */
-      ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-      }
-      ::-webkit-scrollbar-track {
-        background: #f1f5f9; 
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #cbd5e1; 
-        border-radius: 4px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #94a3b8; 
-      }
-    </style>
+    <title>FacturaZen - Gestión Inteligente</title>
+    <meta name="description" content="Software de facturación resiliente para autónomos y Pymes. Offline-first, automatización con IA y soporte humano inmediato." />
   <script type="importmap">
 {
   "imports": {
+    "html2canvas": "https://aistudiocdn.com/html2canvas@^1.4.1",
+    "jspdf": "https://aistudiocdn.com/jspdf@^3.0.4",
+    "vite": "https://aistudiocdn.com/vite@^7.2.7",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.556.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.32.0",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.2",
+    "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
     "react/": "https://aistudiocdn.com/react@^19.2.1/",
     "react": "https://aistudiocdn.com/react@^19.2.1",
-    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
-    "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
-    "@neondatabase/serverless": "https://aistudiocdn.com/@neondatabase/serverless@^0.6.0",
-    "bcryptjs": "https://aistudiocdn.com/bcryptjs@^2.4.3",
-    "html2canvas": "https://aistudiocdn.com/html2canvas@^1.4.1",
-    "jspdf": "https://aistudiocdn.com/jspdf@^2.5.1"
+    "bcryptjs": "https://aistudiocdn.com/bcryptjs@^3.0.3",
+    "@neondatabase/serverless": "https://aistudiocdn.com/@neondatabase/serverless@^1.0.2"
   }
 }
 </script>
 </head>
   <body class="bg-slate-50 text-slate-900">
     <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>
