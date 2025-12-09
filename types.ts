@@ -11,6 +11,7 @@ export enum AppView {
   CATALOG = 'CATALOG', // New Catalog View
   EXPENSES = 'EXPENSES', // New Expenses View
   EXPENSE_WIZARD = 'EXPENSE_WIZARD', // New Expense Creation Flow
+  CLIENT_WIZARD = 'CLIENT_WIZARD', // New Client Creation Flow
 }
 
 export enum ProfileType {

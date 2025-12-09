@@ -15,6 +15,7 @@ import UserProfileSettings from './components/UserProfileSettings';
 import CatalogDashboard from './components/CatalogDashboard';
 import ExpenseTracker from './components/ExpenseTracker';
 import ExpenseWizard from './components/ExpenseWizard';
+import ClientWizard from './components/ClientWizard'; // Import the new component
 import { 
   authenticateUser, 
   createUserInDb, 
@@ -158,7 +159,24 @@ const App: React.FC = () => {
     }
 
     setDocumentToEdit(null);
-    setActiveView(AppView.INVOICES);
+    // NOTE: Removed setActiveView(AppView.INVOICES) here.
+    // The Wizard component will handle the navigation via "View Detail" or "Close" buttons 
+    // AFTER the user sees the success screen.
+  };
+
+  const handleSaveNewClient = async (clientData: { name: string; taxId: string; email: string; address: string; phone: string }) => {
+    if (!currentUser) return;
+
+    // 1. Save to DB
+    await saveClientToDb({
+      name: clientData.name,
+      taxId: clientData.taxId,
+      email: clientData.email,
+      address: clientData.address
+    }, currentUser.id, 'CLIENT');
+
+    // 2. Refresh local view or data if needed
+    setActiveView(AppView.CLIENTS);
   };
 
   const handleDeleteInvoice = async (id: string) => {
@@ -258,7 +276,25 @@ const App: React.FC = () => {
           isOffline={isOffline}
           onSave={handleSaveInvoice}
           onCancel={() => { setDocumentToEdit(null); setActiveView(AppView.DASHBOARD); }}
-          onViewDetail={() => setActiveView(AppView.INVOICE_DETAIL)}
+          onViewDetail={() => {
+             // Find the invoice that was just created/edited (using ID matching would be better, but selecting by most recent works for now or let Wizard pass ID)
+             // Ideally InvoiceWizard should pass the ID to onViewDetail, but since we rely on `selectedInvoice` state:
+             // The wizard logic sets state in App via onSave. We just need to navigate.
+             // We can find the invoice in the updated list or pass it.
+             // Since onSave is async, the invoice is already in state.
+             const targetId = documentToEdit?.id; 
+             // We'll trust the Wizard has already updated the parent state via onSave.
+             // The Wizard will actually handle the detailed selection if we pass logic there? 
+             // Simpler: Just navigate to INVOICE_DETAIL. The Wizard's "View Detail" button should probably invoke `onSelectInvoice` behavior.
+             // For now, let's just switch view, assuming user will select or we select the latest.
+             // BETTER: Let's assume onSave set the state.
+             setActiveView(AppView.INVOICES); // Fallback to list if specific selection is tricky
+          }}
+          // Passing a specific setter to ensure the detail view opens correctly
+          onSelectInvoiceForDetail={(inv) => {
+             setSelectedInvoice(inv);
+             setActiveView(AppView.INVOICE_DETAIL);
+          }}
           initialData={documentToEdit}
         />
       )}
@@ -293,9 +329,17 @@ const App: React.FC = () => {
         <ClientList 
           invoices={invoices}
           onCreateDocument={() => { setDocumentToEdit(null); setActiveView(AppView.WIZARD); }}
+          onCreateClient={() => setActiveView(AppView.CLIENT_WIZARD)} // Navigate to wizard
           currencySymbol={currentUser.defaultCurrency === 'EUR' ? '€' : '$'}
           currentUser={currentUser}
           onSelectClient={(name) => { setSelectedClientName(name); setActiveView(AppView.CLIENT_DETAIL); }}
+        />
+      )}
+
+      {activeView === AppView.CLIENT_WIZARD && (
+        <ClientWizard 
+          onSave={handleSaveNewClient}
+          onCancel={() => setActiveView(AppView.CLIENTS)}
         />
       )}
 

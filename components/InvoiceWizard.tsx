@@ -12,10 +12,11 @@ import { parseInvoiceRequest, AI_ERROR_BLOCKED } from '../services/geminiService
 interface InvoiceWizardProps {
   currentUser: UserProfile;
   isOffline: boolean;
-  onSave: (invoice: Invoice) => void;
+  onSave: (invoice: Invoice) => Promise<void>; // Updated to Promise for async awaiting
   onCancel: () => void;
   onViewDetail?: () => void;
-  initialData?: Invoice | null; // NEW: Prop for editing
+  onSelectInvoiceForDetail?: (invoice: Invoice) => void; // New explicit handler
+  initialData?: Invoice | null; 
 }
 
 type Step = 'TYPE_SELECT' | 'AI_INPUT' | 'SMART_EDITOR' | 'SUCCESS';
@@ -26,12 +27,13 @@ const MOCK_CLIENTS = [
   { name: 'Agencia Creativa One', taxId: 'A98765432', email: 'finanzas@one.com' },
 ];
 
-const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, onSave, onCancel, onViewDetail, initialData }) => {
+const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, onSave, onCancel, onViewDetail, onSelectInvoiceForDetail, initialData }) => {
   // Initialize state based on initialData (Edit Mode)
   const [step, setStep] = useState<Step>(initialData ? 'SMART_EDITOR' : 'TYPE_SELECT');
   const [docType, setDocType] = useState<'Invoice' | 'Quote'>(initialData?.type as 'Invoice' | 'Quote' || 'Invoice');
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false); // New state for saving process
   const [aiError, setAiError] = useState<string | null>(null);
   
   const [clientSearch, setClientSearch] = useState(initialData?.clientName || '');
@@ -62,6 +64,7 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
   });
 
   const [generatedId, setGeneratedId] = useState(initialData?.id || '');
+  const [finalInvoiceObj, setFinalInvoiceObj] = useState<Invoice | null>(null); // Store final object for viewing
   const [savedStatus, setSavedStatus] = useState<InvoiceStatus>('Creada');
 
   // Check AI Access
@@ -181,8 +184,9 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
     setStep('SMART_EDITOR');
   };
 
-  const handleSave = (targetStatus: 'Borrador' | 'Creada') => {
+  const handleSave = async (targetStatus: 'Borrador' | 'Creada') => {
     if (!draft.clientName) return;
+    setIsSaving(true); // START SAVING STATE
 
     let newId = generatedId;
     
@@ -215,10 +219,22 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
       timeline: initialData?.timeline 
     };
     
-    onSave(finalInvoice);
+    // AWAIT THE DB SAVE before moving UI
+    await onSave(finalInvoice);
+    
     setGeneratedId(newId);
+    setFinalInvoiceObj(finalInvoice);
     setSavedStatus(targetStatus);
+    setIsSaving(false); // END SAVING STATE
     setStep('SUCCESS');
+  };
+
+  const handleViewDetail = () => {
+    if (finalInvoiceObj && onSelectInvoiceForDetail) {
+      onSelectInvoiceForDetail(finalInvoiceObj);
+    } else if (onViewDetail) {
+      onViewDetail();
+    }
   };
 
   // --- COMPONENTS: Item Row ---
@@ -270,7 +286,7 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
            </button>
            {!isDraft && (
              <button 
-               onClick={() => onViewDetail && onViewDetail()}
+               onClick={handleViewDetail}
                className="bg-[#27bea5] text-white px-8 py-3 rounded-xl font-bold hover:bg-[#22a890] transition-all shadow-lg flex items-center gap-2"
              >
                <Eye className="w-5 h-5" /> Ver Documento
@@ -629,18 +645,22 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
                   <div className="grid grid-cols-2 gap-3">
                     <button 
                       onClick={() => handleSave('Borrador')}
-                      disabled={!draft.clientName}
+                      disabled={!draft.clientName || isSaving}
                       className="bg-transparent border border-slate-500 text-slate-300 py-3 rounded-xl font-bold hover:bg-white/5 disabled:opacity-50 transition-all flex items-center justify-center gap-2 text-sm"
                     >
-                      <Save className="w-4 h-4" /> Borrador
+                      {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Borrador
                     </button>
                     
                     <button 
                       onClick={() => handleSave('Creada')}
-                      disabled={!draft.clientName || totals.total === 0}
+                      disabled={!draft.clientName || totals.total === 0 || isSaving}
                       className="bg-white text-[#1c2938] py-3 rounded-xl font-bold hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 group text-sm"
                     >
-                      {initialData ? 'Guardar Cambios' : 'Finalizar'} <Check className="w-4 h-4" />
+                      {isSaving ? (
+                        <>Guardando <Loader2 className="w-4 h-4 animate-spin" /></>
+                      ) : (
+                        <>{initialData ? 'Guardar Cambios' : 'Finalizar'} <Check className="w-4 h-4" /></>
+                      )}
                     </button>
                   </div>
                   

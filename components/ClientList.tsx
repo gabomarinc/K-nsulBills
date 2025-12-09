@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { 
   Search, Users, Wallet, Activity, LayoutList, LayoutGrid, 
   Plus, Crown, Sparkles, TrendingUp, Target, 
-  Trophy, Percent, ArrowUpRight, BarChart3, Star, Lock
+  Trophy, Percent, ArrowUpRight, BarChart3, Star, Lock, UserPlus
 } from 'lucide-react';
 import { Invoice, UserProfile } from '../types';
 
@@ -11,6 +11,7 @@ interface ClientListProps {
   invoices: Invoice[];
   onSelectClient?: (clientName: string) => void;
   onCreateDocument: () => void;
+  onCreateClient?: () => void; // New prop for specific client creation
   currencySymbol: string;
   currentUser?: UserProfile;
 }
@@ -29,7 +30,7 @@ interface AggregatedClient {
   winRate: number; 
 }
 
-const ClientList: React.FC<ClientListProps> = ({ invoices, onSelectClient, onCreateDocument, currencySymbol, currentUser }) => {
+const ClientList: React.FC<ClientListProps> = ({ invoices, onSelectClient, onCreateDocument, onCreateClient, currencySymbol, currentUser }) => {
   const [viewMode, setViewMode] = useState<'LIST' | 'GALLERY'>('GALLERY');
   const [filter, setFilter] = useState<'ALL' | 'CLIENT' | 'PROSPECT' | 'VIP'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
@@ -139,8 +140,11 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, onSelectClient, onCre
           <p className="text-slate-500 mt-1 text-lg font-light">Tus relaciones comerciales, organizadas.</p>
         </div>
         
-        <button onClick={onCreateDocument} className="bg-[#1c2938] text-white px-6 py-3.5 rounded-2xl font-bold hover:bg-[#27bea5] transition-all flex items-center gap-2 shadow-xl group">
-            <Plus className="w-5 h-5 group-hover:rotate-90 transition-transform" /> <span>Nuevo Cliente</span>
+        <button 
+            onClick={onCreateClient || onCreateDocument} // Prefer specific handler
+            className="bg-[#1c2938] text-white px-6 py-3.5 rounded-2xl font-bold hover:bg-[#27bea5] transition-all flex items-center gap-2 shadow-xl group"
+        >
+            <UserPlus className="w-5 h-5 group-hover:scale-110 transition-transform" /> <span>Nuevo Cliente</span>
         </button>
        </div>
 
