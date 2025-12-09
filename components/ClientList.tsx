@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { 
   Search, Users, Wallet, Activity, LayoutList, LayoutGrid, 
@@ -143,7 +144,7 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, onSelectClient, onCre
         </button>
        </div>
 
-       {/* KPI GRID (Added Back with AI Logic) */}
+       {/* KPI GRID */}
        <div className="hidden md:grid grid-cols-4 gap-6">
           {/* Card 1: Active Clients */}
           <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 relative overflow-hidden group hover:shadow-md transition-all">
@@ -181,7 +182,7 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, onSelectClient, onCre
              </div>
           </div>
 
-          {/* Card 4: AI Insight (Locked if no key) */}
+          {/* Card 4: AI Insight */}
           <div className="bg-[#1c2938] p-6 rounded-[2rem] shadow-lg relative overflow-hidden group text-white">
              <div className="absolute top-0 right-0 w-32 h-32 bg-[#27bea5] rounded-full blur-[40px] opacity-20 -translate-y-1/2 translate-x-1/2"></div>
              <div className="relative z-10 h-full flex flex-col justify-between">
@@ -233,33 +234,14 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, onSelectClient, onCre
 
        {filteredClients.length > 0 ? (
           <>
-            {/* Mobile View */}
-            <div className="md:hidden space-y-4">
-               {filteredClients.map((client) => (
-                  <div key={client.name} className="bg-white p-4 rounded-2xl border border-slate-50 shadow-sm flex items-center justify-between">
-                     <div className="flex items-center gap-4">
-                        <div className={`w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold ${client.isVip ? 'bg-amber-100 text-amber-700' : getRandomColor(client.name)}`}>
-                           {client.isVip ? <Crown className="w-5 h-5" /> : getInitials(client.name)}
-                        </div>
-                        <div>
-                           <h4 className={`font-bold text-lg ${client.isVip ? 'text-amber-900' : 'text-[#1c2938]'}`}>{client.name}</h4>
-                           <p className="text-xs text-slate-400 font-mono">{client.taxId}</p>
-                        </div>
-                     </div>
-                     <div className="text-right">
-                        <p className="font-bold text-[#1c2938]">{currencySymbol} {client.totalRevenue.toLocaleString()}</p>
-                        <button onClick={() => onCreateDocument()} className="text-xs text-[#27bea5] font-bold mt-1">
-                           + Vender
-                        </button>
-                     </div>
-                  </div>
-               ))}
-            </div>
-
             {/* Desktop View (Grid/List) */}
             <div className="hidden md:grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {filteredClients.map((client) => (
-                  <div key={client.name} className={`rounded-[2rem] p-6 border shadow-sm hover:shadow-xl transition-all duration-300 group relative flex flex-col justify-between h-[340px] ${client.isVip ? 'bg-gradient-to-br from-amber-50/50 to-white border-amber-100' : 'bg-white border-slate-50 hover:border-[#27bea5]/30'}`}>
+                  <div 
+                    key={client.name} 
+                    onClick={() => onSelectClient && onSelectClient(client.name)} // NEW: Trigger selection
+                    className={`rounded-[2rem] p-6 border shadow-sm hover:shadow-xl transition-all duration-300 group relative flex flex-col justify-between h-[340px] cursor-pointer ${client.isVip ? 'bg-gradient-to-br from-amber-50/50 to-white border-amber-100' : 'bg-white border-slate-50 hover:border-[#27bea5]/30'}`}
+                  >
                       <div className="flex justify-between items-start mb-4">
                         <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-lg font-bold shadow-sm ${client.isVip ? 'bg-amber-100 text-amber-700' : getRandomColor(client.name)}`}>
                             {client.isVip ? <Crown className="w-6 h-6 fill-amber-700" /> : getInitials(client.name)}
@@ -284,7 +266,8 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, onSelectClient, onCre
                             <span className="text-[10px] text-slate-400 uppercase font-bold">Ticket Prom.</span>
                             <span className="text-sm font-bold text-slate-600">{currencySymbol} {client.avgTicket.toLocaleString()}</span>
                           </div>
-                          <button onClick={() => onCreateDocument()} className={`p-2.5 rounded-xl transition-colors shadow-sm ${client.isVip ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-slate-50 text-slate-600 hover:bg-[#1c2938] hover:text-white'}`}><Plus className="w-4 h-4" /></button>
+                          {/* Stop Propagation to prevent card click triggering doc create */}
+                          <button onClick={(e) => { e.stopPropagation(); onCreateDocument(); }} className={`p-2.5 rounded-xl transition-colors shadow-sm ${client.isVip ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-slate-50 text-slate-600 hover:bg-[#1c2938] hover:text-white'}`}><Plus className="w-4 h-4" /></button>
                       </div>
                   </div>
                 ))}

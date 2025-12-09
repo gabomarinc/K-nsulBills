@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { 
   Mic, Send, Sparkles, Check, ArrowLeft, Edit2, Loader2, 
@@ -14,26 +15,26 @@ interface InvoiceWizardProps {
   onSave: (invoice: Invoice) => void;
   onCancel: () => void;
   onViewDetail?: () => void;
+  initialData?: Invoice | null; // NEW: Prop for editing
 }
 
 type Step = 'TYPE_SELECT' | 'AI_INPUT' | 'SMART_EDITOR' | 'SUCCESS';
 
-// Mock Memory for Client Autocomplete
 const MOCK_CLIENTS = [
   { name: 'TechSolutions SRL', taxId: 'B12345678', email: 'billing@techsolutions.com' },
   { name: 'Restaurante El Sol', taxId: 'XEXX010101000', email: 'admin@elsol.mx' },
   { name: 'Agencia Creativa One', taxId: 'A98765432', email: 'finanzas@one.com' },
 ];
 
-const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, onSave, onCancel, onViewDetail }) => {
-  const [step, setStep] = useState<Step>('TYPE_SELECT');
-  const [docType, setDocType] = useState<'Invoice' | 'Quote'>('Invoice');
+const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, onSave, onCancel, onViewDetail, initialData }) => {
+  // Initialize state based on initialData (Edit Mode)
+  const [step, setStep] = useState<Step>(initialData ? 'SMART_EDITOR' : 'TYPE_SELECT');
+  const [docType, setDocType] = useState<'Invoice' | 'Quote'>(initialData?.type as 'Invoice' | 'Quote' || 'Invoice');
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   
-  // Smart Editor State
-  const [clientSearch, setClientSearch] = useState('');
+  const [clientSearch, setClientSearch] = useState(initialData?.clientName || '');
   const [showClientDropdown, setShowClientDropdown] = useState(false);
   const [showCatalog, setShowCatalog] = useState(false);
   
@@ -43,20 +44,21 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
     clientEmail?: string;
     items: InvoiceItem[];
     currency: string;
-    discountRate: number; // Percentage
+    discountRate: number; 
     notes: string;
-    validityDate: string; // YYYY-MM-DD
+    validityDate: string; 
   }>({
-    clientName: '',
-    clientTaxId: '',
-    items: [],
-    currency: currentUser.defaultCurrency || 'USD',
+    clientName: initialData?.clientName || '',
+    clientTaxId: initialData?.clientTaxId || '',
+    clientEmail: initialData?.clientEmail || '',
+    items: initialData?.items || [],
+    currency: initialData?.currency || currentUser.defaultCurrency || 'USD',
     discountRate: 0,
-    notes: '',
-    validityDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] // +15 days default
+    notes: '', 
+    validityDate: initialData ? new Date(initialData.date).toISOString().split('T')[0] : new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   });
 
-  const [generatedId, setGeneratedId] = useState('');
+  const [generatedId, setGeneratedId] = useState(initialData?.id || '');
   const [savedStatus, setSavedStatus] = useState<InvoiceStatus>('Creada');
 
   // Check AI Access
@@ -153,17 +155,19 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
   const handleSave = (targetStatus: 'Borrador' | 'Creada') => {
     if (!draft.clientName) return;
 
-    // --- SEQUENTIAL ID GENERATION ---
-    const sequences = currentUser.documentSequences || {
-      invoicePrefix: 'FAC', invoiceNextNumber: 1,
-      quotePrefix: 'COT', quoteNextNumber: 1
-    };
-
-    let newId = '';
-    if (docType === 'Invoice') {
-      newId = `${sequences.invoicePrefix}-${String(sequences.invoiceNextNumber).padStart(4, '0')}`;
-    } else {
-      newId = `${sequences.quotePrefix}-${String(sequences.quoteNextNumber).padStart(4, '0')}`;
+    let newId = generatedId;
+    
+    // Only generate new ID if we are NOT editing
+    if (!initialData) {
+        const sequences = currentUser.documentSequences || {
+        invoicePrefix: 'FAC', invoiceNextNumber: 1,
+        quotePrefix: 'COT', quoteNextNumber: 1
+        };
+        if (docType === 'Invoice') {
+        newId = `${sequences.invoicePrefix}-${String(sequences.invoiceNextNumber).padStart(4, '0')}`;
+        } else {
+        newId = `${sequences.quotePrefix}-${String(sequences.quoteNextNumber).padStart(4, '0')}`;
+        }
     }
 
     const finalInvoice: Invoice = {
@@ -171,13 +175,15 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
       clientName: draft.clientName,
       clientTaxId: draft.clientTaxId,
       clientEmail: draft.clientEmail,
-      date: new Date().toISOString(),
+      date: initialData?.date || new Date().toISOString(), // Keep original date if editing
       items: draft.items,
       total: totals.total,
       // If offline, prioritize pending sync, otherwise use target status
       status: isOffline ? 'PendingSync' : targetStatus,
       currency: draft.currency,
-      type: docType
+      type: docType,
+      // Preserve timeline if editing
+      timeline: initialData?.timeline 
     };
     
     onSave(finalInvoice);
@@ -221,30 +227,24 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
           {isDraft ? <Archive className="w-12 h-12" /> : <Check className="w-12 h-12" />}
         </div>
         <h2 className="text-3xl font-bold text-[#1c2938] mb-2">
-          {isDraft ? 'Borrador Guardado' : (docType === 'Quote' ? 'Cotización Lista' : 'Factura Creada')}
+          {initialData ? 'Cambios Guardados' : (isDraft ? 'Borrador Guardado' : (docType === 'Quote' ? 'Cotización Lista' : 'Factura Creada'))}
         </h2>
         <div className="bg-slate-50 px-4 py-2 rounded-lg border border-slate-200 mb-6">
            <span className="font-mono text-xl font-bold text-[#1c2938]">{generatedId}</span>
         </div>
         <p className="text-lg text-slate-500 mb-8 max-w-md">
-          {isOffline 
-            ? "Guardada en la cola segura. Se sincronizará automáticamente." 
-            : isDraft 
-              ? "Puedes editarla y enviarla más tarde desde tu lista de documentos."
-              : `El documento para ${draft.clientName} está listo para ser enviado.`
-          }
+          {initialData ? "El documento ha sido actualizado correctamente." : "Listo para el siguiente paso."}
         </p>
         <div className="flex gap-4">
            <button onClick={onCancel} className="text-slate-500 font-medium hover:text-slate-800 px-6">
-             {isDraft ? 'Volver al Inicio' : 'Cerrar'}
+             Cerrar
            </button>
-           
            {!isDraft && (
              <button 
                onClick={() => onViewDetail && onViewDetail()}
                className="bg-[#27bea5] text-white px-8 py-3 rounded-xl font-bold hover:bg-[#22a890] transition-all shadow-lg flex items-center gap-2"
              >
-               <Eye className="w-5 h-5" /> Previsualizar y Enviar
+               <Eye className="w-5 h-5" /> Ver Documento
              </button>
            )}
         </div>
@@ -257,18 +257,20 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
       {/* Header */}
       <div className="flex items-center justify-between mb-6 px-4 lg:px-0">
         <div className="flex items-center gap-4">
-          <button onClick={() => step === 'SMART_EDITOR' ? setStep('AI_INPUT') : onCancel()} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+          <button onClick={() => step === 'SMART_EDITOR' && !initialData ? setStep('AI_INPUT') : onCancel()} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
             <ArrowLeft className="w-6 h-6 text-slate-500" />
           </button>
-          <div className="h-2 w-24 md:w-32 bg-slate-100 rounded-full overflow-hidden hidden md:block">
-            <div 
-              className="h-full bg-[#27bea5] transition-all duration-500 ease-out"
-              style={{ width: step === 'TYPE_SELECT' ? '20%' : step === 'AI_INPUT' ? '50%' : '100%' }}
-            />
-          </div>
+          {!initialData && (
+            <div className="h-2 w-24 md:w-32 bg-slate-100 rounded-full overflow-hidden hidden md:block">
+                <div 
+                className="h-full bg-[#27bea5] transition-all duration-500 ease-out"
+                style={{ width: step === 'TYPE_SELECT' ? '20%' : step === 'AI_INPUT' ? '50%' : '100%' }}
+                />
+            </div>
+          )}
         </div>
         <div className="text-sm font-medium text-slate-400 uppercase tracking-wide">
-          {step === 'SMART_EDITOR' ? (docType === 'Quote' ? 'Editando Cotización' : 'Editando Factura') : 'Asistente'}
+          {step === 'SMART_EDITOR' ? (initialData ? 'Editando Documento' : (docType === 'Quote' ? 'Editando Cotización' : 'Editando Factura')) : 'Asistente'}
         </div>
       </div>
 
@@ -283,9 +285,6 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
               </div>
               <h3 className="text-xl font-bold text-[#1c2938]">Factura de Venta</h3>
               <p className="text-slate-500 mt-2">Para cobrar un trabajo ya realizado.</p>
-              <div className="mt-4 bg-slate-50 inline-block px-2 py-1 rounded text-xs font-mono text-slate-400 group-hover:bg-[#27bea5]/10 group-hover:text-[#27bea5]">
-                Prox: {currentUser.documentSequences?.invoicePrefix}-{String(currentUser.documentSequences?.invoiceNextNumber).padStart(4, '0')}
-              </div>
             </button>
 
             <button onClick={() => handleTypeSelect('Quote')} className="group bg-white p-8 rounded-3xl shadow-sm hover:shadow-xl border-2 border-transparent hover:border-[#27bea5] transition-all text-left">
@@ -294,9 +293,6 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
               </div>
               <h3 className="text-xl font-bold text-[#1c2938]">Cotización</h3>
               <p className="text-slate-500 mt-2">Presupuesto formal para cerrar una venta.</p>
-              <div className="mt-4 bg-slate-50 inline-block px-2 py-1 rounded text-xs font-mono text-slate-400 group-hover:bg-[#1c2938]/10 group-hover:text-[#1c2938]">
-                Prox: {currentUser.documentSequences?.quotePrefix}-{String(currentUser.documentSequences?.quoteNextNumber).padStart(4, '0')}
-              </div>
             </button>
           </div>
         </div>
@@ -352,12 +348,6 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
                         <button onClick={skipAi} className="text-slate-500 font-medium hover:text-[#1c2938] px-4">
                             Usar Modo Manual
                         </button>
-                        <button 
-                            onClick={onCancel} // Ideally redirect to settings, but for now cancel flow
-                            className="bg-[#1c2938] text-white px-6 py-3 rounded-xl font-bold hover:bg-[#27bea5] transition-all flex items-center gap-2"
-                        >
-                            <Settings className="w-4 h-4" /> Configurar Ahora
-                        </button>
                     </div>
                 </div>
             )}
@@ -387,7 +377,7 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
                       setClientSearch(e.target.value);
                       setShowClientDropdown(true);
                       if (draft.clientName !== e.target.value) {
-                         setDraft(prev => ({...prev, clientName: e.target.value, clientTaxId: ''}));
+                         setDraft(prev => ({...prev, clientName: e.target.value}));
                       }
                     }}
                     placeholder="Buscar cliente o escribir nuevo..."
@@ -411,9 +401,6 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
                         <Check className="w-4 h-4 text-[#27bea5] opacity-0 group-hover:opacity-100" />
                       </button>
                     ))}
-                    <div className="px-4 py-3 bg-slate-50 border-t border-slate-100 text-xs text-slate-500">
-                      Si es nuevo, ingresa su ID Fiscal abajo.
-                    </div>
                   </div>
                 )}
               </div>
@@ -488,7 +475,7 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
                       <input 
                         value={item.description}
                         onChange={(e) => updateItem(idx, 'description', e.target.value)}
-                        placeholder="Descripción del servicio/producto"
+                        placeholder="Descripción"
                         className="w-full p-2 font-medium border-b border-transparent focus:border-[#27bea5] bg-transparent outline-none placeholder:text-slate-300"
                       />
                       <div className="flex gap-2">
@@ -518,12 +505,6 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
                     </button>
                   </div>
                 ))}
-                
-                {draft.items.length === 0 && (
-                  <div onClick={() => setShowCatalog(true)} className="p-6 border-2 border-dashed border-slate-100 rounded-xl text-center text-slate-400 cursor-pointer hover:border-[#27bea5] hover:text-[#27bea5] transition-colors">
-                    <p className="text-sm font-medium">No hay ítems. Toca para agregar.</p>
-                  </div>
-                )}
               </div>
             </section>
 
@@ -538,30 +519,24 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
                    <label className="block text-xs font-bold text-slate-500 mb-1">
                      {docType === 'Quote' ? 'Válida hasta' : 'Vencimiento'}
                    </label>
-                   <div className="relative">
-                     <Calendar className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-                     <input 
+                   <input 
                        type="date"
                        value={draft.validityDate}
                        onChange={(e) => setDraft({...draft, validityDate: e.target.value})}
-                       className="w-full pl-9 p-2 rounded-xl border border-slate-200 bg-slate-50 outline-none text-sm"
+                       className="w-full p-2 rounded-xl border border-slate-200 bg-slate-50 outline-none text-sm"
                      />
-                   </div>
                  </div>
                  <div>
                    <label className="block text-xs font-bold text-slate-500 mb-1">Moneda del Doc.</label>
-                   <div className="relative">
-                      <Coins className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-                      <select 
+                   <select 
                         value={draft.currency}
                         onChange={(e) => setDraft({...draft, currency: e.target.value})}
-                        className="w-full pl-9 p-2 rounded-xl border border-slate-200 bg-slate-50 outline-none text-sm appearance-none cursor-pointer"
+                        className="w-full p-2 rounded-xl border border-slate-200 bg-slate-50 outline-none text-sm"
                       >
                          {['USD', 'EUR', 'MXN', 'ARS', 'COP'].map(c => (
                             <option key={c} value={c}>{c}</option>
                          ))}
                       </select>
-                   </div>
                  </div>
               </div>
               
@@ -570,7 +545,7 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
                 <textarea 
                    value={draft.notes}
                    onChange={(e) => setDraft({...draft, notes: e.target.value})}
-                   placeholder={docType === 'Quote' ? "Ej: Anticipo del 50% requerido. Entrega en 5 días." : "Gracias por su compra."}
+                   placeholder="Notas visibles para el cliente..."
                    className="w-full p-3 rounded-xl border border-slate-200 bg-slate-50 outline-none text-sm h-20 resize-none"
                 />
               </div>
@@ -624,7 +599,7 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
                       disabled={!draft.clientName || totals.total === 0}
                       className="bg-white text-[#1c2938] py-3 rounded-xl font-bold hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 group text-sm"
                     >
-                      Finalizar <Check className="w-4 h-4" />
+                      {initialData ? 'Guardar Cambios' : 'Finalizar'} <Check className="w-4 h-4" />
                     </button>
                   </div>
                   
@@ -632,20 +607,6 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
                     <p className="text-center text-xs text-amber-400 mt-2 font-medium">Modo Offline Activo ⚡️</p>
                   )}
                 </div>
-             </div>
-             
-             {/* Mini Preview of Sender */}
-             <div className="mt-4 p-4 rounded-2xl bg-white border border-slate-100 hidden lg:block opacity-60 hover:opacity-100 transition-opacity">
-               <p className="text-xs font-bold text-slate-400 uppercase mb-2">Emisor (Tú)</p>
-               <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center">
-                    <Building2 className="w-4 h-4 text-slate-500" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-slate-800">{currentUser.name}</p>
-                    <p className="text-xs text-slate-500">{currentUser.taxId}</p>
-                  </div>
-               </div>
              </div>
           </div>
         </div>

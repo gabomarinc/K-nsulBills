@@ -4,6 +4,7 @@ export enum AppView {
   WIZARD = 'WIZARD', // New AI Flow
   INVOICES = 'INVOICES',
   CLIENTS = 'CLIENTS', // New Clients View
+  CLIENT_DETAIL = 'CLIENT_DETAIL', // New View
   SETTINGS = 'SETTINGS',
   INVOICE_DETAIL = 'INVOICE_DETAIL', // New View
   REPORTS = 'REPORTS', // New Reports View
@@ -134,7 +135,7 @@ export interface InvoiceItem {
 
 export interface TimelineEvent {
   id: string;
-  type: 'CREATED' | 'SENT' | 'OPENED' | 'CLICKED' | 'APPROVED' | 'PAID' | 'REMINDER';
+  type: 'CREATED' | 'SENT' | 'OPENED' | 'CLICKED' | 'APPROVED' | 'PAID' | 'REMINDER' | 'EDITED';
   title: string;
   description?: string;
   timestamp: string;
@@ -157,6 +158,7 @@ export interface Invoice {
   clientName: string;
   clientTaxId?: string;
   clientEmail?: string; // Added client email for sending
+  clientAddress?: string; // New field for Client Editing
   date: string;
   items: InvoiceItem[];
   total: number;

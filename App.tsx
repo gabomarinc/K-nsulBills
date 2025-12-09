@@ -12,6 +12,7 @@ import DocumentList from './components/DocumentList';
 import ReportsDashboard from './components/ReportsDashboard'; 
 import CatalogDashboard from './components/CatalogDashboard'; 
 import ClientList from './components/ClientList'; 
+import ClientDetail from './components/ClientDetail'; // Import new component
 import ExpenseTracker from './components/ExpenseTracker'; 
 import ExpenseWizard from './components/ExpenseWizard'; 
 import { AppView, ProfileType, UserProfile, Invoice, CatalogItem } from './types';
@@ -19,7 +20,6 @@ import { fetchInvoicesFromDb, saveInvoiceToDb, deleteInvoiceFromDb, createUserIn
 import { sendWelcomeEmail } from './services/resendService';
 import { Plus, X, FileText, FileBadge, UserPlus, TrendingDown } from 'lucide-react';
 
-// Fallback profile type for typing, though now we use real data
 const DEFAULT_PROFILE: UserProfile = {
   id: '',
   name: '',
@@ -49,12 +49,15 @@ const App: React.FC = () => {
   const [isDbConnected, setIsDbConnected] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
 
+  // EDIT & CLIENT STATE
+  const [selectedClientName, setSelectedClientName] = useState<string | null>(null);
+  const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null); // State for invoice being edited
+
   // MOBILE MENU STATE
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
-  // --- SESSION MANAGEMENT ---
+  // ... (Session and Data Loading logic remains same)
   useEffect(() => {
-    // Check for stored session on mount
     const storedUser = localStorage.getItem('facturazen_user');
     if (storedUser) {
       try {
@@ -76,27 +79,20 @@ const App: React.FC = () => {
     setCurrentView(AppView.DASHBOARD);
   };
 
-  // --- DATA LOADING ---
   const refreshData = async () => {
     if (!currentProfile.id) return;
-
     setIsLoadingData(true);
-    // Fetch only invoices for this specific user
     const dbData = await fetchInvoicesFromDb(currentProfile.id);
-    
     if (dbData) {
-      console.log(`✅ Loaded ${dbData.length} docs from DB for user ${currentProfile.id}`);
       setInvoices(dbData);
       setIsDbConnected(true);
     } else {
-      console.warn("⚠️ Failed to fetch DB data or empty. Using empty state.");
-      setInvoices([]); // STRICTLY EMPTY if no DB data
+      setInvoices([]); 
       setIsDbConnected(false);
     }
     setIsLoadingData(false);
   };
 
-  // Trigger data load when authenticated
   useEffect(() => {
     if (isAuthenticated && currentProfile.id) {
       refreshData();
@@ -109,64 +105,74 @@ const App: React.FC = () => {
     localStorage.setItem('facturazen_user', JSON.stringify(user));
   };
 
-  const toggleProfile = () => {
-    // Feature disabled for now or could implement profile switching logic here
-    console.log("Switch profile requested");
+  // --- ACTIONS ---
+
+  const handleEditInvoice = (invoice: Invoice) => {
+    setEditingInvoice(invoice);
+    setCurrentView(AppView.WIZARD);
   };
 
   const handleSaveInvoice = async (newInvoice: Invoice) => {
-    const invoiceWithMetadata: Invoice = {
-      ...newInvoice,
-      userId: currentProfile.id, // LINK TO CURRENT USER
-      timeline: newInvoice.timeline || [
-         { 
-           id: Date.now().toString(), 
-           type: 'CREATED', 
-           title: 'Documento Creado', 
-           description: 'Generado exitosamente', 
-           timestamp: new Date().toISOString() 
-         }
-      ],
-      successProbability: newInvoice.type === 'Quote' ? Math.floor(Math.random() * 30) + 60 : undefined
-    };
+    // Check if we are UPDATING an existing invoice
+    const isUpdate = invoices.some(i => i.id === newInvoice.id);
     
-    // Optimistic Update
-    setInvoices([invoiceWithMetadata, ...invoices]);
-    setSelectedInvoice(invoiceWithMetadata);
+    let invoiceWithMetadata: Invoice;
 
-    // Update Sequences only for Sales Docs
-    if (newInvoice.type === 'Invoice') {
-      const updatedProfile = {
-        ...currentProfile,
-        documentSequences: {
-          ...currentProfile.documentSequences!,
-          invoiceNextNumber: (currentProfile.documentSequences?.invoiceNextNumber || 0) + 1
+    if (isUpdate) {
+        // Find original to preserve some data if needed, but mostly overwrite
+        const original = invoices.find(i => i.id === newInvoice.id);
+        invoiceWithMetadata = {
+            ...newInvoice,
+            userId: currentProfile.id,
+            timeline: [
+                ...(original?.timeline || []),
+                {
+                    id: Date.now().toString(),
+                    type: 'EDITED',
+                    title: 'Documento Editado',
+                    timestamp: new Date().toISOString()
+                }
+            ]
+        };
+        // Update local state by mapping
+        setInvoices(invoices.map(i => i.id === newInvoice.id ? invoiceWithMetadata : i));
+    } else {
+        // Create New logic (existing)
+        invoiceWithMetadata = {
+            ...newInvoice,
+            userId: currentProfile.id,
+            timeline: newInvoice.timeline || [
+                { 
+                id: Date.now().toString(), 
+                type: 'CREATED', 
+                title: 'Documento Creado', 
+                description: 'Generado exitosamente', 
+                timestamp: new Date().toISOString() 
+                }
+            ],
+            successProbability: newInvoice.type === 'Quote' ? Math.floor(Math.random() * 30) + 60 : undefined
+        };
+        setInvoices([invoiceWithMetadata, ...invoices]);
+        
+        // Sequence update logic
+        if (newInvoice.type === 'Invoice') {
+            const updatedProfile = { ...currentProfile, documentSequences: { ...currentProfile.documentSequences!, invoiceNextNumber: (currentProfile.documentSequences?.invoiceNextNumber || 0) + 1 } };
+            setCurrentProfile(updatedProfile);
+            localStorage.setItem('facturazen_user', JSON.stringify(updatedProfile));
+            updateUserProfileInDb(updatedProfile);
+        } else if (newInvoice.type === 'Quote') {
+            const updatedProfile = { ...currentProfile, documentSequences: { ...currentProfile.documentSequences!, quoteNextNumber: (currentProfile.documentSequences?.quoteNextNumber || 0) + 1 } };
+            setCurrentProfile(updatedProfile);
+            localStorage.setItem('facturazen_user', JSON.stringify(updatedProfile));
+            updateUserProfileInDb(updatedProfile);
         }
-      };
-      setCurrentProfile(updatedProfile);
-      localStorage.setItem('facturazen_user', JSON.stringify(updatedProfile));
-      handleProfileUpdate(updatedProfile); // Sync sequences to DB
-    } else if (newInvoice.type === 'Quote') {
-      const updatedProfile = {
-        ...currentProfile,
-        documentSequences: {
-          ...currentProfile.documentSequences!,
-          quoteNextNumber: (currentProfile.documentSequences?.quoteNextNumber || 0) + 1
-        }
-      };
-      setCurrentProfile(updatedProfile);
-      localStorage.setItem('facturazen_user', JSON.stringify(updatedProfile));
-      handleProfileUpdate(updatedProfile);
     }
     
-    // DB Save
-    saveInvoiceToDb(invoiceWithMetadata).then(success => {
-      if (success) {
-        console.log("✅ Document Saved to DB");
-      } else {
-        console.error("❌ Failed to save document to DB");
-      }
-    });
+    setSelectedInvoice(invoiceWithMetadata);
+    setEditingInvoice(null); // Clear edit state
+
+    // DB Save (Upsert handles both insert and update)
+    saveInvoiceToDb(invoiceWithMetadata);
   };
 
   const handleDeleteInvoice = async (id: string) => {
@@ -174,12 +180,43 @@ const App: React.FC = () => {
       const newInvoices = invoices.filter(i => i.id !== id);
       setInvoices(newInvoices);
       if (selectedInvoice?.id === id) setSelectedInvoice(null);
-
       await deleteInvoiceFromDb(id);
     }
   };
 
-  const handleMarkAsPaid = async (id: string) => {
+  const handleUpdateClientContact = async (clientName: string, newContact: { email: string, address: string, taxId: string }) => {
+    // Since we don't have a clients table, we update the metadata on the invoices for this client
+    // In a real app, we'd update a `clients` table. Here, we update the `invoices` where clientName matches.
+    
+    const updatedInvoices = invoices.map(inv => {
+        if (inv.clientName === clientName) {
+            return {
+                ...inv,
+                clientEmail: newContact.email,
+                clientAddress: newContact.address, // We added this field to Invoice type
+                clientTaxId: newContact.taxId
+            };
+        }
+        return inv;
+    });
+
+    setInvoices(updatedInvoices);
+    
+    // Persist changes for this client to DB (Update all their docs)
+    const clientDocs = updatedInvoices.filter(i => i.clientName === clientName);
+    for (const doc of clientDocs) {
+        await saveInvoiceToDb(doc);
+    }
+    alert("Datos del cliente actualizados en sus documentos.");
+  };
+
+  const handleSelectClient = (name: string) => {
+    setSelectedClientName(name);
+    setCurrentView(AppView.CLIENT_DETAIL);
+  };
+
+  // ... (Other handlers like markPaid, convertQuote remain same)
+  const handleMarkAsPaid = async (id: string) => { 
     const updatedInvoices = invoices.map(inv => {
       if (inv.id === id) {
         return {
@@ -200,14 +237,11 @@ const App: React.FC = () => {
       return inv;
     });
     setInvoices(updatedInvoices);
-    
     const updatedInv = updatedInvoices.find(i => i.id === id);
-    if (updatedInv) {
-      saveInvoiceToDb(updatedInv);
-    }
+    if (updatedInv) saveInvoiceToDb(updatedInv);
   };
 
-  const handleConvertQuote = async (quoteId: string) => {
+  const handleConvertQuote = async (quoteId: string) => { 
     const quote = invoices.find(i => i.id === quoteId);
     if (!quote) return;
 
@@ -257,7 +291,7 @@ const App: React.FC = () => {
     setCurrentView(AppView.INVOICE_DETAIL);
   };
 
-  const handleOnboardingComplete = async (data: Partial<UserProfile> & { password?: string, email?: string }) => {
+  const handleOnboardingComplete = async (data: any) => { 
     const newProfile = {
       ...currentProfile,
       ...data,
@@ -273,12 +307,8 @@ const App: React.FC = () => {
        try {
          const success = await createUserInDb(newProfile, data.password, data.email);
          if (success) {
-            console.log("User created in DB securely");
-            
-            // SEND WELCOME EMAIL (With Template Support)
             await sendWelcomeEmail(newProfile as UserProfile);
-
-            alert("Cuenta creada con éxito. Te hemos enviado un correo de bienvenida. Por favor inicia sesión.");
+            alert("Cuenta creada con éxito. Por favor inicia sesión.");
             setShowRegister(false);
             return; 
          }
@@ -288,14 +318,12 @@ const App: React.FC = () => {
          return;
        }
     }
-    
-    // Note: Code normally shouldn't reach here if registration is required
     setCurrentProfile(newProfile);
     setIsAuthenticated(true);
     setShowRegister(false);
   };
 
-  const handleProfileUpdate = async (updatedProfile: UserProfile) => {
+  const handleProfileUpdate = async (updatedProfile: UserProfile) => { 
     setCurrentProfile(updatedProfile);
     localStorage.setItem('facturazen_user', JSON.stringify(updatedProfile));
     try {
@@ -305,57 +333,28 @@ const App: React.FC = () => {
     }
   };
 
-  const handleCatalogUpdate = (newItems: CatalogItem[]) => {
-    const updatedProfile = {
-      ...currentProfile,
-      defaultServices: newItems
-    };
+  const handleCatalogUpdate = (newItems: CatalogItem[]) => { 
+    const updatedProfile = { ...currentProfile, defaultServices: newItems };
     handleProfileUpdate(updatedProfile);
   };
 
-  const pendingCount = invoices.filter(i => i.status === 'PendingSync').length;
+  const toggleProfile = () => { console.log("Switch profile requested"); };
 
-  // --- MENU ACTION HANDLERS ---
+  const pendingCount = invoices.filter(i => i.status === 'PendingSync').length;
+  
   const handleMenuAction = (view: AppView) => {
     setCurrentView(view);
     setShowMobileMenu(false);
   };
 
-  // --- RENDER FLOW ---
-
-  if (isLoadingData) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-slate-50 flex-col gap-4">
-        <div className="w-12 h-12 bg-[#27bea5] rounded-xl animate-spin"></div>
-        <p className="text-slate-500 font-medium animate-pulse">Sincronizando oficina virtual...</p>
-      </div>
-    );
-  }
+  if (isLoadingData) return <div className="h-screen flex items-center justify-center bg-slate-50 flex-col gap-4"><div className="w-12 h-12 bg-[#27bea5] rounded-xl animate-spin"></div><p className="text-slate-500 font-medium animate-pulse">Sincronizando oficina virtual...</p></div>;
 
   if (showRegister || (isAuthenticated && !currentProfile.isOnboardingComplete && currentProfile.id)) {
-    return (
-      <div className="antialiased text-[#1c2938] font-sans">
-        <OnboardingWizard onComplete={handleOnboardingComplete} />
-        {!isAuthenticated && (
-           <div className="fixed bottom-4 left-4 z-50">
-              <button onClick={() => setShowRegister(false)} className="text-slate-400 text-sm hover:text-[#1c2938] font-bold">
-                 ← Volver al Login
-              </button>
-           </div>
-        )}
-      </div>
-    );
+    return <OnboardingWizard onComplete={handleOnboardingComplete} />;
   }
 
   if (!isAuthenticated) {
-    return (
-      <div className="antialiased text-[#1c2938] font-sans">
-        <LoginScreen 
-          onLoginSuccess={handleLoginSuccess} 
-          onRegisterClick={() => setShowRegister(true)} 
-        />
-      </div>
-    );
+    return <LoginScreen onLoginSuccess={handleLoginSuccess} onRegisterClick={() => setShowRegister(true)} />;
   }
 
   return (
@@ -368,7 +367,7 @@ const App: React.FC = () => {
         isOffline={isOffline}
         onToggleOffline={() => setIsOffline(!isOffline)}
         pendingInvoicesCount={pendingCount}
-        onLogout={handleLogout} // Pass Logout Handler
+        onLogout={handleLogout}
       >
         {currentView === AppView.DASHBOARD && (
           <Dashboard 
@@ -386,22 +385,15 @@ const App: React.FC = () => {
             currentUser={currentProfile}
             isOffline={isOffline}
             onSave={handleSaveInvoice}
-            onCancel={() => setCurrentView(AppView.DASHBOARD)}
-            onViewDetail={() => {
-              if (selectedInvoice) {
-                setCurrentView(AppView.INVOICE_DETAIL);
-              } else {
+            onCancel={() => {
+                setEditingInvoice(null);
                 setCurrentView(AppView.DASHBOARD);
-              }
             }}
-          />
-        )}
-
-        {currentView === AppView.EXPENSE_WIZARD && (
-          <ExpenseWizard 
-            currentUser={currentProfile}
-            onSave={handleSaveInvoice}
-            onCancel={() => setCurrentView(AppView.EXPENSES)}
+            initialData={editingInvoice} // Pass data if editing
+            onViewDetail={() => {
+              if (selectedInvoice) setCurrentView(AppView.INVOICE_DETAIL);
+              else setCurrentView(AppView.DASHBOARD);
+            }}
           />
         )}
 
@@ -410,17 +402,19 @@ const App: React.FC = () => {
             invoice={selectedInvoice}
             issuer={currentProfile}
             onBack={() => setCurrentView(AppView.INVOICES)} 
+            onEdit={handleEditInvoice} // Pass Edit Handler
           />
         )}
         
         {currentView === AppView.INVOICES && (
           <DocumentList 
             invoices={invoices} 
-            onSelectInvoice={handleInvoiceSelect}
-            onCreateNew={() => setCurrentView(AppView.WIZARD)}
+            onSelectInvoice={(inv) => { setSelectedInvoice(inv); setCurrentView(AppView.INVOICE_DETAIL); }}
+            onCreateNew={() => { setEditingInvoice(null); setCurrentView(AppView.WIZARD); }}
             onMarkPaid={handleMarkAsPaid}
             onConvertQuote={handleConvertQuote}
             onDeleteInvoice={handleDeleteInvoice} 
+            onEditInvoice={handleEditInvoice} // Pass Edit Handler
             currencySymbol={currentProfile.defaultCurrency === 'EUR' ? '€' : '$'}
             currentUser={currentProfile}
           />
@@ -429,10 +423,23 @@ const App: React.FC = () => {
         {currentView === AppView.CLIENTS && (
           <ClientList 
             invoices={invoices} 
-            onCreateDocument={() => setCurrentView(AppView.WIZARD)}
+            onCreateDocument={() => { setEditingInvoice(null); setCurrentView(AppView.WIZARD); }}
+            onSelectClient={handleSelectClient} // Pass Select Handler
             currencySymbol={currentProfile.defaultCurrency === 'EUR' ? '€' : '$'}
             currentUser={currentProfile} 
           />
+        )}
+
+        {/* NEW CLIENT DETAIL VIEW */}
+        {currentView === AppView.CLIENT_DETAIL && selectedClientName && (
+            <ClientDetail 
+                clientName={selectedClientName}
+                invoices={invoices}
+                currencySymbol={currentProfile.defaultCurrency === 'EUR' ? '€' : '$'}
+                onBack={() => setCurrentView(AppView.CLIENTS)}
+                onSelectInvoice={(inv) => { setSelectedInvoice(inv); setCurrentView(AppView.INVOICE_DETAIL); }}
+                onUpdateClientContact={handleUpdateClientContact}
+            />
         )}
 
         {currentView === AppView.CATALOG && (
@@ -477,62 +484,31 @@ const App: React.FC = () => {
       {/* MOBILE FAB & MENU */}
       <div className="md:hidden">
          {!showMobileMenu && (
-           <button 
-             onClick={() => setShowMobileMenu(true)}
-             className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-16 h-16 bg-[#27bea5] rounded-full flex items-center justify-center text-white shadow-2xl hover:scale-110 transition-transform"
-           >
+           <button onClick={() => setShowMobileMenu(true)} className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-16 h-16 bg-[#27bea5] rounded-full flex items-center justify-center text-white shadow-2xl hover:scale-110 transition-transform">
              <Plus className="w-8 h-8" />
            </button>
          )}
-
          {showMobileMenu && (
            <div className="fixed inset-0 z-[100] backdrop-blur-md bg-white/30 flex flex-col justify-end pb-24 px-6 animate-in fade-in duration-200">
               <div className="space-y-4 max-w-sm mx-auto w-full">
-                 <button 
-                   onClick={() => handleMenuAction(AppView.WIZARD)}
-                   className="w-full bg-white p-4 rounded-2xl shadow-xl flex items-center gap-4 text-[#1c2938] hover:bg-slate-50 transition-colors group"
-                 >
-                    <div className="w-12 h-12 rounded-full bg-[#27bea5]/10 flex items-center justify-center text-[#27bea5] group-hover:bg-[#27bea5] group-hover:text-white transition-colors">
-                       <FileText className="w-6 h-6" />
-                    </div>
+                 <button onClick={() => handleMenuAction(AppView.WIZARD)} className="w-full bg-white p-4 rounded-2xl shadow-xl flex items-center gap-4 text-[#1c2938] hover:bg-slate-50 transition-colors group">
+                    <div className="w-12 h-12 rounded-full bg-[#27bea5]/10 flex items-center justify-center text-[#27bea5] group-hover:bg-[#27bea5] group-hover:text-white transition-colors"><FileText className="w-6 h-6" /></div>
                     <span className="font-bold text-lg">Nueva Factura</span>
                  </button>
-
-                 <button 
-                   onClick={() => handleMenuAction(AppView.WIZARD)}
-                   className="w-full bg-white p-4 rounded-2xl shadow-xl flex items-center gap-4 text-[#1c2938] hover:bg-slate-50 transition-colors group"
-                 >
-                    <div className="w-12 h-12 rounded-full bg-purple-50 flex items-center justify-center text-purple-600 group-hover:bg-purple-600 group-hover:text-white transition-colors">
-                       <FileBadge className="w-6 h-6" />
-                    </div>
+                 <button onClick={() => handleMenuAction(AppView.WIZARD)} className="w-full bg-white p-4 rounded-2xl shadow-xl flex items-center gap-4 text-[#1c2938] hover:bg-slate-50 transition-colors group">
+                    <div className="w-12 h-12 rounded-full bg-purple-50 flex items-center justify-center text-purple-600 group-hover:bg-purple-600 group-hover:text-white transition-colors"><FileBadge className="w-6 h-6" /></div>
                     <span className="font-bold text-lg">Nueva Cotización</span>
                  </button>
-
-                 <button 
-                   onClick={() => handleMenuAction(AppView.CLIENTS)}
-                   className="w-full bg-white p-4 rounded-2xl shadow-xl flex items-center gap-4 text-[#1c2938] hover:bg-slate-50 transition-colors group"
-                 >
-                    <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                       <UserPlus className="w-6 h-6" />
-                    </div>
+                 <button onClick={() => handleMenuAction(AppView.CLIENTS)} className="w-full bg-white p-4 rounded-2xl shadow-xl flex items-center gap-4 text-[#1c2938] hover:bg-slate-50 transition-colors group">
+                    <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors"><UserPlus className="w-6 h-6" /></div>
                     <span className="font-bold text-lg">Nuevo Cliente</span>
                  </button>
-
-                 <button 
-                   onClick={() => handleMenuAction(AppView.EXPENSE_WIZARD)}
-                   className="w-full bg-white p-4 rounded-2xl shadow-xl flex items-center gap-4 text-[#1c2938] hover:bg-slate-50 transition-colors group"
-                 >
-                    <div className="w-12 h-12 rounded-full bg-rose-50 flex items-center justify-center text-rose-500 group-hover:bg-rose-500 group-hover:text-white transition-colors">
-                       <TrendingDown className="w-6 h-6" />
-                    </div>
+                 <button onClick={() => handleMenuAction(AppView.EXPENSE_WIZARD)} className="w-full bg-white p-4 rounded-2xl shadow-xl flex items-center gap-4 text-[#1c2938] hover:bg-slate-50 transition-colors group">
+                    <div className="w-12 h-12 rounded-full bg-rose-50 flex items-center justify-center text-rose-500 group-hover:bg-rose-500 group-hover:text-white transition-colors"><TrendingDown className="w-6 h-6" /></div>
                     <span className="font-bold text-lg">Nuevo Gasto</span>
                  </button>
               </div>
-
-              <button 
-                onClick={() => setShowMobileMenu(false)}
-                className="fixed bottom-6 left-1/2 -translate-x-1/2 w-16 h-16 bg-white rounded-full flex items-center justify-center text-slate-400 shadow-xl hover:text-slate-600 transition-colors"
-              >
+              <button onClick={() => setShowMobileMenu(false)} className="fixed bottom-6 left-1/2 -translate-x-1/2 w-16 h-16 bg-white rounded-full flex items-center justify-center text-slate-400 shadow-xl hover:text-slate-600 transition-colors">
                 <X className="w-8 h-8" />
               </button>
            </div>

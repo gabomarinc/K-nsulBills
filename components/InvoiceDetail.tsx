@@ -1,7 +1,8 @@
+
 import React, { useState, useRef } from 'react';
 import { 
   ArrowLeft, Printer, Share2, Download, Building2, 
-  CheckCircle2, Loader2, Send, MessageCircle, Smartphone, Mail, Check, AlertTriangle
+  CheckCircle2, Loader2, Send, MessageCircle, Smartphone, Mail, Check, AlertTriangle, Edit2
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -13,9 +14,10 @@ interface InvoiceDetailProps {
   invoice: Invoice;
   issuer: UserProfile;
   onBack: () => void;
+  onEdit?: (invoice: Invoice) => void; // New Prop
 }
 
-const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack }) => {
+const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, onEdit }) => {
   const [isSending, setIsSending] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -473,6 +475,13 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack }
         </button>
         
         <div className="flex items-center gap-2">
+           {/* EDIT BUTTON */}
+           {onEdit && (
+             <button onClick={() => onEdit(invoice)} className="p-3 text-slate-500 hover:bg-white hover:text-[#27bea5] hover:shadow-sm rounded-xl transition-all mr-2" title="Editar Documento">
+               <Edit2 className="w-5 h-5" />
+             </button>
+           )}
+
            <button onClick={handleDownloadPdf} className="p-3 text-slate-500 hover:bg-white hover:shadow-sm rounded-xl transition-all" title="Descargar PDF">
              <Download className="w-5 h-5" />
            </button>

@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { 
   Search, Plus, FileText, CheckCircle2, 
@@ -5,7 +6,7 @@ import {
   ArrowUpRight, PieChart, Filter, CalendarDays, Wallet,
   FileBadge, LayoutList, LayoutGrid, MoreHorizontal,
   Send, AlertCircle, Sparkles, DollarSign, Repeat, Eye,
-  Activity, MessageCircle, Archive, Trash2, Lock
+  Activity, MessageCircle, Archive, Trash2, Lock, Edit2
 } from 'lucide-react';
 import { Invoice, UserProfile } from '../types';
 
@@ -16,6 +17,7 @@ interface DocumentListProps {
   onMarkPaid?: (id: string) => void;
   onConvertQuote?: (id: string) => void;
   onDeleteInvoice?: (id: string) => void; 
+  onEditInvoice?: (invoice: Invoice) => void; // Added Prop
   currencySymbol: string;
   currentUser?: UserProfile;
 }
@@ -30,10 +32,11 @@ const DocumentList: React.FC<DocumentListProps> = ({
   onMarkPaid, 
   onConvertQuote, 
   onDeleteInvoice,
+  onEditInvoice,
   currencySymbol,
   currentUser
 }) => {
-  const [viewMode, setViewMode] = useState<ViewMode>('LIST');
+  const [viewMode, setViewMode] = useState<ViewMode>('GALLERY');
   const [galleryStage, setGalleryStage] = useState<GalleryStage>('ALL_ACTIVE');
   const [filterType, setFilterType] = useState<'ALL' | 'INVOICE' | 'QUOTE'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
@@ -54,11 +57,6 @@ const DocumentList: React.FC<DocumentListProps> = ({
     .filter(i => i.type === 'Quote' && i.status !== 'Rechazada')
     .reduce((acc, curr) => acc + curr.total, 0);
 
-  const avgSuccess = invoices
-    .filter(i => i.type === 'Quote' && i.successProbability)
-    .reduce((acc, curr, _, arr) => acc + (curr.successProbability || 0) / arr.length, 0);
-
-  // --- FILTERING ---
   const filteredDocs = invoices.filter(doc => {
     const matchesSearch = doc.clientName.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           doc.id.toLowerCase().includes(searchTerm.toLowerCase());
@@ -88,7 +86,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
       case 'Seguimiento': return 'bg-blue-50 text-blue-700 border-blue-100 group-hover:bg-blue-100';
       case 'Enviada': return 'bg-sky-50 text-sky-700 border-sky-100 group-hover:bg-sky-100';
       case 'PendingSync': return 'bg-amber-50 text-amber-700 border-amber-100';
-      default: return 'bg-slate-50 text-slate-500 border-slate-100'; // Borrador, Creada
+      default: return 'bg-slate-50 text-slate-500 border-slate-100'; 
     }
   };
 
@@ -103,8 +101,6 @@ const DocumentList: React.FC<DocumentListProps> = ({
       default: return '#94a3b8';
     }
   };
-
-  // --- RENDERERS ---
 
   const renderGalleryView = () => {
     const tabs: { id: GalleryStage; label: string; icon: React.ReactNode }[] = [
@@ -144,15 +140,27 @@ const DocumentList: React.FC<DocumentListProps> = ({
                >
                   <div className="h-2 w-full transition-colors" style={{ backgroundColor: getCardColor(doc.status) }}></div>
                   
-                  {onDeleteInvoice && (
-                     <button 
-                       onClick={(e) => { e.stopPropagation(); onDeleteInvoice(doc.id); }}
-                       className="absolute top-4 right-4 p-2 bg-slate-50 text-slate-400 rounded-full opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 transition-all z-20"
-                       title="Eliminar"
-                     >
-                       <Trash2 className="w-4 h-4" />
-                     </button>
-                  )}
+                  {/* ACTIONS OVERLAY */}
+                  <div className="absolute top-4 right-4 flex gap-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+                     {onEditInvoice && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); onEditInvoice(doc); }}
+                          className="p-2 bg-slate-50 text-slate-400 rounded-full hover:bg-[#27bea5] hover:text-white transition-all shadow-sm"
+                          title="Editar"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                     )}
+                     {onDeleteInvoice && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); onDeleteInvoice(doc.id); }}
+                          className="p-2 bg-slate-50 text-slate-400 rounded-full hover:bg-red-50 hover:text-red-500 transition-all shadow-sm"
+                          title="Eliminar"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                     )}
+                  </div>
 
                   <div className="p-6 flex-1 flex flex-col justify-between relative z-10">
                      <div className="flex justify-between items-start">
@@ -219,14 +227,12 @@ const DocumentList: React.FC<DocumentListProps> = ({
 
   return (
     <div className="max-w-7xl mx-auto space-y-10 animate-in fade-in pb-12">
-      
       {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-6">
         <div>
           <h1 className="text-3xl font-bold text-[#1c2938] tracking-tight">Tu Archivo Comercial</h1>
           <p className="text-slate-500 mt-1 text-lg font-light">Gestiona tu historia de éxito, documento a documento.</p>
         </div>
-        
         <div className="hidden md:flex items-center gap-3 w-full md:w-auto">
           <div className="bg-white p-1 rounded-xl shadow-sm border border-slate-100 flex items-center">
              <button onClick={() => setViewMode('LIST')} className={`p-2.5 rounded-lg transition-all ${viewMode === 'LIST' ? 'bg-[#1c2938] text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}><LayoutList className="w-5 h-5" /></button>
@@ -238,9 +244,9 @@ const DocumentList: React.FC<DocumentListProps> = ({
         </div>
       </div>
 
-      {/* KPI SECTION (Restored with AI Lock) */}
+      {/* KPI Section */}
       <div className="hidden md:grid grid-cols-4 gap-6">
-        {/* Card 1: Real Income */}
+        {/* ... (Keep existing KPIs) ... */}
         <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 relative overflow-hidden group hover:shadow-md transition-all">
            <div className="absolute top-0 right-0 w-24 h-24 bg-green-50 rounded-full -translate-y-1/2 translate-x-1/2"></div>
            <div className="relative z-10">
@@ -252,8 +258,6 @@ const DocumentList: React.FC<DocumentListProps> = ({
               <h3 className="text-2xl font-bold text-[#1c2938] mt-1 tracking-tight">{currencySymbol} {totalPaid.toLocaleString()}</h3>
            </div>
         </div>
-
-        {/* Card 2: Pending */}
         <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 relative overflow-hidden group hover:shadow-md transition-all">
            <div className="absolute top-0 right-0 w-24 h-24 bg-amber-50 rounded-full -translate-y-1/2 translate-x-1/2"></div>
            <div className="relative z-10">
@@ -264,8 +268,6 @@ const DocumentList: React.FC<DocumentListProps> = ({
               <h3 className="text-2xl font-bold text-[#1c2938] mt-1 tracking-tight">{currencySymbol} {totalPending.toLocaleString()}</h3>
            </div>
         </div>
-
-        {/* Card 3: Pipeline */}
         <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 relative overflow-hidden group hover:shadow-md transition-all">
            <div className="absolute top-0 right-0 w-24 h-24 bg-purple-50 rounded-full -translate-y-1/2 translate-x-1/2"></div>
            <div className="relative z-10">
@@ -276,8 +278,6 @@ const DocumentList: React.FC<DocumentListProps> = ({
               <h3 className="text-2xl font-bold text-[#1c2938] mt-1 tracking-tight">{currencySymbol} {totalPipeline.toLocaleString()}</h3>
            </div>
         </div>
-
-        {/* Card 4: AI Insight (Locked if no key) */}
         <div className="bg-[#1c2938] p-6 rounded-[2rem] shadow-lg relative overflow-hidden group text-white">
            <div className="absolute top-0 right-0 w-32 h-32 bg-[#27bea5] rounded-full blur-[40px] opacity-20 -translate-y-1/2 translate-x-1/2"></div>
            <div className="relative z-10 h-full flex flex-col justify-between">
@@ -285,7 +285,6 @@ const DocumentList: React.FC<DocumentListProps> = ({
                  <div className="p-2.5 bg-white/10 text-[#27bea5] rounded-xl"><Sparkles className="w-6 h-6" /></div>
                  {!hasAiAccess && <Lock className="w-4 h-4 text-slate-400" />}
               </div>
-              
               <div>
                  <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Predicción Inteligente</p>
                  {hasAiAccess ? (
@@ -384,9 +383,11 @@ const DocumentList: React.FC<DocumentListProps> = ({
                       </span>
                     </div>
                     <div className="col-span-1 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                        <div className="w-10 h-10 rounded-full bg-slate-50 text-[#1c2938] flex items-center justify-center hover:bg-[#27bea5] hover:text-white transition-colors">
-                          <ChevronRight className="w-5 h-5" />
-                        </div>
+                       {onEditInvoice && (
+                          <button onClick={(e) => { e.stopPropagation(); onEditInvoice(doc); }} className="w-10 h-10 rounded-full bg-slate-50 text-[#1c2938] flex items-center justify-center hover:bg-[#27bea5] hover:text-white transition-colors">
+                             <Edit2 className="w-5 h-5" />
+                          </button>
+                       )}
                     </div>
                   </div>
               ))}
