@@ -45,15 +45,15 @@ export const comparePassword = async (plain: string, hashed: string): Promise<bo
  * AUTHENTICATION: Login User
  */
 export const authenticateUser = async (email: string, password: string): Promise<UserProfile | null> => {
-  const client = getDbClient();
   
-  // 1. OFFLINE / NO-DB MODE FALLBACK
-  if (!client) {
-    // Basic local fallback for development if env is missing
-    if (email === 'juan@facturazen.com' && password === 'password123') {
+  // 0. DEMO SUPER-USER (ALWAYS ALLOWED - BYPASS DB AUTH)
+  // Ensures demo access works regardless of DB connection status
+  if (email === 'juan@facturazen.com' && password === 'password123') {
+       console.log("🔓 Using Demo Credentials Bypass");
        return {
-         id: 'p1',
-         name: 'Juan Pérez (Local)',
+         id: 'user_demo_p1', // Stable ID to allow saving real data to DB for this demo user
+         name: 'Juan Pérez (Demo)',
+         email: 'juan@facturazen.com',
          type: 'Autónomo' as any,
          taxId: '8-123-456',
          avatar: '',
@@ -61,9 +61,16 @@ export const authenticateUser = async (email: string, password: string): Promise
          defaultCurrency: 'USD',
          plan: 'Emprendedor Pro',
          country: 'Panamá',
-         branding: { primaryColor: '#27bea5', templateStyle: 'Modern' }
+         branding: { primaryColor: '#27bea5', templateStyle: 'Modern' },
+         // Empty keys to force "Bring Your Own Key" policy for AI features
+         apiKeys: { gemini: '', openai: '' } 
        } as UserProfile;
-    }
+  }
+
+  const client = getDbClient();
+  
+  // 1. OFFLINE / NO-DB MODE FALLBACK
+  if (!client) {
     return null;
   }
 
