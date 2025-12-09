@@ -170,6 +170,7 @@ export interface Invoice {
   timeline?: TimelineEvent[];
   successProbability?: number; // 0-100 (Only for Quotes)
   receiptUrl?: string; // New: For Expense receipts
+  resendEmailId?: string; // New: Track email status via Resend
 }
 
 export interface ParsedInvoiceData {

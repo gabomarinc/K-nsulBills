@@ -1,29 +1,88 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   ArrowLeft, Printer, Share2, Download, Building2, 
   CheckCircle2, Loader2, Send, MessageCircle, Smartphone, Mail, Check, AlertTriangle, Edit2
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import { Invoice, UserProfile } from '../types';
+import { Invoice, UserProfile, TimelineEvent } from '../types';
 import DocumentTimeline from './DocumentTimeline';
-import { sendEmail, generateDocumentHtml } from '../services/resendService';
+import { sendEmail, generateDocumentHtml, getEmailStatus } from '../services/resendService';
 
 interface InvoiceDetailProps {
   invoice: Invoice;
   issuer: UserProfile;
   onBack: () => void;
   onEdit?: (invoice: Invoice) => void;
+  onUpdateInvoice?: (invoice: Invoice) => void;
 }
 
-const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, onEdit }) => {
+const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, onEdit, onUpdateInvoice }) => {
   const [isSending, setIsSending] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   
   // Ref for PDF Generation
   const documentRef = useRef<HTMLDivElement>(null);
+
+  // Poll for Resend Status Updates
+  useEffect(() => {
+    let isMounted = true;
+
+    const checkStatus = async () => {
+      if (!invoice.resendEmailId) return;
+      
+      const hasOpened = invoice.timeline?.some(e => e.type === 'OPENED');
+      const hasClicked = invoice.timeline?.some(e => e.type === 'CLICKED');
+      
+      // Stop checking if already fully engaged to save API calls
+      if (hasClicked) return; 
+
+      const data = await getEmailStatus(invoice.resendEmailId);
+      
+      if (isMounted && data && data.last_event) {
+          let newEvent: TimelineEvent | null = null;
+          
+          if (data.last_event === 'opened' && !hasOpened) {
+               newEvent = {
+                   id: Date.now().toString(),
+                   type: 'OPENED',
+                   title: 'Visto por el cliente',
+                   description: 'El correo fue abierto.',
+                   timestamp: new Date().toISOString()
+               };
+          } else if (data.last_event === 'clicked' && !hasClicked) {
+               newEvent = {
+                   id: Date.now().toString(),
+                   type: 'CLICKED',
+                   title: 'Clic en el documento',
+                   description: 'El cliente hizo clic en el enlace.',
+                   timestamp: new Date().toISOString()
+               };
+          }
+          
+          if (newEvent && onUpdateInvoice) {
+              const updatedInvoice = {
+                  ...invoice,
+                  timeline: [...(invoice.timeline || []), newEvent]
+              };
+              onUpdateInvoice(updatedInvoice);
+          }
+      }
+    };
+    
+    // Initial check
+    checkStatus();
+    
+    // Optional: Poll every 30s while viewing
+    const interval = setInterval(checkStatus, 30000);
+
+    return () => {
+        isMounted = false;
+        clearInterval(interval);
+    };
+  }, [invoice.resendEmailId, invoice.timeline, onUpdateInvoice]);
 
   // Re-calculate derived values for display
   const subtotal = invoice.items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
@@ -89,6 +148,24 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
         });
 
         if (result.success) {
+            // Update Timeline and ID with Real Data
+            if (result.id && onUpdateInvoice) {
+                const sentEvent: TimelineEvent = {
+                    id: Date.now().toString(),
+                    type: 'SENT',
+                    title: 'Enviado por Correo',
+                    description: `Entregado a ${invoice.clientEmail} (ID: ${result.id.slice(0,8)}...)`,
+                    timestamp: new Date().toISOString()
+                };
+                
+                const updatedInvoice = {
+                    ...invoice,
+                    status: 'Enviada' as const, // Force type
+                    resendEmailId: result.id,
+                    timeline: [...(invoice.timeline || []), sentEvent]
+                };
+                onUpdateInvoice(updatedInvoice);
+            }
             setShowSuccessModal(true);
         } else {
             throw new Error(result.error || 'Error al enviar el correo.');

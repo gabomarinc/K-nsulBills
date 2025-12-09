@@ -1,3 +1,4 @@
+
 import { Client } from '@neondatabase/serverless';
 import { Invoice, UserProfile } from '../types';
 import bcrypt from 'bcryptjs';
@@ -24,6 +25,41 @@ const getDbClient = () => {
   } catch (error) {
     console.error("Error initializing DB Client:", error);
     return null;
+  }
+};
+
+/**
+ * AUDIT LOGGING SYSTEM
+ * Automatically creates the table if it doesn't exist and records actions.
+ */
+export const logAuditAction = async (userId: string, action: string, details: any) => {
+  const client = getDbClient();
+  if (!client) return;
+
+  try {
+    await client.connect();
+
+    // 1. Ensure Table Exists (Lazy Initialization)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id SERIAL PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        details JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    // 2. Insert Log
+    await client.query(
+      `INSERT INTO audit_log (user_id, action, details) VALUES ($1, $2, $3)`,
+      [userId, action, JSON.stringify(details)]
+    );
+
+    await client.end();
+  } catch (e) {
+    console.error("Audit Log Failed:", e);
+    // We do not throw error here to prevent blocking the main user action
   }
 };
 
@@ -106,6 +142,9 @@ export const authenticateUser = async (email: string, password: string): Promise
 
            await client.end(); // Now close connection
 
+           // AUDIT LOG: LOGIN
+           logAuditAction(userRow.id, 'LOGIN', { email: userRow.email, timestamp: new Date().toISOString() });
+
            const profileSettings = userRow.profile_data || {};
 
            return {
@@ -173,6 +212,10 @@ export const createUserInDb = async (profile: Partial<UserProfile>, password: st
     delete (profileData as any).type;
     delete (profileData as any).password;
 
+    // Check if type string includes 'Empresa' to map correctly to DB ENUM/VARCHAR
+    const typeString = profile.type || '';
+    const dbType = typeString.includes('Empresa') ? 'COMPANY' : 'FREELANCE';
+
     const query = `
       INSERT INTO users (id, name, email, password, type, profile_data)
       VALUES ($1, $2, $3, $4, $5, $6)
@@ -183,11 +226,15 @@ export const createUserInDb = async (profile: Partial<UserProfile>, password: st
       profile.name,
       email,
       hashedPassword,
-      profile.type === 'Empresa (SAS/SL)' ? 'COMPANY' : 'FREELANCE',
+      dbType,
       JSON.stringify(profileData)
     ]);
 
     await client.end();
+
+    // AUDIT LOG: REGISTER
+    logAuditAction(userId, 'REGISTER_USER', { email, name: profile.name });
+
     return true;
 
   } catch (error) {
@@ -215,6 +262,10 @@ export const updateUserProfileInDb = async (profile: UserProfile): Promise<boole
 
     const cleanProfileData = JSON.parse(JSON.stringify(profileData));
 
+    // Improved Type Logic: Check substring match for robustness
+    const typeString = profile.type || '';
+    const dbType = typeString.includes('Empresa') ? 'COMPANY' : 'FREELANCE';
+
     const query = `
       UPDATE users 
       SET 
@@ -227,12 +278,16 @@ export const updateUserProfileInDb = async (profile: UserProfile): Promise<boole
 
     await client.query(query, [
       profile.name,
-      profile.type === 'Empresa (SAS/SL)' ? 'COMPANY' : 'FREELANCE',
+      dbType,
       JSON.stringify(cleanProfileData),
       profile.id
     ]);
 
     await client.end();
+
+    // AUDIT LOG: UPDATE PROFILE
+    logAuditAction(profile.id, 'UPDATE_PROFILE', { changedFields: Object.keys(cleanProfileData) });
+
     return true;
   } catch (error) {
     console.error("Update User Error:", error);
@@ -354,6 +409,10 @@ export const saveClientToDb = async (client: { name: string, taxId?: string, ema
     ]);
 
     await clientDb.end();
+
+    // AUDIT LOG: SAVE CLIENT
+    logAuditAction(userId, 'SAVE_CLIENT', { clientName: client.name, status });
+
     return true;
   } catch (error) {
     console.error("Neon DB Client Save Error:", error);
@@ -436,6 +495,17 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
     }
 
     await client.end();
+
+    // AUDIT LOG: SAVE DOCUMENT
+    if (invoiceData.userId) {
+        logAuditAction(invoiceData.userId, 'SAVE_DOCUMENT', { 
+            docId: invoice.id, 
+            type: invoice.type, 
+            amount: invoice.total,
+            client: invoice.clientName
+        });
+    }
+
     return true;
 
   } catch (error) {
@@ -447,13 +517,14 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
 /**
  * Deletes from correct table
  */
-export const deleteInvoiceFromDb = async (id: string): Promise<boolean> => {
+export const deleteInvoiceFromDb = async (id: string, userId: string): Promise<boolean> => {
   const client = getDbClient();
   if (!client) return false;
 
   try {
     await client.connect();
     
+    // Attempt delete from both tables to be sure
     const resInv = await client.query('DELETE FROM invoices WHERE id = $1', [id]);
     
     if (resInv.rowCount === 0) {
@@ -461,6 +532,10 @@ export const deleteInvoiceFromDb = async (id: string): Promise<boolean> => {
     }
 
     await client.end();
+
+    // AUDIT LOG: DELETE DOCUMENT
+    logAuditAction(userId, 'DELETE_DOCUMENT', { docId: id });
+
     return true;
   } catch (error) {
     console.error("Neon DB Delete Error:", error);

@@ -7,7 +7,7 @@ import {
   Check, Zap, Loader2, CheckCircle2, XCircle, AlertTriangle, Lock, ArrowRight,
   ChevronRight
 } from 'lucide-react';
-import { UserProfile, PaymentIntegration } from '../types';
+import { UserProfile, PaymentIntegration, ProfileType } from '../types';
 import { testAiConnection } from '../services/geminiService';
 
 interface UserProfileSettingsProps {
@@ -145,6 +145,17 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
   const isPagueloConfigured = !!profile.paymentIntegration?.cclw && !!profile.paymentIntegration?.token;
   const isYappyConfigured = !!profile.paymentIntegration?.yappyMerchantId && !!profile.paymentIntegration?.yappySecretKey;
 
+  // New: Email Configuration Handler
+  const handleEmailConfigChange = (value: string) => {
+    setProfile(prev => ({
+        ...prev,
+        emailConfig: {
+            provider: 'RESEND', // Assuming RESEND when custom email is set here for simplicity
+            email: value
+        }
+    }));
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-10 animate-in fade-in pb-12 relative">
       
@@ -211,6 +222,37 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                    placeholder="Ej. Estudio Creativo"
                  />
                </div>
+               
+               {/* ENTITY TYPE SELECTOR */}
+               <div className="space-y-2">
+                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tipo de Entidad Legal</label>
+                 <div className="relative group/input">
+                    <select 
+                      value={profile.fiscalRegime || 'Persona Natural'}
+                      onChange={(e) => {
+                        const regime = e.target.value;
+                        let newType = ProfileType.FREELANCE;
+                        // Determine type based on regime selection
+                        if (regime === 'Sociedad Anónima' || regime === 'Sociedad de Emprendimiento') {
+                           newType = ProfileType.COMPANY;
+                        }
+                        
+                        setProfile(prev => ({
+                           ...prev,
+                           fiscalRegime: regime,
+                           type: newType
+                        }));
+                      }}
+                      className="w-full p-4 bg-slate-50/50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-[#27bea5] focus:bg-white focus:border-transparent outline-none transition-all appearance-none cursor-pointer text-slate-600 font-medium"
+                    >
+                      <option value="Persona Natural">Persona Natural</option>
+                      <option value="Sociedad Anónima">Sociedad Anónima (S.A.)</option>
+                      <option value="Sociedad de Emprendimiento">Sociedad de Emprendimiento</option>
+                    </select>
+                    <ChevronRight className="absolute right-4 top-4 w-5 h-5 text-slate-300 rotate-90 pointer-events-none" />
+                 </div>
+               </div>
+
                <div className="space-y-2">
                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">ID Fiscal (RFC/NIF)</label>
                  <input 
@@ -218,17 +260,6 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                    onChange={(e) => handleInputChange('taxId', e.target.value)}
                    className="w-full p-4 bg-slate-50/50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-[#27bea5] focus:bg-white focus:border-transparent outline-none transition-all font-mono text-slate-600"
                  />
-               </div>
-               <div className="md:col-span-2 space-y-2">
-                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Dirección Fiscal</label>
-                 <div className="relative group/input">
-                    <MapPin className="absolute left-4 top-4 w-5 h-5 text-slate-300 group-focus-within/input:text-[#27bea5] transition-colors" />
-                    <input 
-                      value={profile.address}
-                      onChange={(e) => handleInputChange('address', e.target.value)}
-                      className="w-full pl-12 p-4 bg-slate-50/50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-[#27bea5] focus:bg-white focus:border-transparent outline-none transition-all text-slate-600"
-                    />
-                 </div>
                </div>
                <div className="space-y-2">
                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">País de Operación</label>
@@ -246,6 +277,35 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                     <ChevronRight className="absolute right-4 top-4 w-5 h-5 text-slate-300 rotate-90 pointer-events-none" />
                  </div>
                </div>
+               <div className="md:col-span-2 space-y-2">
+                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Dirección Fiscal</label>
+                 <div className="relative group/input">
+                    <MapPin className="absolute left-4 top-4 w-5 h-5 text-slate-300 group-focus-within/input:text-[#27bea5] transition-colors" />
+                    <input 
+                      value={profile.address}
+                      onChange={(e) => handleInputChange('address', e.target.value)}
+                      className="w-full pl-12 p-4 bg-slate-50/50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-[#27bea5] focus:bg-white focus:border-transparent outline-none transition-all text-slate-600"
+                    />
+                 </div>
+               </div>
+               
+               {/* NEW: Email Configuration */}
+               <div className="md:col-span-2 space-y-2 pt-2 border-t border-slate-50 mt-2">
+                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Email Remitente Verificado (Resend)</label>
+                 <div className="relative group/input">
+                    <Building2 className="absolute left-4 top-4 w-5 h-5 text-slate-300 group-focus-within/input:text-[#27bea5] transition-colors" />
+                    <input 
+                      value={profile.emailConfig?.email || ''}
+                      onChange={(e) => handleEmailConfigChange(e.target.value)}
+                      placeholder="facturacion@tudominio.com"
+                      className="w-full pl-12 p-4 bg-slate-50/50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-[#27bea5] focus:bg-white focus:border-transparent outline-none transition-all text-slate-600"
+                    />
+                 </div>
+                 <p className="text-[10px] text-slate-400 ml-1">
+                    *Debe coincidir con el dominio verificado en Resend para evitar el modo Sandbox.
+                 </p>
+               </div>
+
              </div>
           </div>
 

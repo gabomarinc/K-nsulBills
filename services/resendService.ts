@@ -1,3 +1,4 @@
+
 import { Invoice, UserProfile } from '../types';
 
 // Default sender logic
@@ -82,6 +83,20 @@ export const sendEmail = async (
   } catch (error) {
     console.error('Email Service Error:', error);
     return { success: false, error: 'Error de conexión con el servidor de envíos.' };
+  }
+};
+
+/**
+ * Checks the status of a sent email (delivered, opened, clicked)
+ */
+export const getEmailStatus = async (id: string): Promise<any> => {
+  try {
+    const response = await fetch(`/api/status?id=${id}`);
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (e) {
+    console.error("Error fetching email status", e);
+    return null;
   }
 };
 
