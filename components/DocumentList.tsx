@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { 
   Search, Plus, FileText, CheckCircle2, 
@@ -189,10 +190,10 @@ const DocumentList: React.FC<DocumentListProps> = ({
             {filteredDocs.length > 0 ? filteredDocs.map(doc => (
                <div 
                  key={doc.id}
-                 className="group bg-white rounded-[2rem] border border-slate-100 hover:border-[#27bea5]/30 shadow-sm hover:shadow-xl transition-all duration-300 relative overflow-visible flex flex-col hover:-translate-y-2 h-[280px]"
+                 className="group bg-white rounded-[2rem] border border-slate-100 hover:border-[#27bea5]/30 shadow-sm hover:shadow-xl transition-all duration-300 relative overflow-hidden flex flex-col hover:-translate-y-2 h-[280px]"
                  onMouseLeave={() => setActiveMenuId(null)} // Close menu on leave
                >
-                  <div className="h-2 w-full transition-colors rounded-t-[2rem]" style={{ backgroundColor: getCardColor(doc.status) }}></div>
+                  <div className="h-2 w-full transition-colors" style={{ backgroundColor: getCardColor(doc.status) }}></div>
                   
                   {/* ACTIONS OVERLAY - Positioned Top Right */}
                   <div className="absolute top-4 right-4 flex gap-2 z-20">
@@ -246,7 +247,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
                      </div>
                   </div>
 
-                  <div className="absolute bottom-0 left-0 w-full bg-white/95 backdrop-blur-md border-t border-slate-100 p-4 transform translate-y-full group-hover:translate-y-0 transition-transform duration-300 z-20 flex gap-2 rounded-b-[2rem]">
+                  <div className="absolute bottom-0 left-0 w-full bg-white/95 backdrop-blur-md border-t border-slate-100 p-4 transform translate-y-full group-hover:translate-y-0 transition-transform duration-300 z-20 flex gap-2">
                      {/* Primary Actions based on Status */}
                      {doc.type === 'Quote' && doc.status === 'Aceptada' && onConvertQuote && (
                         <button 
