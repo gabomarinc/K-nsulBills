@@ -4,10 +4,10 @@ import {
   Mic, Send, Sparkles, Check, ArrowLeft, Edit2, Loader2, 
   FileText, FileBadge, Calendar, User, Search, Plus, Trash2, 
   ShoppingBag, Calculator, ChevronDown, Building2, Eye,
-  Coins
+  Coins, Lock, AlertTriangle, Settings
 } from 'lucide-react';
 import { Invoice, ParsedInvoiceData, UserProfile, InvoiceItem } from '../types';
-import { parseInvoiceRequest } from '../services/geminiService';
+import { parseInvoiceRequest, AI_ERROR_BLOCKED } from '../services/geminiService';
 
 interface InvoiceWizardProps {
   currentUser: UserProfile;
@@ -31,6 +31,7 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
   const [docType, setDocType] = useState<'Invoice' | 'Quote'>('Invoice');
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
   
   // Smart Editor State
   const [clientSearch, setClientSearch] = useState('');
@@ -57,6 +58,9 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
   });
 
   const [generatedId, setGeneratedId] = useState('');
+
+  // Check AI Access
+  const hasAiAccess = !!currentUser.apiKeys?.gemini || !!currentUser.apiKeys?.openai;
 
   // --- LOGIC: Math & Fiscal ---
   const calculateTotals = () => {
@@ -99,6 +103,7 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
   const handleAiSubmit = async () => {
     if (!input.trim()) return;
     setIsLoading(true);
+    setAiError(null);
     try {
       const contextInput = `${docType === 'Quote' ? 'Cotización: ' : 'Factura: '} ${input}`;
       // Pass full apiKeys object for dual AI support
@@ -129,8 +134,13 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
         // Move to editor
         setStep('SMART_EDITOR');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("AI Parsing Error", error);
+      if (error.message === AI_ERROR_BLOCKED) {
+          setAiError("Función bloqueada por falta de API Key.");
+      } else {
+          setAiError("No pude entender la solicitud. Intenta de nuevo.");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -289,27 +299,57 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
             <p className="text-slate-500 mt-2">O salta este paso para hacerlo manualmente.</p>
           </div>
 
-          <div className="bg-white p-6 rounded-3xl shadow-xl border border-slate-100 max-w-2xl mx-auto w-full relative">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={docType === 'Quote' ? "Ej: Cotiza 3 laptops para TechSolutions..." : "Ej: Factura a Juan Pérez por consultoría..."}
-              className="w-full h-40 text-xl p-4 placeholder-slate-300 border-none focus:ring-0 resize-none rounded-xl"
-              autoFocus
-            />
-            <div className="flex justify-between items-center mt-4 pt-4 border-t border-slate-50">
-              <button onClick={skipAi} className="text-slate-500 font-medium hover:text-[#27bea5] px-4">
-                Saltar a Manual
-              </button>
-              <button 
-                onClick={handleAiSubmit}
-                disabled={!input.trim() || isLoading}
-                className="flex items-center gap-2 bg-[#27bea5] text-white px-6 py-3 rounded-xl font-bold hover:bg-[#22a890] disabled:opacity-50 transition-all"
-              >
-                {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-                {isLoading ? 'Analizando...' : 'Generar Borrador'}
-              </button>
-            </div>
+          <div className="bg-white p-6 rounded-3xl shadow-xl border border-slate-100 max-w-2xl mx-auto w-full relative overflow-hidden">
+            {hasAiAccess ? (
+                <>
+                    <textarea
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder={docType === 'Quote' ? "Ej: Cotiza 3 laptops para TechSolutions..." : "Ej: Factura a Juan Pérez por consultoría..."}
+                    className="w-full h-40 text-xl p-4 placeholder-slate-300 border-none focus:ring-0 resize-none rounded-xl"
+                    autoFocus
+                    />
+                    {aiError && (
+                        <div className="mx-4 mb-2 p-3 bg-red-50 text-red-600 rounded-xl text-sm flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4" /> {aiError}
+                        </div>
+                    )}
+                    <div className="flex justify-between items-center mt-4 pt-4 border-t border-slate-50">
+                    <button onClick={skipAi} className="text-slate-500 font-medium hover:text-[#27bea5] px-4">
+                        Saltar a Manual
+                    </button>
+                    <button 
+                        onClick={handleAiSubmit}
+                        disabled={!input.trim() || isLoading}
+                        className="flex items-center gap-2 bg-[#27bea5] text-white px-6 py-3 rounded-xl font-bold hover:bg-[#22a890] disabled:opacity-50 transition-all"
+                    >
+                        {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+                        {isLoading ? 'Analizando...' : 'Generar Borrador'}
+                    </button>
+                    </div>
+                </>
+            ) : (
+                <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+                    <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
+                        <Lock className="w-8 h-8 text-slate-400" />
+                    </div>
+                    <h3 className="text-xl font-bold text-[#1c2938] mb-2">Función de IA Bloqueada</h3>
+                    <p className="text-slate-500 mb-6 max-w-md">
+                        Para reducir costos y garantizar tu privacidad, debes configurar tu propia API Key (Gemini o OpenAI) en los Ajustes.
+                    </p>
+                    <div className="flex gap-4">
+                        <button onClick={skipAi} className="text-slate-500 font-medium hover:text-[#1c2938] px-4">
+                            Usar Modo Manual
+                        </button>
+                        <button 
+                            onClick={onCancel} // Ideally redirect to settings, but for now cancel flow
+                            className="bg-[#1c2938] text-white px-6 py-3 rounded-xl font-bold hover:bg-[#27bea5] transition-all flex items-center gap-2"
+                        >
+                            <Settings className="w-4 h-4" /> Configurar Ahora
+                        </button>
+                    </div>
+                </div>
+            )}
           </div>
         </div>
       )}

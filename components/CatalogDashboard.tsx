@@ -4,10 +4,10 @@ import {
   Plus, Search, Edit2, Trash2, Tag, 
   Sparkles, Loader2, ArrowRight, TrendingUp, X,
   ShoppingBag, MoreVertical, Wand2, Info,
-  AlignLeft, List, CalendarClock, Package, Check, Calculator, AlertCircle
+  AlignLeft, List, CalendarClock, Package, Check, Calculator, AlertCircle, Lock
 } from 'lucide-react';
 import { CatalogItem, PriceAnalysisResult } from '../types';
-import { analyzePriceMarket, enhanceProductDescription } from '../services/geminiService';
+import { analyzePriceMarket, enhanceProductDescription, AI_ERROR_BLOCKED } from '../services/geminiService';
 
 interface CatalogDashboardProps {
   items: CatalogItem[];
@@ -22,6 +22,9 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<CatalogItem | null>(null);
   
+  // Check AI Access
+  const hasAiAccess = !!apiKey?.gemini || !!apiKey?.openai;
+
   // Form State
   const [formData, setFormData] = useState<Partial<CatalogItem>>({ name: '', price: 0, description: '', isRecurring: false });
   const [descFormat, setDescFormat] = useState<'paragraph' | 'bullets'>('paragraph');
@@ -81,17 +84,27 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
 
   const handleAnalyzePrice = async () => {
     if (!formData.name) return;
+    if (!hasAiAccess) { alert("Configura tu API Key en Ajustes para usar esta función."); return; }
+    
     setIsAnalyzing(true);
     setAnalysis(null);
     
-    // Pass full apiKey object
-    const result = await analyzePriceMarket(formData.name, userCountry || 'Global', apiKey);
-    setAnalysis(result);
+    try {
+        // Pass full apiKey object
+        const result = await analyzePriceMarket(formData.name, userCountry || 'Global', apiKey);
+        setAnalysis(result);
+    } catch (e: any) {
+        if (e.message === AI_ERROR_BLOCKED) {
+            alert("API Key requerida.");
+        }
+    }
     setIsAnalyzing(false);
   };
 
   const handleEnhanceDescription = async () => {
     if (!formData.name || !formData.description) return;
+    if (!hasAiAccess) { alert("Configura tu API Key en Ajustes para usar esta función."); return; }
+
     setIsEnhancing(true);
     // Pass full apiKey object
     const improvedText = await enhanceProductDescription(formData.description, formData.name, descFormat, apiKey);
@@ -267,10 +280,14 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
                          <button 
                            onClick={handleAnalyzePrice}
                            disabled={!formData.name || isAnalyzing}
-                           className="bg-[#1c2938] text-white px-5 py-3 rounded-2xl hover:bg-slate-800 disabled:opacity-50 transition-all flex flex-col items-center justify-center gap-1 group shadow-lg min-w-[120px]"
-                           title="Consultar al mercado"
+                           className={`px-5 py-3 rounded-2xl transition-all flex flex-col items-center justify-center gap-1 group shadow-lg min-w-[120px] ${
+                               hasAiAccess 
+                               ? 'bg-[#1c2938] text-white hover:bg-slate-800 disabled:opacity-50' 
+                               : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                           }`}
+                           title={hasAiAccess ? "Consultar al mercado" : "Función Bloqueada (Falta API Key)"}
                          >
-                           {isAnalyzing ? <Loader2 className="w-5 h-5 animate-spin" /> : <TrendingUp className="w-5 h-5 text-[#27bea5]" />}
+                           {isAnalyzing ? <Loader2 className="w-5 h-5 animate-spin" /> : (hasAiAccess ? <TrendingUp className="w-5 h-5 text-[#27bea5]" /> : <Lock className="w-4 h-4" />)}
                            <span className="text-xs font-bold opacity-80">Analizar Precio</span>
                          </button>
                        </div>
@@ -386,10 +403,15 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
                         <button 
                           onClick={handleEnhanceDescription}
                           disabled={!formData.description || !formData.name || isEnhancing}
-                          className="bg-[#27bea5] text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-[#22a890] flex items-center gap-2 disabled:opacity-50 shadow-md shadow-teal-100 transition-all hover:-translate-y-0.5 active:translate-y-0"
+                          className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 disabled:opacity-50 shadow-md shadow-teal-100 transition-all hover:-translate-y-0.5 active:translate-y-0 ${
+                              hasAiAccess 
+                              ? 'bg-[#27bea5] text-white hover:bg-[#22a890]'
+                              : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                          }`}
+                          title={hasAiAccess ? "Mejorar con IA" : "Función Bloqueada (Falta API Key)"}
                         >
-                           {isEnhancing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
-                           Mejorar con IA
+                           {isEnhancing ? <Loader2 className="w-3 h-3 animate-spin" /> : (hasAiAccess ? <Wand2 className="w-3 h-3" /> : <Lock className="w-3 h-3" />)}
+                           Mejorar
                         </button>
                       </div>
                     </div>

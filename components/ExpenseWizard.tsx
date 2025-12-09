@@ -3,10 +3,10 @@ import React, { useState, useRef } from 'react';
 import { 
   Camera, Mic, Image as ImageIcon, ArrowRight, Loader2, 
   Check, X, DollarSign, Calendar, Tag, Building2, UploadCloud,
-  ArrowLeft, Receipt, ScanLine, StopCircle, FileText
+  ArrowLeft, Receipt, ScanLine, StopCircle, FileText, Lock
 } from 'lucide-react';
 import { Invoice, ParsedInvoiceData, UserProfile } from '../types';
-import { parseInvoiceRequest, parseExpenseImage } from '../services/geminiService';
+import { parseInvoiceRequest, parseExpenseImage, AI_ERROR_BLOCKED } from '../services/geminiService';
 
 interface ExpenseWizardProps {
   currentUser: UserProfile;
@@ -21,6 +21,9 @@ const ExpenseWizard: React.FC<ExpenseWizardProps> = ({ currentUser, onSave, onCa
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState('');
   
+  // Check AI Access
+  const hasAiAccess = !!currentUser.apiKeys?.gemini || !!currentUser.apiKeys?.openai;
+
   // Voice State
   const [isListening, setIsListening] = useState(false);
   
@@ -41,9 +44,9 @@ const ExpenseWizard: React.FC<ExpenseWizardProps> = ({ currentUser, onSave, onCa
 
   // --- VOICE DICTATION ---
   const toggleListening = () => {
+    if (!hasAiAccess) { alert("Configura tu API Key para usar funciones de IA."); return; }
+
     if (isListening) {
-      // Stop logic is handled by the recognition.onend mostly, but we can force stop if we had the instance ref
-      // For simplicity in React functional component without external libs:
       setIsListening(false);
       return;
     }
@@ -85,6 +88,8 @@ const ExpenseWizard: React.FC<ExpenseWizardProps> = ({ currentUser, onSave, onCa
 
   const handleTextSubmit = async () => {
     if (!textInput.trim()) return;
+    if (!hasAiAccess) { alert("Configura tu API Key."); return; }
+
     setIsLoading(true);
     setLoadingMsg('Leyendo tu mente...');
     try {
@@ -100,8 +105,11 @@ const ExpenseWizard: React.FC<ExpenseWizardProps> = ({ currentUser, onSave, onCa
          });
          setStep('REVIEW');
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      if (e.message === AI_ERROR_BLOCKED) {
+          alert("Función Bloqueada: Falta API Key.");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -118,42 +126,35 @@ const ExpenseWizard: React.FC<ExpenseWizardProps> = ({ currentUser, onSave, onCa
         const base64String = reader.result as string;
         setUploadedImage(base64String);
         
-        // Process with AI
-        setIsLoading(true);
-        setLoadingMsg(isPdf ? 'Analizando PDF...' : 'Escaneando recibo...');
-        
         // Strip header for API if image
         const rawBase64 = base64String.split(',')[1];
         const mimeType = file.type;
 
-        try {
-           // Only send to Vision AI if it is an image (Gemini Flash supports images best currently)
-           // For PDF, we might skip AI parsing or use a different method if available.
-           // Assuming Gemini handles images well:
-           if (!isPdf) {
-             const result = await parseExpenseImage(rawBase64, mimeType, currentUser.apiKeys);
-             if (result) {
-                setExpenseData({
-                  clientName: result.clientName || 'Proveedor Desconocido',
-                  amount: result.amount || 0,
-                  currency: result.currency || 'USD',
-                  concept: result.concept || 'Gasto Varios',
-                  date: result.date || new Date().toISOString().split('T')[0]
-                });
-             }
-           } else {
-             // Basic fallback for PDF if Vision doesn't support it directly in this impl
-             setExpenseData({
-                ...expenseData,
-                concept: file.name
-             });
-           }
-           setStep('REVIEW');
-        } catch (err) {
-           console.error("Vision Error", err);
-           setStep('REVIEW');
-        } finally {
-           setIsLoading(false);
+        // If AI is available, try to parse it
+        if (hasAiAccess && !isPdf) {
+            setIsLoading(true);
+            setLoadingMsg('Escaneando recibo con IA...');
+            try {
+                const result = await parseExpenseImage(rawBase64, mimeType, currentUser.apiKeys);
+                if (result) {
+                    setExpenseData({
+                        clientName: result.clientName || 'Proveedor Desconocido',
+                        amount: result.amount || 0,
+                        currency: result.currency || 'USD',
+                        concept: result.concept || 'Gasto Varios',
+                        date: result.date || new Date().toISOString().split('T')[0]
+                    });
+                }
+            } catch (err) {
+                console.error("Vision Error", err);
+            } finally {
+                setIsLoading(false);
+                setStep('REVIEW'); // Go to review anyway
+            }
+        } else {
+            // Manual flow or PDF fallback
+            setExpenseData({ ...expenseData, concept: file.name });
+            setStep('REVIEW');
         }
       };
       reader.readAsDataURL(file);
@@ -246,26 +247,27 @@ const ExpenseWizard: React.FC<ExpenseWizardProps> = ({ currentUser, onSave, onCa
                   <textarea 
                     value={textInput}
                     onChange={(e) => setTextInput(e.target.value)}
-                    placeholder={isListening ? "Te escucho..." : "Ej: Pagué 45 dólares de Uber para ir a la reunión con Cliente X..."}
+                    placeholder={hasAiAccess ? (isListening ? "Te escucho..." : "Ej: Pagué 45 dólares de Uber...") : "⚠️ IA Desactivada. Escribe para registrar manualmente."}
                     className="w-full h-32 p-6 text-lg bg-transparent border-none outline-none resize-none placeholder:text-slate-300 text-[#1c2938]"
                     autoFocus
                   />
                   <div className="flex justify-between items-center px-4 pb-4">
                      <button 
                        onClick={toggleListening}
-                       className={`p-3 rounded-xl transition-all flex items-center gap-2 ${isListening ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-50 text-slate-400 hover:bg-rose-50 hover:text-rose-500'}`}
+                       className={`p-3 rounded-xl transition-all flex items-center gap-2 ${isListening ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-50 text-slate-400 hover:bg-rose-50 hover:text-rose-500'} ${!hasAiAccess ? 'opacity-50 cursor-not-allowed' : ''}`}
                        title="Dictar"
+                       disabled={!hasAiAccess}
                      >
-                        {isListening ? <StopCircle className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                        {isListening ? <StopCircle className="w-5 h-5" /> : (hasAiAccess ? <Mic className="w-5 h-5" /> : <Lock className="w-4 h-4" />)}
                         {isListening && <span className="text-xs font-bold">Escuchando...</span>}
                      </button>
                      <button 
-                       onClick={handleTextSubmit}
+                       onClick={() => hasAiAccess ? handleTextSubmit() : setStep('REVIEW')}
                        disabled={!textInput || isLoading}
                        className="bg-[#1c2938] text-white px-6 py-3 rounded-xl font-bold hover:bg-rose-500 transition-all disabled:opacity-50 flex items-center gap-2"
                      >
                        {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
-                       {isLoading ? 'Procesando...' : 'Analizar'}
+                       {isLoading ? 'Procesando...' : (hasAiAccess ? 'Analizar' : 'Continuar')}
                      </button>
                   </div>
                </div>
@@ -298,7 +300,9 @@ const ExpenseWizard: React.FC<ExpenseWizardProps> = ({ currentUser, onSave, onCa
                           <Receipt className="w-8 h-8" />
                        </div>
                        <h3 className="text-xl font-bold text-[#1c2938] group-hover:text-rose-600 transition-colors">Toca para escanear</h3>
-                       <p className="text-slate-400 mt-2 text-sm">Soporta JPG, PNG o PDF</p>
+                       <p className="text-slate-400 mt-2 text-sm">
+                           {hasAiAccess ? 'La IA leerá los datos por ti' : 'Adjuntar imagen (Lectura IA desactivada)'}
+                       </p>
                     </>
                   )}
                </div>

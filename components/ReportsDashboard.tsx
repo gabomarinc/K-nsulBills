@@ -9,10 +9,10 @@ import {
   BrainCircuit, Activity, Target, Lightbulb,
   X, TrendingDown, Wallet, FileText,
   LayoutDashboard, FileBarChart, Users, Funnel, Calendar, Download, Share2, Mail, Smartphone, CheckCircle2,
-  Clock, AlertTriangle, Percent, Trophy, Grid, ArrowRight
+  Clock, AlertTriangle, Percent, Trophy, Grid, ArrowRight, Lock, Settings
 } from 'lucide-react';
 import { Invoice, FinancialAnalysisResult, DeepDiveReport, UserProfile } from '../types';
-import { generateFinancialAnalysis, generateDeepDiveReport } from '../services/geminiService';
+import { generateFinancialAnalysis, generateDeepDiveReport, AI_ERROR_BLOCKED } from '../services/geminiService';
 import { sendEmail } from '../services/resendService';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -34,6 +34,10 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
   // AI State
   const [analysis, setAnalysis] = useState<FinancialAnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  // Check AI Access
+  const hasAiAccess = !!apiKey?.gemini || !!apiKey?.openai;
 
   // Export State
   const [isExporting, setIsExporting] = useState<string | null>(null); // 'pdf' | 'email' | null
@@ -69,87 +73,47 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
     }).format(num);
   };
 
-  // --- GENERATE PDF FROM SPECIFIC REF (Updated for Full Scroll Capture) ---
+  // --- GENERATE PDF LOGIC (Omitted for brevity, assumed same as previous) ---
+  // ... (Keep existing generatePdfBlob logic) ...
   const generatePdfBlob = async (elementRef: React.RefObject<HTMLDivElement>): Promise<Blob | null> => {
     if (!elementRef.current) return null;
-
     try {
       const element = elementRef.current;
-      
-      // Calculate total dimensions including scroll
       const totalHeight = element.scrollHeight;
-      
-      // 1. CLONE STRATEGY: Create a clone to render full height without scrolling issues
       const clone = element.cloneNode(true) as HTMLElement;
-
-      // 2. Style the clone to sit off-screen but fully expanded
       clone.style.width = `${element.clientWidth}px`; 
-      clone.style.height = `${totalHeight}px`; // Force full height
-      clone.style.maxHeight = 'none'; // Remove constraints
-      clone.style.overflow = 'hidden'; // Hide scrollbars
-      
-      // Position fixed off-screen to avoid viewport clipping issues
+      clone.style.height = `${totalHeight}px`; 
+      clone.style.maxHeight = 'none'; 
+      clone.style.overflow = 'hidden'; 
       clone.style.position = 'fixed';
       clone.style.top = '0';
       clone.style.left = '-10000px'; 
       clone.style.zIndex = '-9999';
-      clone.style.backgroundColor = '#FFFFFF'; // Ensure background is white
-      clone.style.color = '#1c2938'; // Ensure text color
-
+      clone.style.backgroundColor = '#FFFFFF'; 
+      clone.style.color = '#1c2938'; 
       document.body.appendChild(clone);
-
-      // 3. Capture the clone
-      const canvas = await html2canvas(clone, {
-        scale: 2, // High resolution
-        useCORS: true,
-        backgroundColor: '#FFFFFF',
-        logging: false,
-        width: clone.clientWidth,
-        height: totalHeight,
-        windowWidth: clone.clientWidth,
-        windowHeight: totalHeight,
-        x: 0,
-        y: 0,
-        ignoreElements: (element) => element.id === 'no-print'
-      });
-
-      // 4. Cleanup Clone
+      const canvas = await html2canvas(clone, { scale: 2, useCORS: true, backgroundColor: '#FFFFFF', logging: false, width: clone.clientWidth, height: totalHeight, windowWidth: clone.clientWidth, windowHeight: totalHeight, x: 0, y: 0, ignoreElements: (element) => element.id === 'no-print' });
       document.body.removeChild(clone);
-
-      // 5. Create PDF (Dynamic Height to fit content exactly)
       const imgData = canvas.toDataURL('image/png');
-      
-      // Calculate dimensions in mm (approx 3.78 px per mm at 96 DPI)
-      const a4WidthMm = 210; // Standard A4 Width
+      const a4WidthMm = 210; 
       const imgHeightPx = canvas.height;
       const imgWidthPx = canvas.width;
-      
-      // Scale height to fit the A4 width ratio
       const pdfWidth = a4WidthMm;
       const pdfHeight = (imgHeightPx * a4WidthMm) / imgWidthPx;
-
-      // Use custom page size to fit the entire image on one long page (Receipt style)
       const pdf = new jsPDF('p', 'mm', [pdfWidth, pdfHeight]);
-      
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      
       return pdf.output('blob');
-    } catch (error) {
-      console.error("PDF Generation Error", error);
-      return null;
-    }
+    } catch (error) { console.error("PDF Generation Error", error); return null; }
   };
 
   const handleExportPdf = async (ref: React.RefObject<HTMLDivElement>, title: string) => {
     setIsExporting('pdf');
-    // Ensure we are exporting the current view, if overview is null, try to export active
     let targetRef = ref;
     if (!targetRef.current) {
         if (activeTab === 'DOCUMENTS') targetRef = documentsRef;
         if (activeTab === 'CLIENTS') targetRef = clientsRef;
         if (activeTab === 'OVERVIEW') targetRef = overviewRef;
     }
-
     const blob = await generatePdfBlob(targetRef);
     if (blob) {
       const url = window.URL.createObjectURL(blob);
@@ -176,45 +140,22 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
       alert("Configura tu API Key de Resend y asegura tener un email en tu perfil.");
       return;
     }
-
     setEmailStatus('SENDING');
-    
     let targetRef = ref;
     if (!targetRef.current) {
         if (activeTab === 'DOCUMENTS') targetRef = documentsRef;
         if (activeTab === 'CLIENTS') targetRef = clientsRef;
         if (activeTab === 'OVERVIEW') targetRef = overviewRef;
     }
-
     const blob = await generatePdfBlob(targetRef);
-    if (!blob) {
-      setEmailStatus('ERROR');
-      return;
-    }
-
-    // Convert Blob to Base64
+    if (!blob) { setEmailStatus('ERROR'); return; }
     const reader = new FileReader();
     reader.readAsDataURL(blob);
     reader.onloadend = async () => {
       const base64data = reader.result as string;
-      const pureBase64 = base64data.split(',')[1]; // Remove header
-
-      const result = await sendEmail(
-        currentUser.apiKeys!.resend!,
-        currentUser.email!,
-        `Reporte: ${title}`,
-        `<p>Adjunto encontrarás el reporte generado desde Kônsul.</p>`,
-        currentUser.name,
-        [{ filename: `${title}.pdf`, content: pureBase64 }]
-      );
-
-      if (result.success) {
-        setEmailStatus('SUCCESS');
-        setTimeout(() => setEmailStatus('IDLE'), 3000);
-      } else {
-        setEmailStatus('ERROR');
-        setTimeout(() => setEmailStatus('IDLE'), 3000);
-      }
+      const pureBase64 = base64data.split(',')[1]; 
+      const result = await sendEmail(currentUser.apiKeys!.resend!, currentUser.email!, `Reporte: ${title}`, `<p>Adjunto encontrarás el reporte generado desde Kônsul.</p>`, currentUser.name, [{ filename: `${title}.pdf`, content: pureBase64 }]);
+      if (result.success) { setEmailStatus('SUCCESS'); setTimeout(() => setEmailStatus('IDLE'), 3000); } else { setEmailStatus('ERROR'); setTimeout(() => setEmailStatus('IDLE'), 3000); }
     };
   };
 
@@ -222,7 +163,7 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
   const filteredInvoices = useMemo(() => {
     const now = new Date();
     let startDate = new Date();
-    let endDate = new Date(); // Default to now for relative ranges
+    let endDate = new Date(); 
 
     if (timeRange === '30D') {
       startDate.setDate(now.getDate() - 30);
@@ -231,7 +172,6 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
     } else if (timeRange === '12M') {
       startDate.setDate(now.getDate() - 365);
     } else if (timeRange === 'CUSTOM') {
-      // Create dates from input strings (assuming local time to avoid UTC shifts)
       startDate = new Date(customStart + 'T00:00:00');
       const end = new Date(customEnd + 'T23:59:59');
       endDate = end;
@@ -248,128 +188,48 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
 
   // --- 2. DATA AGGREGATION & REAL KPIs ---
   const data = useMemo(() => {
-    // A. TIMELINE & CASH FLOW
+    // ... (Keeping same aggregation logic) ...
     const timelineMap = new Map<string, { ingresos: number, gastos: number, date: Date }>();
-    let totalRevenue = 0;
-    let totalExpenses = 0;
-    let paymentDaysSum = 0;
-    let paidInvoicesCount = 0;
-
+    let totalRevenue = 0; let totalExpenses = 0; let paymentDaysSum = 0; let paidInvoicesCount = 0;
     filteredInvoices.forEach(inv => {
       const d = new Date(inv.date);
       const key = d.toLocaleDateString('es-ES', { month: 'short', year: '2-digit' });
-      
       if (!timelineMap.has(key)) timelineMap.set(key, { ingresos: 0, gastos: 0, date: d });
       const entry = timelineMap.get(key)!;
-
       if (inv.type === 'Invoice' && inv.status === 'Aceptada') {
-        entry.ingresos += inv.total;
-        totalRevenue += inv.total;
-        
-        // Calculate Payment Velocity (DSO)
+        entry.ingresos += inv.total; totalRevenue += inv.total;
         const createdEvent = inv.timeline?.find(e => e.type === 'CREATED');
         const paidEvent = inv.timeline?.find(e => e.type === 'PAID'); 
-        
-        if (createdEvent && paidEvent) {
-           const days = (new Date(paidEvent.timestamp).getTime() - new Date(createdEvent.timestamp).getTime()) / (1000 * 3600 * 24);
-           paymentDaysSum += days;
-           paidInvoicesCount++;
-        }
-      } else if (inv.type === 'Expense') {
-        entry.gastos += inv.total;
-        totalExpenses += inv.total;
-      }
+        if (createdEvent && paidEvent) { const days = (new Date(paidEvent.timestamp).getTime() - new Date(createdEvent.timestamp).getTime()) / (1000 * 3600 * 24); paymentDaysSum += days; paidInvoicesCount++; }
+      } else if (inv.type === 'Expense') { entry.gastos += inv.total; totalExpenses += inv.total; }
     });
-
-    const monthlyData = Array.from(timelineMap.entries())
-      .map(([name, val]) => ({ name, ingresos: val.ingresos, gastos: val.gastos, _date: val.date }))
-      .sort((a, b) => a._date.getTime() - b._date.getTime());
-
+    const monthlyData = Array.from(timelineMap.entries()).map(([name, val]) => ({ name, ingresos: val.ingresos, gastos: val.gastos, _date: val.date })).sort((a, b) => a._date.getTime() - b._date.getTime());
     const avgPaymentDays = paidInvoicesCount > 0 ? Math.round(paymentDaysSum / paidInvoicesCount) : 0;
     const netMargin = totalRevenue - totalExpenses;
     const marginPercent = totalRevenue > 0 ? (netMargin / totalRevenue) * 100 : 0;
-
-    // B. OPERATIONAL DOCUMENTS (Funnel & Velocity)
     const quoteDocs = filteredInvoices.filter(i => i.type === 'Quote');
     const totalQuotes = quoteDocs.length;
     const wonQuotes = quoteDocs.filter(i => i.status === 'Aceptada').length;
     const conversionRate = totalQuotes > 0 ? (wonQuotes / totalQuotes) * 100 : 0;
-
-    const funnelData = [
-      { name: 'Borrador', value: filteredInvoices.filter(i => i.status === 'Borrador').length, fill: '#cbd5e1' },
-      { name: 'Enviadas', value: filteredInvoices.filter(i => i.status === 'Enviada').length, fill: '#3b82f6' },
-      { name: 'Vistas', value: filteredInvoices.filter(i => i.timeline?.some(e => e.type === 'OPENED')).length, fill: '#a855f7' },
-      { name: 'Cobradas', value: filteredInvoices.filter(i => i.status === 'Aceptada').length, fill: '#27bea5' },
-    ];
-
-    // Scatter: Effort (Items count) vs Reward (Total Amount)
-    const scatterData = filteredInvoices
-      .filter(i => i.type === 'Invoice' || i.type === 'Quote')
-      .map(i => ({
-        id: i.id,
-        x: i.items.length, 
-        y: i.total,
-        z: 1, 
-        status: i.status
-      }));
-
-    // C. CLIENTS (LTV & Churn)
+    const funnelData = [ { name: 'Borrador', value: filteredInvoices.filter(i => i.status === 'Borrador').length, fill: '#cbd5e1' }, { name: 'Enviadas', value: filteredInvoices.filter(i => i.status === 'Enviada').length, fill: '#3b82f6' }, { name: 'Vistas', value: filteredInvoices.filter(i => i.timeline?.some(e => e.type === 'OPENED')).length, fill: '#a855f7' }, { name: 'Cobradas', value: filteredInvoices.filter(i => i.status === 'Aceptada').length, fill: '#27bea5' }, ];
+    const scatterData = filteredInvoices.filter(i => i.type === 'Invoice' || i.type === 'Quote').map(i => ({ id: i.id, x: i.items.length, y: i.total, z: 1, status: i.status }));
     const clientMap = new Map<string, { revenue: number, count: number, lastDate: Date }>();
     const now = new Date();
-    
-    filteredInvoices.forEach(inv => {
-      if (!clientMap.has(inv.clientName)) clientMap.set(inv.clientName, { revenue: 0, count: 0, lastDate: new Date(0) });
-      const c = clientMap.get(inv.clientName)!;
-      
-      const invDate = new Date(inv.date);
-      if (invDate > c.lastDate) c.lastDate = invDate;
-
-      if (inv.type === 'Invoice') {
-        c.count++; // Activity count
-        if (inv.status === 'Aceptada') {
-          c.revenue += inv.total;
-        }
-      }
-    });
-
-    const ltvData = Array.from(clientMap.entries())
-      .map(([name, val]) => ({ 
-        name, 
-        revenue: val.revenue, 
-        count: val.count,
-        daysSinceLast: Math.floor((now.getTime() - val.lastDate.getTime()) / (1000 * 3600 * 24))
-      }))
-      .sort((a, b) => b.revenue - a.revenue);
-
-    const churnRiskCount = ltvData.filter(c => c.daysSinceLast > 90).length; // > 90 days inactive
+    filteredInvoices.forEach(inv => { if (!clientMap.has(inv.clientName)) clientMap.set(inv.clientName, { revenue: 0, count: 0, lastDate: new Date(0) }); const c = clientMap.get(inv.clientName)!; const invDate = new Date(inv.date); if (invDate > c.lastDate) c.lastDate = invDate; if (inv.type === 'Invoice') { c.count++; if (inv.status === 'Aceptada') { c.revenue += inv.total; } } });
+    const ltvData = Array.from(clientMap.entries()).map(([name, val]) => ({ name, revenue: val.revenue, count: val.count, daysSinceLast: Math.floor((now.getTime() - val.lastDate.getTime()) / (1000 * 3600 * 24)) })).sort((a, b) => b.revenue - a.revenue);
+    const churnRiskCount = ltvData.filter(c => c.daysSinceLast > 90).length; 
     const activeClientsCount = ltvData.filter(c => c.daysSinceLast <= 90).length;
-
-    const clientActivityData = [
-      { name: 'Activos (<90d)', value: activeClientsCount, color: '#27bea5' },
-      { name: 'Riesgo (>90d)', value: churnRiskCount, color: '#ef4444' },
-    ];
-
-    return { 
-      monthlyData, funnelData, scatterData, ltvData, clientActivityData,
-      kpis: {
-        totalRevenue,
-        totalExpenses,
-        netMargin,
-        marginPercent,
-        avgPaymentDays,
-        conversionRate,
-        churnRiskCount,
-        activeClientsCount
-      }
-    };
+    const clientActivityData = [ { name: 'Activos (<90d)', value: activeClientsCount, color: '#27bea5' }, { name: 'Riesgo (>90d)', value: churnRiskCount, color: '#ef4444' }, ];
+    return { monthlyData, funnelData, scatterData, ltvData, clientActivityData, kpis: { totalRevenue, totalExpenses, netMargin, marginPercent, avgPaymentDays, conversionRate, churnRiskCount, activeClientsCount } };
   }, [filteredInvoices]);
 
 
   // --- HANDLERS ---
   const handleAnalyze = async () => {
+    if (!hasAiAccess) return;
     setIsAnalyzing(true);
+    setAiError(null);
     const { kpis } = data;
-    // Provide explicit computed data to the AI to ensure "Real Value" in text
     const summary = `
       Reporte Financiero Real (${timeRange}):
       - Ingresos Cobrados: ${currencySymbol}${kpis.totalRevenue.toFixed(2)}
@@ -379,18 +239,34 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
       - Tasa Conversión Cotizaciones: ${kpis.conversionRate.toFixed(1)}%
       - Clientes en Riesgo (Inactivos >90d): ${kpis.churnRiskCount}
     `;
-    const result = await generateFinancialAnalysis(summary, apiKey);
-    setAnalysis(result);
+    try {
+        const result = await generateFinancialAnalysis(summary, apiKey);
+        setAnalysis(result);
+    } catch (e: any) {
+        if (e.message === AI_ERROR_BLOCKED) {
+            setAiError("Función bloqueada: Configura tus API Keys.");
+        } else {
+            setAiError("Error al generar análisis.");
+        }
+    }
     setIsAnalyzing(false);
   };
 
   const handleDeepDive = async (chartId: string, chartTitle: string, chartData: any) => {
+    if (!hasAiAccess) {
+        alert("Configura tu API Key en Ajustes para usar análisis detallado.");
+        return;
+    }
     setIsDeepDiving(chartId);
     setDeepDiveReport(null);
     setDeepDiveVisual({ type: chartId, data: chartData }); // Set visual context
     const context = `Periodo: ${timeRange}. Datos Reales: ${JSON.stringify(chartData)}. Contexto KPI: Margen ${data.kpis.marginPercent}%, Conversión ${data.kpis.conversionRate}%`;
-    const report = await generateDeepDiveReport(chartTitle, context, apiKey);
-    setDeepDiveReport(report);
+    try {
+        const report = await generateDeepDiveReport(chartTitle, context, apiKey);
+        setDeepDiveReport(report);
+    } catch (e) {
+        console.error("Deep Dive Error", e);
+    }
     setIsDeepDiving(null);
   };
 
@@ -438,7 +314,7 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
                     </h3>
                   </div>
                   <button id="no-print" onClick={() => handleDeepDive('cashflow', 'Flujo de Caja', data.monthlyData)} disabled={isDeepDiving === 'cashflow'} className="p-3 rounded-xl bg-slate-50 hover:text-[#27bea5] transition-all">
-                    {isDeepDiving === 'cashflow' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
+                    {isDeepDiving === 'cashflow' ? <Loader2 className="w-5 h-5 animate-spin" /> : (hasAiAccess ? <FileText className="w-5 h-5" /> : <Lock className="w-4 h-4 text-slate-300" />)}
                   </button>
               </div>
               <div className="h-72 w-full">
@@ -486,7 +362,7 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
                     </h3>
                   </div>
                   <button id="no-print" onClick={() => handleDeepDive('trends', 'Tendencia de Ingresos', data.monthlyData)} disabled={isDeepDiving === 'trends'} className="p-3 rounded-xl bg-slate-50 hover:text-blue-500 transition-all">
-                    {isDeepDiving === 'trends' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
+                    {isDeepDiving === 'trends' ? <Loader2 className="w-5 h-5 animate-spin" /> : (hasAiAccess ? <FileText className="w-5 h-5" /> : <Lock className="w-4 h-4 text-slate-300" />)}
                   </button>
               </div>
               <div className="h-72 w-full">
@@ -568,7 +444,7 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
                     <p className="text-slate-400 text-sm mt-1 ml-11">Conversión de Documentos</p>
                   </div>
                   <button id="no-print" onClick={() => handleDeepDive('funnel', 'Embudo de Ventas', data.funnelData)} disabled={isDeepDiving === 'funnel'} className="p-3 rounded-xl bg-slate-50 hover:text-indigo-500 transition-all">
-                    {isDeepDiving === 'funnel' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
+                    {isDeepDiving === 'funnel' ? <Loader2 className="w-5 h-5 animate-spin" /> : (hasAiAccess ? <FileText className="w-5 h-5" /> : <Lock className="w-4 h-4 text-slate-300" />)}
                   </button>
               </div>
               <div className="h-72 w-full">
@@ -608,7 +484,7 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
                     <p className="text-slate-400 text-sm mt-1 ml-11">Relación Ítems vs Monto</p>
                   </div>
                   <button id="no-print" onClick={() => handleDeepDive('scatter', 'Distribución de Valor', data.scatterData)} disabled={isDeepDiving === 'scatter'} className="p-3 rounded-xl bg-slate-50 hover:text-rose-500 transition-all">
-                    {isDeepDiving === 'scatter' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
+                    {isDeepDiving === 'scatter' ? <Loader2 className="w-5 h-5 animate-spin" /> : (hasAiAccess ? <FileText className="w-5 h-5" /> : <Lock className="w-4 h-4 text-slate-300" />)}
                   </button>
               </div>
               <div className="h-72 w-full">
@@ -680,7 +556,7 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
                   <p className="text-slate-400 text-sm mt-1 ml-11">Ingresos cobrados históricamente</p>
                 </div>
                 <button id="no-print" onClick={() => handleDeepDive('ltv', 'Valor de Clientes', data.ltvData.slice(0,10))} disabled={isDeepDiving === 'ltv'} className="p-3 rounded-xl bg-slate-50 hover:text-amber-500 transition-all">
-                    {isDeepDiving === 'ltv' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
+                    {isDeepDiving === 'ltv' ? <Loader2 className="w-5 h-5 animate-spin" /> : (hasAiAccess ? <FileText className="w-5 h-5" /> : <Lock className="w-4 h-4 text-slate-300" />)}
                 </button>
               </div>
               <div className="h-72 w-full">
@@ -719,7 +595,7 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
                   </h3>
                 </div>
                 <button id="no-print" onClick={() => handleDeepDive('retention', 'Salud de Cartera', data.clientActivityData)} disabled={isDeepDiving === 'retention'} className="p-3 rounded-xl bg-slate-50 hover:text-emerald-500 transition-all">
-                    {isDeepDiving === 'retention' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
+                    {isDeepDiving === 'retention' ? <Loader2 className="w-5 h-5 animate-spin" /> : (hasAiAccess ? <FileText className="w-5 h-5" /> : <Lock className="w-4 h-4 text-slate-300" />)}
                 </button>
               </div>
               <div className="h-64 w-full relative">
@@ -838,15 +714,26 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
                         Analiza tus tendencias financieras, detecta riesgos de fuga y encuentra oportunidades de crecimiento ocultas en tus datos.
                      </p>
                   </div>
-                  <button 
-                    onClick={handleAnalyze}
-                    disabled={isAnalyzing || invoices.length === 0}
-                    className="group bg-white text-[#1c2938] px-8 py-4 rounded-2xl font-bold hover:bg-[#27bea5] hover:text-white transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(39,190,165,0.4)] hover:-translate-y-1 active:translate-y-0 disabled:opacity-50 disabled:transform-none flex-shrink-0 flex items-center gap-3"
-                  >
-                    {isAnalyzing ? <Loader2 className="w-6 h-6 animate-spin" /> : <BrainCircuit className="w-6 h-6" />}
-                    <span className="text-lg">Generar Análisis</span>
-                    {!isAnalyzing && <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />}
-                  </button>
+                  
+                  {hasAiAccess ? (
+                    <button 
+                        onClick={handleAnalyze}
+                        disabled={isAnalyzing || invoices.length === 0}
+                        className="group bg-white text-[#1c2938] px-8 py-4 rounded-2xl font-bold hover:bg-[#27bea5] hover:text-white transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(39,190,165,0.4)] hover:-translate-y-1 active:translate-y-0 disabled:opacity-50 disabled:transform-none flex-shrink-0 flex items-center gap-3"
+                    >
+                        {isAnalyzing ? <Loader2 className="w-6 h-6 animate-spin" /> : <BrainCircuit className="w-6 h-6" />}
+                        <span className="text-lg">Generar Análisis</span>
+                        {!isAnalyzing && <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />}
+                    </button>
+                  ) : (
+                    <button 
+                        disabled
+                        className="group bg-slate-700 text-slate-400 px-8 py-4 rounded-2xl font-bold flex-shrink-0 flex items-center gap-3 border border-slate-600 cursor-not-allowed"
+                    >
+                        <Lock className="w-6 h-6" />
+                        <span className="text-lg">Configura tu API Key</span>
+                    </button>
+                  )}
                </div>
             )}
 

@@ -5,6 +5,8 @@ import { ParsedInvoiceData, CatalogItem, FinancialAnalysisResult, PriceAnalysisR
 const GEMINI_MODEL_ID = "gemini-2.5-flash";
 const OPENAI_MODEL_ID = "gpt-3.5-turbo";
 
+export const AI_ERROR_BLOCKED = "AI_BLOCKED_MISSING_KEYS";
+
 export interface AiKeys {
   gemini?: string;
   openai?: string;
@@ -13,8 +15,10 @@ export interface AiKeys {
 // --- CORE: DUAL AI EXECUTOR ---
 
 /**
- * Executes an AI request with Fallback Strategy.
- * Priority: 1. Gemini -> 2. OpenAI
+ * Executes an AI request.
+ * CRITICAL COST CONTROL LOGIC:
+ * 1. If `keys` arg is UNDEFINED -> Assumes Onboarding/Public context -> Uses System ENV Key.
+ * 2. If `keys` arg IS PROVIDED (User Context) -> STRICTLY uses User Keys. NO FALLBACK to System Key.
  */
 const generateWithFallback = async (
   prompt: string, 
@@ -24,8 +28,27 @@ const generateWithFallback = async (
   jsonMode: boolean = false
 ): Promise<string | null> => {
   
-  const geminiKey = keys?.gemini || process.env.API_KEY;
-  const openAiKey = keys?.openai;
+  let geminiKey = "";
+  let openAiKey = "";
+  let isUserContext = false;
+
+  if (keys) {
+    // USER CONTEXT: Strict Mode
+    isUserContext = true;
+    geminiKey = keys.gemini || "";
+    openAiKey = keys.openai || "";
+    
+    // If user is authenticated but has NO keys, block the request immediately.
+    if (!geminiKey && !openAiKey) {
+      console.warn("⛔ [AI Blocked] User has not configured any API Keys.");
+      return AI_ERROR_BLOCKED;
+    }
+    console.log("👤 [AI Request] Using USER API Key");
+  } else {
+    // SYSTEM CONTEXT (Onboarding): Fallback allowed
+    geminiKey = process.env.API_KEY || "";
+    console.log("🏢 [AI Request] Using SYSTEM API Key (Onboarding)");
+  }
 
   // 1. TRY GEMINI (PRIMARY)
   if (geminiKey) {
@@ -52,17 +75,16 @@ const generateWithFallback = async (
     }
   }
 
-  // 2. TRY OPENAI (FALLBACK)
+  // 2. TRY OPENAI (FALLBACK) - Only if user provided it
   if (openAiKey) {
     try {
       console.log("🔄 Switching to OpenAI Fallback...");
       
-      // Adapt Prompt for OpenAI (Append Schema info if JSON is needed, as OpenAI handles schemas differently)
+      // Adapt Prompt for OpenAI
       let finalSystemPrompt = systemInstruction;
       if (jsonMode) {
         finalSystemPrompt += `\n\nIMPORTANT: You MUST return strictly valid JSON.`;
         if (responseSchema) {
-           // We simplify the schema structure to text for OpenAI to understand
            finalSystemPrompt += `\nOutput structure must match this schema description: ${JSON.stringify(responseSchema)}`;
         }
       }
@@ -79,7 +101,6 @@ const generateWithFallback = async (
             { role: "system", content: finalSystemPrompt },
             { role: "user", content: prompt }
           ],
-          // Force JSON mode if supported by model, otherwise rely on prompt
           response_format: jsonMode ? { type: "json_object" } : undefined 
         })
       });
@@ -93,7 +114,6 @@ const generateWithFallback = async (
     }
   }
 
-  console.error("⛔ All AI Providers failed or no keys provided.");
   return null;
 };
 
@@ -127,9 +147,6 @@ export const testAiConnection = async (provider: 'gemini' | 'openai', key: strin
   }
 };
 
-/**
- * Parses natural language input into structured data.
- */
 export const parseInvoiceRequest = async (input: string, keys?: AiKeys): Promise<ParsedInvoiceData | null> => {
   const schema: Schema = {
     type: Type.OBJECT,
@@ -152,6 +169,7 @@ export const parseInvoiceRequest = async (input: string, keys?: AiKeys): Promise
   4. Resume el concepto en Español.`;
 
   const result = await generateWithFallback(input, systemPrompt, schema, keys, true);
+  if (result === AI_ERROR_BLOCKED) throw new Error(AI_ERROR_BLOCKED);
   if (!result) return null;
   
   try {
@@ -162,22 +180,24 @@ export const parseInvoiceRequest = async (input: string, keys?: AiKeys): Promise
   }
 };
 
-/**
- * PARSE EXPENSE RECEIPT (IMAGE/VISION)
- * Uses Gemini Vision capabilities
- */
 export const parseExpenseImage = async (
   imageBase64: string, 
   mimeType: string, 
   keys?: AiKeys
 ): Promise<ParsedInvoiceData | null> => {
+  
+  if (keys) {
+    if (!keys.gemini) {
+      console.warn("BLOCKED: Vision requires Gemini Key");
+      throw new Error(AI_ERROR_BLOCKED);
+    }
+  }
+
   const geminiKey = keys?.gemini || process.env.API_KEY;
   if (!geminiKey) return null;
 
   try {
     const ai = new GoogleGenAI({ apiKey: geminiKey });
-    
-    // Schema for vision output
     const schema: Schema = {
       type: Type.OBJECT,
       properties: {
@@ -194,29 +214,16 @@ export const parseExpenseImage = async (
       model: GEMINI_MODEL_ID,
       contents: {
         parts: [
-          {
-            inlineData: {
-              data: imageBase64,
-              mimeType: mimeType
-            }
-          },
-          {
-            text: "Analiza esta imagen de recibo/factura y extrae los datos clave en JSON. Si no es legible, devuelve null."
-          }
+          { inlineData: { data: imageBase64, mimeType: mimeType } },
+          { text: "Analiza esta imagen de recibo/factura y extrae los datos clave en JSON. Si no es legible, devuelve null." }
         ]
       },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: schema
-      }
+      config: { responseMimeType: "application/json", responseSchema: schema }
     });
 
     if (response.text) {
        const data = JSON.parse(response.text);
-       return {
-         ...data,
-         detectedType: 'Expense'
-       } as ParsedInvoiceData;
+       return { ...data, detectedType: 'Expense' } as ParsedInvoiceData;
     }
     return null;
 
@@ -226,39 +233,27 @@ export const parseExpenseImage = async (
   }
 };
 
-/**
- * Level 1 Support Bot
- */
 export const askSupportBot = async (query: string, keys?: AiKeys): Promise<string> => {
   const systemPrompt = `Eres 'ZenBot', el agente de soporte nivel 1 de FacturaZen. 
   Tu tono es súper amigable, simple y empático. 
-  Características de FacturaZen: Offline-first, Asistente IA Inteligente, Resiliencia.
-  Si el usuario menciona "error", "crash", "AFIP", "SAT", o "impuestos", sugiere el botón "Hablar con Humano".
   Mantén las respuestas cortas y usa emojis. Responde siempre en Español.`;
 
   const result = await generateWithFallback(query, systemPrompt, undefined, keys, false);
-  return result || "Lo siento 😓. Mis circuitos de IA están desconectados. Por favor revisa tus API Keys en Ajustes.";
+  if (result === AI_ERROR_BLOCKED) return "⚠️ Mis funciones de IA están en pausa. Por favor configura tu API Key en Ajustes para reactivarme.";
+  return result || "Lo siento, no pude procesar eso.";
 };
 
-/**
- * Suggest catalog items based on business description.
- */
 export const suggestCatalogItems = async (businessDescription: string, keys?: AiKeys): Promise<CatalogItem[]> => {
   const schema: Schema = {
     type: Type.ARRAY,
     items: {
       type: Type.OBJECT,
-      properties: {
-        name: { type: Type.STRING },
-        price: { type: Type.NUMBER }
-      }
+      properties: { name: { type: Type.STRING }, price: { type: Type.NUMBER } }
     }
   };
-
-  const systemPrompt = `Genera 3 ítems de servicios/productos estándar para el negocio descrito. 
-  Retorna nombres en Español y precios razonables en USD.`;
-
+  const systemPrompt = `Genera 3 ítems de servicios/productos estándar para el negocio descrito.`;
   const result = await generateWithFallback(businessDescription, systemPrompt, schema, keys, true);
+  if (result === AI_ERROR_BLOCKED) return [];
   if (!result) return [];
 
   try {
@@ -268,27 +263,17 @@ export const suggestCatalogItems = async (businessDescription: string, keys?: Ai
       name: item.name,
       price: item.price
     }));
-  } catch (e) {
-    return [];
-  }
+  } catch (e) { return []; }
 };
 
-/**
- * Generate email templates based on tone.
- */
 export const generateEmailTemplate = async (tone: 'Formal' | 'Casual', keys?: AiKeys): Promise<string> => {
-  const systemPrompt = `Eres un asistente de redacción comercial.`;
   const prompt = tone === 'Formal' 
-    ? "Genera un cuerpo de email en Español, breve y muy profesional, para enviar una factura. Usa [Cliente] como placeholder. Sin asunto."
-    : "Genera un cuerpo de email en Español, breve, amigable y con emojis, para enviar una factura. Usa [Cliente] como placeholder. Sin asunto.";
-
-  const result = await generateWithFallback(prompt, systemPrompt, undefined, keys, false);
-  return result || "Adjunto encontrarás la factura correspondiente.";
+    ? "Genera un cuerpo de email en Español, breve y profesional, para enviar factura. Placeholder: [Cliente]."
+    : "Genera un cuerpo de email en Español, breve y amigable, para enviar factura. Placeholder: [Cliente].";
+  const result = await generateWithFallback(prompt, "Eres un redactor.", undefined, keys, false);
+  return result || "Adjunto encontrarás la factura.";
 };
 
-/**
- * Generate comprehensive financial analysis.
- */
 export const generateFinancialAnalysis = async (financialSummary: string, keys?: AiKeys): Promise<FinancialAnalysisResult | null> => {
   const schema: Schema = {
      type: Type.OBJECT,
@@ -296,82 +281,36 @@ export const generateFinancialAnalysis = async (financialSummary: string, keys?:
        healthScore: { type: Type.INTEGER },
        healthStatus: { type: Type.STRING, enum: ['Excellent', 'Good', 'Fair', 'Critical'] },
        diagnosis: { type: Type.STRING },
-       actionableTips: { 
-         type: Type.ARRAY, 
-         items: { type: Type.STRING } 
-       },
+       actionableTips: { type: Type.ARRAY, items: { type: Type.STRING } },
        projection: { type: Type.STRING }
      },
      required: ["healthScore", "healthStatus", "diagnosis", "actionableTips", "projection"]
   };
-
-  const systemPrompt = `Eres un CFO Virtual. Analiza el resumen financiero proveido.
-  Genera:
-  - healthScore: 0-100.
-  - healthStatus: Enum.
-  - diagnosis: Frase impactante.
-  - actionableTips: 3 consejos cortos.
-  - projection: Predicción corta.
-  Responde en Español.`;
-
+  const systemPrompt = `Eres un CFO Virtual. Analiza el resumen financiero.`;
   const result = await generateWithFallback(financialSummary, systemPrompt, schema, keys, true);
+  if (result === AI_ERROR_BLOCKED) throw new Error(AI_ERROR_BLOCKED);
   if (!result) return null;
-
-  try {
-    return JSON.parse(result) as FinancialAnalysisResult;
-  } catch (e) {
-    return null;
-  }
+  try { return JSON.parse(result) as FinancialAnalysisResult; } catch (e) { return null; }
 };
 
-/**
- * Generates a specific, deep-dive report for a single chart.
- */
-export const generateDeepDiveReport = async (
-  chartTitle: string, 
-  dataContext: string, 
-  keys?: AiKeys
-): Promise<DeepDiveReport | null> => {
+export const generateDeepDiveReport = async (chartTitle: string, dataContext: string, keys?: AiKeys): Promise<DeepDiveReport | null> => {
   const schema: Schema = {
     type: Type.OBJECT,
     properties: {
       chartTitle: { type: Type.STRING },
       executiveSummary: { type: Type.STRING },
-      keyMetrics: { 
-        type: Type.ARRAY, 
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            label: { type: Type.STRING },
-            value: { type: Type.STRING },
-            trend: { type: Type.STRING, enum: ['up', 'down', 'neutral'] }
-          }
-        }
-      },
+      keyMetrics: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { label: { type: Type.STRING }, value: { type: Type.STRING }, trend: { type: Type.STRING, enum: ['up', 'down', 'neutral'] } } } },
       strategicInsight: { type: Type.STRING },
       recommendation: { type: Type.STRING }
     },
     required: ["executiveSummary", "keyMetrics", "strategicInsight", "recommendation"]
   };
-
-  const systemPrompt = `Actúa como Analista Financiero Senior. Analiza los datos del gráfico provisto.
-  Genera un reporte ejecutivo en Español.`;
-  
-  const prompt = `Gráfico: "${chartTitle}". Datos: "${dataContext}"`;
-
-  const result = await generateWithFallback(prompt, systemPrompt, schema, keys, true);
+  const result = await generateWithFallback(`Gráfico: "${chartTitle}". Datos: "${dataContext}"`, "Actúa como Analista Financiero.", schema, keys, true);
+  if (result === AI_ERROR_BLOCKED) throw new Error(AI_ERROR_BLOCKED);
   if (!result) return null;
-
-  try {
-    return { ...JSON.parse(result), chartTitle } as DeepDiveReport;
-  } catch (e) {
-    return null;
-  }
+  try { return { ...JSON.parse(result), chartTitle } as DeepDiveReport; } catch (e) { return null; }
 };
 
-/**
- * Analyzes market prices.
- */
 export const analyzePriceMarket = async (productName: string, country: string, keys?: AiKeys): Promise<PriceAnalysisResult | null> => {
   const schema: Schema = {
     type: Type.OBJECT,
@@ -384,32 +323,14 @@ export const analyzePriceMarket = async (productName: string, country: string, k
     },
     required: ["minPrice", "maxPrice", "avgPrice", "currency", "reasoning"]
   };
-
-  const systemPrompt = `Eres un analista de mercado. Estima rango de precios reales.`;
-  const prompt = `Producto: "${productName}". País: "${country}". Return JSON.`;
-
-  const result = await generateWithFallback(prompt, systemPrompt, schema, keys, true);
+  const result = await generateWithFallback(`Producto: "${productName}". País: "${country}".`, "Eres un analista de mercado.", schema, keys, true);
+  if (result === AI_ERROR_BLOCKED) throw new Error(AI_ERROR_BLOCKED);
   if (!result) return null;
-
-  try {
-    return JSON.parse(result) as PriceAnalysisResult;
-  } catch (e) {
-    return null;
-  }
+  try { return JSON.parse(result) as PriceAnalysisResult; } catch (e) { return null; }
 };
 
-/**
- * Enhances a product description.
- */
-export const enhanceProductDescription = async (
-  currentDesc: string, 
-  productName: string, 
-  format: 'paragraph' | 'bullets' = 'paragraph', 
-  keys?: AiKeys
-): Promise<string> => {
-  const systemPrompt = `Actúa como copywriter de ventas profesional. Mejora la descripción. Español neutro.`;
-  const prompt = `Producto: "${productName}". Borrador: "${currentDesc}". Formato: ${format}.`;
-
-  const result = await generateWithFallback(prompt, systemPrompt, undefined, keys, false);
+export const enhanceProductDescription = async (currentDesc: string, productName: string, format: 'paragraph' | 'bullets', keys?: AiKeys): Promise<string> => {
+  const result = await generateWithFallback(`Producto: "${productName}". Borrador: "${currentDesc}". Formato: ${format}.`, "Actúa como copywriter.", undefined, keys, false);
+  if (result === AI_ERROR_BLOCKED) return "⚠️ Error: Configura tu API Key en Ajustes para usar esta función.";
   return result || currentDesc;
 };
