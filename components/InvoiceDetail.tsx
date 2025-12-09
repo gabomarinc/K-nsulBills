@@ -32,21 +32,13 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack }
     setIsSending(true);
     setSendError(null);
 
-    const apiKey = issuer.apiKeys?.resend;
-    
-    // Check if API Key exists
-    if (!apiKey) {
-      setSendError('Configura tu API Key de Resend en Ajustes para enviar correos.');
-      setIsSending(false);
-      return;
-    }
-
     // Determine recipient email (mock logic if not present)
     const recipientEmail = invoice.clientEmail || 'cliente@prueba.com';
     const subject = `${isQuote ? 'Cotización' : 'Factura'} #${invoice.id} de ${issuer.name}`;
     const html = generateDocumentHtml(invoice, issuer);
 
-    const result = await sendEmail(apiKey, recipientEmail, subject, html, issuer.name);
+    // Using system env var in service, no key passing needed
+    const result = await sendEmail(recipientEmail, subject, html, issuer.name);
 
     if (result.success) {
       setShowSuccessModal(true);

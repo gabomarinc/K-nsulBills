@@ -3,7 +3,7 @@ import { Invoice, UserProfile } from '../types';
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
 
-// Default sender for testing if domain not verified (Resend specific)
+// Default sender. In production with a verified domain, change this to 'No Reply <noreply@yourdomain.com>'
 const DEFAULT_SENDER = 'FacturaZen <onboarding@resend.dev>';
 
 interface Attachment {
@@ -12,23 +12,26 @@ interface Attachment {
 }
 
 /**
- * Sends an email using the Resend API.
+ * Sends an email using the Resend API via System Environment Variable.
  */
 export const sendEmail = async (
-  apiKey: string,
   to: string,
   subject: string,
   htmlContent: string,
   senderName: string = 'FacturaZen',
   attachments?: Attachment[]
 ): Promise<{ success: boolean; id?: string; error?: string }> => {
+  
+  const apiKey = process.env.RESEND_API_KEY;
+
   if (!apiKey) {
-    return { success: false, error: 'Falta la API Key de Resend' };
+    console.error("Resend API Key missing in environment variables.");
+    return { success: false, error: 'Error del servidor: Configuración de email no disponible.' };
   }
 
   try {
     const body: any = {
-      from: DEFAULT_SENDER, // In production, this should be `senderName <verified@domain.com>`
+      from: DEFAULT_SENDER, 
       to: [to],
       subject: subject,
       html: htmlContent,
@@ -56,7 +59,7 @@ export const sendEmail = async (
     return { success: true, id: data.id };
   } catch (error) {
     console.error('Resend Error:', error);
-    return { success: false, error: 'Error de conexión con Resend' };
+    return { success: false, error: 'Error de conexión con servicio de email' };
   }
 };
 

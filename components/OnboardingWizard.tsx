@@ -83,12 +83,6 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
   const [emailPreview, setEmailPreview] = useState('');
 
   // Step 6 State (Channels)
-  const [emailProvider, setEmailProvider] = useState<'SYSTEM' | 'GMAIL' | 'SMTP'>('SYSTEM');
-  const [gmailConnected, setGmailConnected] = useState(false);
-  const [smtpConfig, setSmtpConfig] = useState({ 
-    host: '', port: 587, user: '', password: '', 
-    imapHost: '', imapPort: 993, useSSL: true 
-  });
   const [whatsappCountryCode, setWhatsappCountryCode] = useState(DEFAULT_PHONE_CODE);
   const [whatsappNumber, setWhatsappNumber] = useState('');
 
@@ -135,15 +129,10 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
     setIsLoading(false);
   };
 
-  const handleConnectGmail = () => {
-    setGmailConnected(true);
-  };
-
   const finishOnboarding = () => {
     const emailConfig: EmailConfig = {
-      provider: emailProvider,
-      ...(emailProvider === 'SMTP' ? smtpConfig : {}),
-      email: emailProvider === 'GMAIL' ? (gmailConnected ? 'usuario@gmail.com' : undefined) : smtpConfig.user
+      provider: 'SYSTEM',
+      email: email
     };
 
     onComplete({
@@ -786,57 +775,31 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
     <div className="animate-in fade-in slide-in-from-right-8 duration-500">
       <div className="text-center mb-10">
         <h2 className="text-4xl font-bold text-[#1c2938] mb-3">Conexiones Finales</h2>
-        <p className="text-slate-500 text-lg">Habilita los canales por donde enviarás tus documentos.</p>
+        <p className="text-slate-500 text-lg">El correo oficial ya está configurado. Opcionalmente, agrega WhatsApp.</p>
       </div>
 
       <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
         
-        {/* Email Channel Card */}
-        <div className={`p-8 rounded-[2.5rem] border-2 transition-all duration-300 flex flex-col ${emailProvider !== 'SYSTEM' ? 'bg-white border-[#27bea5] shadow-xl' : 'bg-white border-slate-100 shadow-sm'}`}>
+        {/* Email Channel Card (System Only) */}
+        <div className="p-8 rounded-[2.5rem] bg-[#1c2938] text-white shadow-xl flex flex-col justify-between">
            <div className="flex items-center gap-4 mb-6">
-              <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl">
+              <div className="p-3 bg-blue-500/20 text-blue-400 rounded-2xl">
                 <Mail className="w-8 h-8" />
               </div>
               <div>
-                <h3 className="font-bold text-xl text-[#1c2938]">Correo Electrónico</h3>
-                <p className="text-sm text-slate-400">Entrega oficial</p>
+                <h3 className="font-bold text-xl">Correo Oficial</h3>
+                <p className="text-sm text-slate-400">Entrega garantizada por Resend</p>
               </div>
            </div>
 
-           <div className="space-y-3 mb-8 flex-1">
-              {(['SYSTEM', 'GMAIL', 'SMTP'] as const).map(p => (
-                 <button
-                   key={p}
-                   onClick={() => setEmailProvider(p)}
-                   className={`w-full p-4 rounded-xl text-left font-bold transition-all flex justify-between items-center cursor-pointer ${
-                     emailProvider === p 
-                       ? 'bg-[#1c2938] text-white shadow-lg' 
-                       : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
-                   }`}
-                 >
-                   <span>{p === 'SYSTEM' ? 'Sistema (Default)' : p === 'GMAIL' ? 'Gmail' : 'SMTP Propio'}</span>
-                   {emailProvider === p && <Check className="w-4 h-4" />}
-                 </button>
-              ))}
-           </div>
-           
-           <div className="mt-auto">
-             {emailProvider === 'GMAIL' && (
-               <div className="bg-slate-50 p-6 rounded-2xl text-center animate-in fade-in">
-                  {!gmailConnected ? (
-                    <button 
-                      onClick={handleConnectGmail}
-                      className="w-full bg-white border border-slate-200 py-3 rounded-xl font-bold text-slate-700 hover:shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <Globe className="w-4 h-4 text-blue-500" /> Conectar Google
-                    </button>
-                  ) : (
-                     <span className="text-green-600 font-bold flex items-center justify-center gap-2">
-                       <CheckCircle2 className="w-5 h-5" /> Cuenta Vinculada
-                     </span>
-                  )}
-               </div>
-             )}
+           <div className="bg-white/10 p-6 rounded-2xl border border-white/10 mb-4">
+              <div className="flex items-center gap-3 text-green-400 font-bold mb-2">
+                 <CheckCircle2 className="w-5 h-5" />
+                 <span>Activado</span>
+              </div>
+              <p className="text-sm text-slate-300">
+                 Tus facturas se enviarán automáticamente desde nuestro servidor seguro. No requiere configuración adicional.
+              </p>
            </div>
         </div>
 
@@ -849,7 +812,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
                   </div>
                   <div>
                     <h3 className="font-bold text-xl text-[#1c2938]">WhatsApp Business</h3>
-                    <p className="text-sm text-slate-400">Entrega rápida</p>
+                    <p className="text-sm text-slate-400">Entrega rápida (Opcional)</p>
                   </div>
               </div>
               

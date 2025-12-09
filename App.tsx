@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
@@ -334,15 +333,12 @@ const App: React.FC = () => {
          if (success) {
             console.log("User created in DB securely");
             
-            // Try to send Welcome Email if API Key exists
-            if (newProfile.apiKeys?.resend) {
-               await sendEmail(
-                 newProfile.apiKeys.resend, 
-                 data.email, 
-                 'Bienvenido a FacturaZen 🚀', 
-                 generateWelcomeHtml(newProfile.name)
-               );
-            }
+            // Try to send Welcome Email using System Key
+            await sendEmail(
+                data.email, 
+                'Bienvenido a FacturaZen 🚀', 
+                generateWelcomeHtml(newProfile.name)
+            );
          }
        } catch (e) {
          console.error("Failed to create user in DB", e);
@@ -483,6 +479,7 @@ const App: React.FC = () => {
             onConvertQuote={handleConvertQuote}
             onDeleteInvoice={handleDeleteInvoice} 
             currencySymbol={currentProfile.defaultCurrency === 'EUR' ? '€' : '$'}
+            currentUser={currentProfile} // PASSED FOR AI KEY CHECK
           />
         )}
 
@@ -491,6 +488,7 @@ const App: React.FC = () => {
             invoices={invoices} 
             onCreateDocument={() => setCurrentView(AppView.WIZARD)}
             currencySymbol={currentProfile.defaultCurrency === 'EUR' ? '€' : '$'}
+            currentUser={currentProfile} // PASSED FOR AI KEY CHECK
           />
         )}
 

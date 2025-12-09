@@ -136,8 +136,8 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
   };
 
   const handleSendEmail = async (ref: React.RefObject<HTMLDivElement>, title: string) => {
-    if (!currentUser?.apiKeys?.resend || !currentUser?.email) {
-      alert("Configura tu API Key de Resend y asegura tener un email en tu perfil.");
+    if (!currentUser?.email) {
+      alert("Asegúrate de tener un email en tu perfil.");
       return;
     }
     setEmailStatus('SENDING');
@@ -154,7 +154,10 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
     reader.onloadend = async () => {
       const base64data = reader.result as string;
       const pureBase64 = base64data.split(',')[1]; 
-      const result = await sendEmail(currentUser.apiKeys!.resend!, currentUser.email!, `Reporte: ${title}`, `<p>Adjunto encontrarás el reporte generado desde Kônsul.</p>`, currentUser.name, [{ filename: `${title}.pdf`, content: pureBase64 }]);
+      
+      // Using system env var in service
+      const result = await sendEmail(currentUser.email!, `Reporte: ${title}`, `<p>Adjunto encontrarás el reporte generado desde Kônsul.</p>`, currentUser.name, [{ filename: `${title}.pdf`, content: pureBase64 }]);
+      
       if (result.success) { setEmailStatus('SUCCESS'); setTimeout(() => setEmailStatus('IDLE'), 3000); } else { setEmailStatus('ERROR'); setTimeout(() => setEmailStatus('IDLE'), 3000); }
     };
   };

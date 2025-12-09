@@ -1,17 +1,17 @@
-
 import React, { useState, useMemo } from 'react';
 import { 
   Search, Users, Wallet, Activity, LayoutList, LayoutGrid, 
   Plus, Crown, Sparkles, TrendingUp, Target, 
-  Trophy, Percent, ArrowUpRight, BarChart3, Star
+  Trophy, Percent, ArrowUpRight, BarChart3, Star, Lock
 } from 'lucide-react';
-import { Invoice } from '../types';
+import { Invoice, UserProfile } from '../types';
 
 interface ClientListProps {
   invoices: Invoice[];
   onSelectClient?: (clientName: string) => void;
   onCreateDocument: () => void;
   currencySymbol: string;
+  currentUser?: UserProfile;
 }
 
 interface AggregatedClient {
@@ -28,10 +28,13 @@ interface AggregatedClient {
   winRate: number; 
 }
 
-const ClientList: React.FC<ClientListProps> = ({ invoices, onSelectClient, onCreateDocument, currencySymbol }) => {
+const ClientList: React.FC<ClientListProps> = ({ invoices, onSelectClient, onCreateDocument, currencySymbol, currentUser }) => {
   const [viewMode, setViewMode] = useState<'LIST' | 'GALLERY'>('GALLERY');
   const [filter, setFilter] = useState<'ALL' | 'CLIENT' | 'PROSPECT' | 'VIP'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Check AI Access
+  const hasAiAccess = !!currentUser?.apiKeys?.gemini || !!currentUser?.apiKeys?.openai;
 
   // --- AGGREGATION LOGIC ---
   const { clients, stats } = useMemo(() => {
@@ -128,6 +131,88 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, onSelectClient, onCre
   return (
     <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in pb-12">
        
+       {/* HEADER */}
+       <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-6">
+        <div>
+          <h1 className="text-3xl font-bold text-[#1c2938] tracking-tight">Directorio de Clientes</h1>
+          <p className="text-slate-500 mt-1 text-lg font-light">Tus relaciones comerciales, organizadas.</p>
+        </div>
+        
+        <button onClick={onCreateDocument} className="bg-[#1c2938] text-white px-6 py-3.5 rounded-2xl font-bold hover:bg-[#27bea5] transition-all flex items-center gap-2 shadow-xl group">
+            <Plus className="w-5 h-5 group-hover:rotate-90 transition-transform" /> <span>Nuevo Cliente</span>
+        </button>
+       </div>
+
+       {/* KPI GRID (Added Back with AI Logic) */}
+       <div className="hidden md:grid grid-cols-4 gap-6">
+          {/* Card 1: Active Clients */}
+          <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 relative overflow-hidden group hover:shadow-md transition-all">
+             <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-full -translate-y-1/2 translate-x-1/2"></div>
+             <div className="relative z-10">
+                <div className="flex items-center gap-3 mb-4">
+                   <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl"><Users className="w-6 h-6" /></div>
+                </div>
+                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Clientes Activos</p>
+                <h3 className="text-2xl font-bold text-[#1c2938] mt-1 tracking-tight">{stats.totalActiveClients}</h3>
+             </div>
+          </div>
+
+          {/* Card 2: Portfolio Value */}
+          <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 relative overflow-hidden group hover:shadow-md transition-all">
+             <div className="absolute top-0 right-0 w-24 h-24 bg-amber-50 rounded-full -translate-y-1/2 translate-x-1/2"></div>
+             <div className="relative z-10">
+                <div className="flex items-center gap-3 mb-4">
+                   <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl"><Wallet className="w-6 h-6" /></div>
+                </div>
+                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Valor Cartera</p>
+                <h3 className="text-2xl font-bold text-[#1c2938] mt-1 tracking-tight">{currencySymbol} {stats.totalPortfolioValue.toLocaleString()}</h3>
+             </div>
+          </div>
+
+          {/* Card 3: Avg Ticket */}
+          <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 relative overflow-hidden group hover:shadow-md transition-all">
+             <div className="absolute top-0 right-0 w-24 h-24 bg-purple-50 rounded-full -translate-y-1/2 translate-x-1/2"></div>
+             <div className="relative z-10">
+                <div className="flex items-center gap-3 mb-4">
+                   <div className="p-2.5 bg-purple-50 text-purple-600 rounded-xl"><BarChart3 className="w-6 h-6" /></div>
+                </div>
+                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Ticket Promedio</p>
+                <h3 className="text-2xl font-bold text-[#1c2938] mt-1 tracking-tight">{currencySymbol} {stats.avgGlobalTicket.toLocaleString(undefined, {maximumFractionDigits: 0})}</h3>
+             </div>
+          </div>
+
+          {/* Card 4: AI Insight (Locked if no key) */}
+          <div className="bg-[#1c2938] p-6 rounded-[2rem] shadow-lg relative overflow-hidden group text-white">
+             <div className="absolute top-0 right-0 w-32 h-32 bg-[#27bea5] rounded-full blur-[40px] opacity-20 -translate-y-1/2 translate-x-1/2"></div>
+             <div className="relative z-10 h-full flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-4">
+                   <div className="p-2.5 bg-white/10 text-[#27bea5] rounded-xl"><Sparkles className="w-6 h-6" /></div>
+                   {!hasAiAccess && <Lock className="w-4 h-4 text-slate-400" />}
+                </div>
+                
+                <div>
+                   <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Radar de Crecimiento</p>
+                   {hasAiAccess ? (
+                      <>
+                         <h3 className="text-lg font-bold leading-tight mb-1">Oportunidades</h3>
+                         <p className="text-xs text-[#27bea5] font-medium flex items-center gap-1">
+                            <Target className="w-3 h-3" /> 3 Clientes con potencial
+                         </p>
+                      </>
+                   ) : (
+                      <>
+                         <h3 className="text-lg font-bold leading-tight mb-2 text-slate-300">Análisis Bloqueado</h3>
+                         <p className="text-[10px] text-rose-400 font-bold bg-rose-500/10 px-2 py-1 rounded border border-rose-500/20 inline-block">
+                            Configura tu API Key
+                         </p>
+                      </>
+                   )}
+                </div>
+             </div>
+          </div>
+       </div>
+
+       {/* FILTERS & SEARCH */}
        <div className="flex flex-col md:flex-row gap-4 items-center bg-white p-2 rounded-[2rem] border border-slate-50 shadow-sm">
           <div className="flex bg-slate-100 p-1.5 rounded-2xl w-full md:w-auto overflow-x-auto">
              {(['ALL', 'VIP', 'CLIENT', 'PROSPECT'] as const).map(f => (

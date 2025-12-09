@@ -1,5 +1,5 @@
 {
-  "name": "FacturaZen - Gestión Inteligente",
+  "name": "Kônsul Bills - Gestión Inteligente",
   "description": "Software de facturación resiliente para autónomos y Pymes. Offline-first, automatización con IA y soporte humano inmediato.",
   "requestFramePermissions": [
     "microphone"

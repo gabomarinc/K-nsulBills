@@ -9,11 +9,12 @@ import bcrypt from 'bcryptjs';
 
 const getDbClient = () => {
   try {
-    const envUrl = process.env.DATABASE_URL;
-    const localUrl = localStorage.getItem('NEON_DATABASE_URL');
-    const url = envUrl || localUrl;
+    const url = process.env.DATABASE_URL;
 
-    if (!url) return null;
+    if (!url) {
+      console.warn("DATABASE_URL environment variable is not set.");
+      return null;
+    }
     
     if (!url.startsWith('postgres://') && !url.startsWith('postgresql://')) {
       console.warn("Invalid Database URL format");
