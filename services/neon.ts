@@ -99,7 +99,11 @@ export const getUserById = async (userId: string): Promise<UserProfile | null> =
   }
 
   const client = getDbClient();
-  if (!client) return null;
+  if (!client) {
+    // CRITICAL: If client cannot be created (e.g. missing ENV), throw error instead of returning null.
+    // Returning null causes logout. Throwing error allows "Offline Mode" via cache.
+    throw new Error("DB Client configuration missing - Potential Offline Mode");
+  }
 
   try {
     await client.connect();
@@ -121,10 +125,10 @@ export const getUserById = async (userId: string): Promise<UserProfile | null> =
        } as UserProfile;
     }
     
-    return null;
+    return null; // Explicitly return null ONLY if connection succeeded but user not found
   } catch (error) {
     console.error("Neon Get User Error:", error);
-    return null;
+    throw error; // Propagate error so frontend knows it was a failure, not a "not found"
   }
 };
 

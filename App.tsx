@@ -23,7 +23,7 @@ import {
   saveInvoiceToDb, 
   deleteInvoiceFromDb,
   saveClientToDb,
-  getUserById // Imported new function
+  getUserById 
 } from './services/neon';
 
 const App: React.FC = () => {
@@ -39,17 +39,40 @@ const App: React.FC = () => {
   // SESSION RESTORATION LOGIC
   useEffect(() => {
     const initSession = async () => {
+        const storedUserStr = localStorage.getItem('konsul_user_data'); // New Cache
         const storedUserId = localStorage.getItem('konsul_session_id');
+
+        // 1. Optimistic Restore (Instant Load)
+        if (storedUserStr) {
+           try {
+             const cachedUser = JSON.parse(storedUserStr);
+             setCurrentUser(cachedUser);
+             setIsSessionLoading(false); // Render immediately
+           } catch (e) {
+             console.error("Cache parse error", e);
+           }
+        }
+
+        // 2. Network Verification (Background)
         if (storedUserId) {
             try {
                 const user = await getUserById(storedUserId);
                 if (user) {
                     setCurrentUser(user);
+                    // Update cache with fresh data
+                    localStorage.setItem('konsul_user_data', JSON.stringify(user));
                 } else {
-                    localStorage.removeItem('konsul_session_id'); // Invalid ID
+                    // User explicitly not found in DB (deleted/banned/invalid ID)
+                    // Only perform logout if we are SURE the user doesn't exist
+                    console.warn("User ID invalid or not found in DB. Logging out.");
+                    handleLogout();
                 }
             } catch (error) {
-                console.error("Session restoration failed", error);
+                console.error("Session verification failed (Network/DB error). Keeping cached session if available.", error);
+                // CRITICAL FIX: Do NOT logout on error. 
+                // If the DB is unreachable, we stay logged in via cache (Offline Mode).
+                // Optionally set offline flag
+                setIsOffline(true);
             }
         }
         setIsSessionLoading(false);
@@ -62,19 +85,28 @@ const App: React.FC = () => {
     if (currentUser) {
       const loadData = async () => {
         const docs = await fetchInvoicesFromDb(currentUser.id);
-        if (docs) setInvoices(docs);
+        if (docs) {
+            setInvoices(docs);
+            // If data loaded successfully, we are online
+            setIsOffline(false);
+        } else {
+            // Failed to load docs usually means connectivity issue
+            setIsOffline(true);
+        }
       };
       loadData();
     }
   }, [currentUser]);
 
   const handleLoginSuccess = (user: UserProfile) => {
-    localStorage.setItem('konsul_session_id', user.id); // Persist session
+    localStorage.setItem('konsul_session_id', user.id);
+    localStorage.setItem('konsul_user_data', JSON.stringify(user)); // Cache full profile
     setCurrentUser(user);
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('konsul_session_id'); // Clear session
+    localStorage.removeItem('konsul_session_id');
+    localStorage.removeItem('konsul_user_data');
     setCurrentUser(null);
     setInvoices([]);
     setActiveView(AppView.DASHBOARD);
@@ -95,6 +127,7 @@ const App: React.FC = () => {
        const updated = { ...currentUser, ...data, isOnboardingComplete: true };
        await updateUserProfileInDb(updated);
        setCurrentUser(updated);
+       localStorage.setItem('konsul_user_data', JSON.stringify(updated)); // Sync cache
     }
   };
 
@@ -150,6 +183,7 @@ const App: React.FC = () => {
 
   const handleUpdateProfile = async (updated: UserProfile) => {
     setCurrentUser(updated);
+    localStorage.setItem('konsul_user_data', JSON.stringify(updated)); // Sync cache
     await updateUserProfileInDb(updated);
   };
 
@@ -157,6 +191,7 @@ const App: React.FC = () => {
     if (!currentUser) return;
     const updated = { ...currentUser, defaultServices: items };
     setCurrentUser(updated);
+    localStorage.setItem('konsul_user_data', JSON.stringify(updated)); // Sync cache
     await updateUserProfileInDb(updated);
   };
 
@@ -167,7 +202,7 @@ const App: React.FC = () => {
     return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
             <div className="w-16 h-16 border-4 border-slate-200 border-t-[#27bea5] rounded-full animate-spin mb-4"></div>
-            <p className="text-slate-400 font-medium animate-pulse">Iniciando sesión...</p>
+            <p className="text-slate-400 font-medium animate-pulse">Recuperando tu oficina...</p>
         </div>
     );
   }
