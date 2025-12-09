@@ -15,7 +15,7 @@ import UserProfileSettings from './components/UserProfileSettings';
 import CatalogDashboard from './components/CatalogDashboard';
 import ExpenseTracker from './components/ExpenseTracker';
 import ExpenseWizard from './components/ExpenseWizard';
-import ClientWizard from './components/ClientWizard'; // Import the new component
+import ClientWizard from './components/ClientWizard'; 
 import { 
   authenticateUser, 
   createUserInDb, 
@@ -24,13 +24,15 @@ import {
   saveInvoiceToDb, 
   deleteInvoiceFromDb,
   saveClientToDb,
-  getUserById 
+  getUserById,
+  fetchClientsFromDb 
 } from './services/neon';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [activeView, setActiveView] = useState<AppView>(AppView.DASHBOARD);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [dbClients, setDbClients] = useState<any[]>([]); // NEW: Store pure clients
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [selectedClientName, setSelectedClientName] = useState<string | null>(null);
   const [documentToEdit, setDocumentToEdit] = useState<Invoice | null>(null);
@@ -40,39 +42,31 @@ const App: React.FC = () => {
   // SESSION RESTORATION LOGIC
   useEffect(() => {
     const initSession = async () => {
-        const storedUserStr = localStorage.getItem('konsul_user_data'); // New Cache
+        const storedUserStr = localStorage.getItem('konsul_user_data'); 
         const storedUserId = localStorage.getItem('konsul_session_id');
 
-        // 1. Optimistic Restore (Instant Load)
         if (storedUserStr) {
            try {
              const cachedUser = JSON.parse(storedUserStr);
              setCurrentUser(cachedUser);
-             setIsSessionLoading(false); // Render immediately
+             setIsSessionLoading(false); 
            } catch (e) {
              console.error("Cache parse error", e);
            }
         }
 
-        // 2. Network Verification (Background)
         if (storedUserId) {
             try {
                 const user = await getUserById(storedUserId);
                 if (user) {
                     setCurrentUser(user);
-                    // Update cache with fresh data
                     localStorage.setItem('konsul_user_data', JSON.stringify(user));
                 } else {
-                    // User explicitly not found in DB (deleted/banned/invalid ID)
-                    // Only perform logout if we are SURE the user doesn't exist
                     console.warn("User ID invalid or not found in DB. Logging out.");
                     handleLogout();
                 }
             } catch (error) {
-                console.error("Session verification failed (Network/DB error). Keeping cached session if available.", error);
-                // CRITICAL FIX: Do NOT logout on error. 
-                // If the DB is unreachable, we stay logged in via cache (Offline Mode).
-                // Optionally set offline flag
+                console.error("Session verification failed. Keeping cached session.", error);
                 setIsOffline(true);
             }
         }
@@ -85,14 +79,19 @@ const App: React.FC = () => {
   useEffect(() => {
     if (currentUser) {
       const loadData = async () => {
+        // Fetch Invoices
         const docs = await fetchInvoicesFromDb(currentUser.id);
         if (docs) {
             setInvoices(docs);
-            // If data loaded successfully, we are online
             setIsOffline(false);
         } else {
-            // Failed to load docs usually means connectivity issue
             setIsOffline(true);
+        }
+
+        // Fetch Clients (NEW)
+        const clients = await fetchClientsFromDb(currentUser.id);
+        if (clients) {
+            setDbClients(clients);
         }
       };
       loadData();
@@ -101,7 +100,7 @@ const App: React.FC = () => {
 
   const handleLoginSuccess = (user: UserProfile) => {
     localStorage.setItem('konsul_session_id', user.id);
-    localStorage.setItem('konsul_user_data', JSON.stringify(user)); // Cache full profile
+    localStorage.setItem('konsul_user_data', JSON.stringify(user)); 
     setCurrentUser(user);
   };
 
@@ -110,32 +109,30 @@ const App: React.FC = () => {
     localStorage.removeItem('konsul_user_data');
     setCurrentUser(null);
     setInvoices([]);
+    setDbClients([]);
     setActiveView(AppView.DASHBOARD);
   };
 
   const handleOnboardingComplete = async (data: Partial<UserProfile> & { password?: string, email?: string }) => {
     if (data.password && data.email) {
-       // Registration Flow
        const success = await createUserInDb(data, data.password, data.email);
        if (success) {
          const user = await authenticateUser(data.email, data.password);
-         if (user) handleLoginSuccess(user); // Use handleLoginSuccess to save session
+         if (user) handleLoginSuccess(user);
        } else {
          alert("Error al crear cuenta. El correo podría ya estar registrado.");
        }
     } else if (currentUser) {
-       // Update Flow
        const updated = { ...currentUser, ...data, isOnboardingComplete: true };
        await updateUserProfileInDb(updated);
        setCurrentUser(updated);
-       localStorage.setItem('konsul_user_data', JSON.stringify(updated)); // Sync cache
+       localStorage.setItem('konsul_user_data', JSON.stringify(updated));
     }
   };
 
   const handleSaveInvoice = async (invoice: Invoice) => {
     if (!currentUser) return;
     
-    // Optimistic Update
     const exists = invoices.find(i => i.id === invoice.id);
     let newInvoices = [];
     if (exists) {
@@ -145,10 +142,8 @@ const App: React.FC = () => {
     }
     setInvoices(newInvoices);
     
-    // DB Save
     await saveInvoiceToDb({ ...invoice, userId: currentUser.id });
     
-    // Update Client Registry
     if (invoice.clientName) {
        await saveClientToDb({ 
          name: invoice.clientName, 
@@ -156,12 +151,12 @@ const App: React.FC = () => {
          email: invoice.clientEmail,
          address: invoice.clientAddress
        }, currentUser.id, 'CLIENT');
+       
+       const updatedClients = await fetchClientsFromDb(currentUser.id);
+       setDbClients(updatedClients);
     }
 
     setDocumentToEdit(null);
-    // NOTE: Removed setActiveView(AppView.INVOICES) here.
-    // The Wizard component will handle the navigation via "View Detail" or "Close" buttons 
-    // AFTER the user sees the success screen.
   };
 
   const handleSaveNewClient = async (clientData: { name: string; taxId: string; email: string; address: string; phone: string }) => {
@@ -175,7 +170,10 @@ const App: React.FC = () => {
       address: clientData.address
     }, currentUser.id, 'CLIENT');
 
-    // 2. Refresh local view or data if needed
+    // 2. Refresh local view explicitly so it shows up in ClientList
+    const updatedClients = await fetchClientsFromDb(currentUser.id);
+    setDbClients(updatedClients);
+
     setActiveView(AppView.CLIENTS);
   };
 
@@ -201,7 +199,7 @@ const App: React.FC = () => {
 
   const handleUpdateProfile = async (updated: UserProfile) => {
     setCurrentUser(updated);
-    localStorage.setItem('konsul_user_data', JSON.stringify(updated)); // Sync cache
+    localStorage.setItem('konsul_user_data', JSON.stringify(updated)); 
     await updateUserProfileInDb(updated);
   };
 
@@ -209,13 +207,12 @@ const App: React.FC = () => {
     if (!currentUser) return;
     const updated = { ...currentUser, defaultServices: items };
     setCurrentUser(updated);
-    localStorage.setItem('konsul_user_data', JSON.stringify(updated)); // Sync cache
+    localStorage.setItem('konsul_user_data', JSON.stringify(updated)); 
     await updateUserProfileInDb(updated);
   };
 
   // --- RENDER ---
 
-  // Loading Screen to prevent flicker
   if (isSessionLoading) {
     return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
@@ -230,7 +227,6 @@ const App: React.FC = () => {
       <LoginScreen 
         onLoginSuccess={handleLoginSuccess}
         onRegisterClick={() => { 
-            // Trigger registration mode via temp user
             setCurrentUser({ 
                 id: 'temp_reg', 
                 name: '', 
@@ -276,21 +272,7 @@ const App: React.FC = () => {
           isOffline={isOffline}
           onSave={handleSaveInvoice}
           onCancel={() => { setDocumentToEdit(null); setActiveView(AppView.DASHBOARD); }}
-          onViewDetail={() => {
-             // Find the invoice that was just created/edited (using ID matching would be better, but selecting by most recent works for now or let Wizard pass ID)
-             // Ideally InvoiceWizard should pass the ID to onViewDetail, but since we rely on `selectedInvoice` state:
-             // The wizard logic sets state in App via onSave. We just need to navigate.
-             // We can find the invoice in the updated list or pass it.
-             // Since onSave is async, the invoice is already in state.
-             const targetId = documentToEdit?.id; 
-             // We'll trust the Wizard has already updated the parent state via onSave.
-             // The Wizard will actually handle the detailed selection if we pass logic there? 
-             // Simpler: Just navigate to INVOICE_DETAIL. The Wizard's "View Detail" button should probably invoke `onSelectInvoice` behavior.
-             // For now, let's just switch view, assuming user will select or we select the latest.
-             // BETTER: Let's assume onSave set the state.
-             setActiveView(AppView.INVOICES); // Fallback to list if specific selection is tricky
-          }}
-          // Passing a specific setter to ensure the detail view opens correctly
+          onViewDetail={() => setActiveView(AppView.INVOICES)}
           onSelectInvoiceForDetail={(inv) => {
              setSelectedInvoice(inv);
              setActiveView(AppView.INVOICE_DETAIL);
@@ -328,8 +310,9 @@ const App: React.FC = () => {
       {activeView === AppView.CLIENTS && (
         <ClientList 
           invoices={invoices}
+          dbClients={dbClients} // Pass fetched clients
           onCreateDocument={() => { setDocumentToEdit(null); setActiveView(AppView.WIZARD); }}
-          onCreateClient={() => setActiveView(AppView.CLIENT_WIZARD)} // Navigate to wizard
+          onCreateClient={() => setActiveView(AppView.CLIENT_WIZARD)} 
           currencySymbol={currentUser.defaultCurrency === 'EUR' ? '€' : '$'}
           currentUser={currentUser}
           onSelectClient={(name) => { setSelectedClientName(name); setActiveView(AppView.CLIENT_DETAIL); }}
@@ -352,6 +335,9 @@ const App: React.FC = () => {
            currencySymbol={currentUser.defaultCurrency === 'EUR' ? '€' : '$'}
            onUpdateClientContact={async (name, contact) => {
               await saveClientToDb({ name, ...contact }, currentUser.id, 'CLIENT');
+              // Refresh clients
+              const updated = await fetchClientsFromDb(currentUser.id);
+              setDbClients(updated);
            }}
          />
       )}

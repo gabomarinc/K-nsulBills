@@ -30,7 +30,6 @@ const getDbClient = () => {
 
 /**
  * AUDIT LOGGING SYSTEM
- * Automatically creates the table if it doesn't exist and records actions.
  */
 export const logAuditAction = async (userId: string, action: string, details: any) => {
   const client = getDbClient();
@@ -38,8 +37,6 @@ export const logAuditAction = async (userId: string, action: string, details: an
 
   try {
     await client.connect();
-
-    // 1. Ensure Table Exists (Lazy Initialization)
     await client.query(`
       CREATE TABLE IF NOT EXISTS audit_log (
         id SERIAL PRIMARY KEY,
@@ -49,23 +46,18 @@ export const logAuditAction = async (userId: string, action: string, details: an
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-
-    // 2. Insert Log
     await client.query(
       `INSERT INTO audit_log (user_id, action, details) VALUES ($1, $2, $3)`,
       [userId, action, JSON.stringify(details)]
     );
-
     await client.end();
   } catch (e) {
     console.error("Audit Log Failed:", e);
-    // We do not throw error here to prevent blocking the main user action
   }
 };
 
 /**
  * SECURITY HELPERS
- * NOTE: Using synchronous methods to ensure compatibility with browser-based bcryptjs builds
  */
 export const hashPassword = async (password: string): Promise<string> => {
   const salt = bcrypt.genSaltSync(10);
@@ -77,10 +69,9 @@ export const comparePassword = async (plain: string, hashed: string): Promise<bo
 };
 
 /**
- * GET USER BY ID (Session Restoration)
+ * GET USER BY ID
  */
 export const getUserById = async (userId: string): Promise<UserProfile | null> => {
-  // 1. Static Demo Check (For session restoration of demo user)
   if (userId === 'user_demo_p1') {
        return {
          id: 'user_demo_p1', 
@@ -100,8 +91,6 @@ export const getUserById = async (userId: string): Promise<UserProfile | null> =
 
   const client = getDbClient();
   if (!client) {
-    // CRITICAL: If client cannot be created (e.g. missing ENV), throw error instead of returning null.
-    // Returning null causes logout. Throwing error allows "Offline Mode" via cache.
     throw new Error("DB Client configuration missing - Potential Offline Mode");
   }
 
@@ -125,28 +114,24 @@ export const getUserById = async (userId: string): Promise<UserProfile | null> =
        } as UserProfile;
     }
     
-    return null; // Explicitly return null ONLY if connection succeeded but user not found
+    return null; 
   } catch (error) {
     console.error("Neon Get User Error:", error);
-    throw error; // Propagate error so frontend knows it was a failure, not a "not found"
+    throw error; 
   }
 };
 
 /**
- * AUTHENTICATION: Login User
+ * AUTHENTICATION
  */
 export const authenticateUser = async (email: string, password: string): Promise<UserProfile | null> => {
   const client = getDbClient();
   
-  // 1. ATTEMPT REAL DB AUTHENTICATION (First Priority)
-  // We do this even for demo credentials to ensure we retrieve the REAL user ID linked to existing data.
   if (client) {
     try {
       await client.connect();
       const query = 'SELECT id, name, email, password, type, profile_data FROM users WHERE email = $1';
       const { rows } = await client.query(query, [email]);
-      
-      // Keep client open for potential password update
       
       if (rows.length > 0) {
          const userRow = rows[0];
@@ -155,21 +140,14 @@ export const authenticateUser = async (email: string, password: string): Promise
          let isMatch = false;
          let needsPasswordUpdate = false;
 
-         // SPECIAL: Allow Demo Password Bypass if it matches the specific demo email
-         // This ensures you can always log in as Juan even if you forgot the DB password, 
-         // but critically, it returns the REAL DB USER ID.
          if (email === 'juan@konsulbills.com' && password === 'password123') {
             console.log("🔓 Demo Credentials Matched - Bypassing Hash Check");
             isMatch = true;
-            
-            // Auto-heal: If the stored hash isn't valid for 'password123', mark for update
-            // This fixes the issue where the DB might have an old/different password
             const isHashCorrect = await comparePassword('password123', storedPassword).catch(() => false);
             if (!isHashCorrect) {
                needsPasswordUpdate = true;
             }
          } else {
-            // Normal Password Check
             if (storedPassword.startsWith('$2a$') || storedPassword.startsWith('$2b$') || storedPassword.startsWith('$2y$')) {
                 try {
                   isMatch = await comparePassword(password, storedPassword);
@@ -183,12 +161,8 @@ export const authenticateUser = async (email: string, password: string): Promise
          }
 
          if (isMatch) {
-           console.log(`✅ User Authenticated: ${userRow.id}`);
-           
-           // Sync password in DB if needed (Auto-repair)
            if (needsPasswordUpdate) {
               try {
-                console.log("🔄 Syncing Demo Password Hash in DB...");
                 const newHash = await hashPassword('password123');
                 await client.query('UPDATE users SET password = $1 WHERE id = $2', [newHash, userRow.id]);
               } catch (err) {
@@ -196,15 +170,13 @@ export const authenticateUser = async (email: string, password: string): Promise
               }
            }
 
-           await client.end(); // Now close connection
-
-           // AUDIT LOG: LOGIN
+           await client.end(); 
            logAuditAction(userRow.id, 'LOGIN', { email: userRow.email, timestamp: new Date().toISOString() });
 
            const profileSettings = userRow.profile_data || {};
 
            return {
-             id: userRow.id, // RETURNS THE REAL ID LINKED TO DATA
+             id: userRow.id, 
              name: userRow.name,
              email: userRow.email,
              type: userRow.type === 'COMPANY' ? 'Empresa (SAS/SL)' : 'Autónomo',
@@ -213,16 +185,13 @@ export const authenticateUser = async (email: string, password: string): Promise
            } as UserProfile;
          }
       }
-      await client.end(); // Close if no user found or no match
+      await client.end(); 
     } catch (error) {
       console.error("Neon Auth Error:", error);
-      // Don't return null yet, try fallback if it's the demo user
     }
   }
 
-  // 2. STATIC FALLBACK (Only if DB failed or user not found AND it's the demo user)
   if (email === 'juan@konsulbills.com' && password === 'password123') {
-       console.log("🔓 Using Static Demo Profile (DB Unreachable or User Not Found)");
        return {
          id: 'user_demo_p1', 
          name: 'Juan Pérez (Demo)',
@@ -243,7 +212,7 @@ export const authenticateUser = async (email: string, password: string): Promise
 };
 
 /**
- * CREATE USER (Secure)
+ * CREATE USER
  */
 export const createUserInDb = async (profile: Partial<UserProfile>, password: string, email: string): Promise<boolean> => {
   const client = getDbClient();
@@ -268,7 +237,6 @@ export const createUserInDb = async (profile: Partial<UserProfile>, password: st
     delete (profileData as any).type;
     delete (profileData as any).password;
 
-    // Check if type string includes 'Empresa' to map correctly to DB ENUM/VARCHAR
     const typeString = profile.type || '';
     const dbType = typeString.includes('Empresa') ? 'COMPANY' : 'FREELANCE';
 
@@ -287,8 +255,6 @@ export const createUserInDb = async (profile: Partial<UserProfile>, password: st
     ]);
 
     await client.end();
-
-    // AUDIT LOG: REGISTER
     logAuditAction(userId, 'REGISTER_USER', { email, name: profile.name });
 
     return true;
@@ -300,7 +266,7 @@ export const createUserInDb = async (profile: Partial<UserProfile>, password: st
 };
 
 /**
- * UPDATE USER PROFILE (Persist Settings)
+ * UPDATE USER PROFILE
  */
 export const updateUserProfileInDb = async (profile: UserProfile): Promise<boolean> => {
   const client = getDbClient();
@@ -317,8 +283,6 @@ export const updateUserProfileInDb = async (profile: UserProfile): Promise<boole
     delete (profileData as any).password;
 
     const cleanProfileData = JSON.parse(JSON.stringify(profileData));
-
-    // Improved Type Logic: Check substring match for robustness
     const typeString = profile.type || '';
     const dbType = typeString.includes('Empresa') ? 'COMPANY' : 'FREELANCE';
 
@@ -340,8 +304,6 @@ export const updateUserProfileInDb = async (profile: UserProfile): Promise<boole
     ]);
 
     await client.end();
-
-    // AUDIT LOG: UPDATE PROFILE
     logAuditAction(profile.id, 'UPDATE_PROFILE', { changedFields: Object.keys(cleanProfileData) });
 
     return true;
@@ -352,8 +314,7 @@ export const updateUserProfileInDb = async (profile: UserProfile): Promise<boole
 };
 
 /**
- * Fetches data from BOTH 'invoices' and 'expenses' tables and unifies them.
- * FILTERS BY userId to ensure data isolation.
+ * FETCH INVOICES & EXPENSES
  */
 export const fetchInvoicesFromDb = async (userId: string): Promise<Invoice[] | null> => {
   const client = getDbClient();
@@ -362,17 +323,39 @@ export const fetchInvoicesFromDb = async (userId: string): Promise<Invoice[] | n
   try {
     await client.connect();
     
-    console.log(`Fetching data for User ID: ${userId}`);
+    // Create Tables if not exist (Lazy Init for Resiliency)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS invoices (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        client_name TEXT,
+        client_tax_id TEXT,
+        total NUMERIC,
+        status TEXT,
+        date TEXT,
+        type TEXT,
+        data JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS expenses (
+        id TEXT PRIMARY KEY,
+        provider_name TEXT,
+        date TEXT,
+        total NUMERIC,
+        currency TEXT,
+        category TEXT,
+        receipt_url TEXT,
+        status TEXT,
+        data JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
 
-    // FETCH INVOICES
-    // FIX: Include rows where userId matches OR where userId is NULL (legacy data adoption)
-    // NOTE: We check both the explicit user_id column AND the JSON blob for backward compatibility
     const invoicesPromise = client.query(
       `SELECT * FROM invoices WHERE user_id = $1 OR data->>'userId' = $1 OR (user_id IS NULL AND data->>'userId' IS NULL)`, 
       [userId]
     );
     
-    // FETCH EXPENSES
     const expensesPromise = client.query(
       `SELECT * FROM expenses WHERE data->>'userId' = $1 OR data->>'userId' IS NULL`, 
       [userId]
@@ -388,10 +371,9 @@ export const fetchInvoicesFromDb = async (userId: string): Promise<Invoice[] | n
       const mappedInvoices = invoicesRes.value.rows.map((row: any) => ({
         ...row.data, 
         id: row.id,
-        // Ensure the object in memory has the current userId attached if it was missing
         userId: row.user_id || row.data.userId || userId,
         clientName: row.client_name,
-        clientTaxId: row.client_tax_id || row.data.clientTaxId, // Fetch from col or json
+        clientTaxId: row.client_tax_id || row.data.clientTaxId,
         total: parseFloat(row.total),
         status: row.status,
         date: row.date,
@@ -424,7 +406,48 @@ export const fetchInvoicesFromDb = async (userId: string): Promise<Invoice[] | n
 };
 
 /**
- * Saves (Upserts) a client to the clients table.
+ * FETCH CLIENTS
+ */
+export const fetchClientsFromDb = async (userId: string): Promise<any[]> => {
+  const client = getDbClient();
+  if (!client) return [];
+
+  try {
+    await client.connect();
+    
+    // Ensure table exists just in case
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS clients (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        tax_id TEXT,
+        email TEXT,
+        address TEXT,
+        status TEXT,
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    const result = await client.query('SELECT * FROM clients WHERE user_id = $1', [userId]);
+    await client.end();
+
+    return result.rows.map(row => ({
+      id: row.id,
+      name: row.name,
+      taxId: row.tax_id,
+      email: row.email,
+      address: row.address,
+      status: row.status
+    }));
+  } catch (error) {
+    console.error("Error fetching clients:", error);
+    return [];
+  }
+};
+
+/**
+ * SAVE CLIENT (Robust)
  */
 export const saveClientToDb = async (client: { name: string, taxId?: string, email?: string, address?: string }, userId: string, status: 'CLIENT' | 'PROSPECT'): Promise<boolean> => {
   const clientDb = getDbClient();
@@ -433,8 +456,21 @@ export const saveClientToDb = async (client: { name: string, taxId?: string, ema
   try {
     await clientDb.connect();
 
-    // Create a deterministic ID based on UserID + ClientName to avoid duplicates
-    // Simple sanitization for the ID
+    // 1. Ensure Table Exists (Self-Healing)
+    await clientDb.query(`
+      CREATE TABLE IF NOT EXISTS clients (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        tax_id TEXT,
+        email TEXT,
+        address TEXT,
+        status TEXT,
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    // 2. Perform Upsert
     const safeName = client.name.toLowerCase().replace(/[^a-z0-9]/g, '');
     const clientId = `cli_${userId.substring(0,8)}_${safeName}`;
 
@@ -448,7 +484,7 @@ export const saveClientToDb = async (client: { name: string, taxId?: string, ema
         email = COALESCE(EXCLUDED.email, clients.email),
         address = COALESCE(EXCLUDED.address, clients.address),
         status = CASE 
-           WHEN clients.status = 'CLIENT' THEN 'CLIENT' -- Once a client, always a client
+           WHEN clients.status = 'CLIENT' THEN 'CLIENT'
            ELSE EXCLUDED.status
         END,
         updated_at = NOW();
@@ -465,8 +501,6 @@ export const saveClientToDb = async (client: { name: string, taxId?: string, ema
     ]);
 
     await clientDb.end();
-
-    // AUDIT LOG: SAVE CLIENT
     logAuditAction(userId, 'SAVE_CLIENT', { clientName: client.name, status });
 
     return true;
@@ -477,8 +511,7 @@ export const saveClientToDb = async (client: { name: string, taxId?: string, ema
 };
 
 /**
- * Saves (Upserts) a document to the correct table based on type.
- * Updated to save specific columns: user_id, client_tax_id
+ * SAVE DOCUMENT
  */
 export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
   const client = getDbClient();
@@ -487,11 +520,11 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
   try {
     await client.connect();
     
+    // Self-healing table creation for invoices is handled in fetchInvoicesFromDb for efficiency, 
+    // but typically safe to rely on it being there if the app loaded.
+    
     const invoiceData = { ...invoice };
     
-    // Log for debugging
-    console.log(`Saving ${invoice.type} to DB for User: ${invoiceData.userId}`);
-
     if (invoice.type === 'Expense') {
       const query = `
         INSERT INTO expenses (id, provider_name, date, total, currency, category, receipt_url, status, data)
@@ -521,8 +554,6 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
       ]);
 
     } else {
-      // INVOICE / QUOTE
-      // UPDATED: Now inserts user_id and client_tax_id explicit columns
       const query = `
         INSERT INTO invoices (id, user_id, client_name, client_tax_id, total, status, date, type, data)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -539,9 +570,9 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
 
       await client.query(query, [
         invoice.id,
-        invoiceData.userId, // Explicit User ID
+        invoiceData.userId, 
         invoice.clientName,
-        invoice.clientTaxId || null, // Explicit Tax ID
+        invoice.clientTaxId || null, 
         invoice.total,
         invoice.status,
         invoice.date,
@@ -552,7 +583,6 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
 
     await client.end();
 
-    // AUDIT LOG: SAVE DOCUMENT
     if (invoiceData.userId) {
         logAuditAction(invoiceData.userId, 'SAVE_DOCUMENT', { 
             docId: invoice.id, 
@@ -571,7 +601,7 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
 };
 
 /**
- * Deletes from correct table
+ * DELETE DOCUMENT
  */
 export const deleteInvoiceFromDb = async (id: string, userId: string): Promise<boolean> => {
   const client = getDbClient();
@@ -580,7 +610,6 @@ export const deleteInvoiceFromDb = async (id: string, userId: string): Promise<b
   try {
     await client.connect();
     
-    // Attempt delete from both tables to be sure
     const resInv = await client.query('DELETE FROM invoices WHERE id = $1', [id]);
     
     if (resInv.rowCount === 0) {
@@ -588,8 +617,6 @@ export const deleteInvoiceFromDb = async (id: string, userId: string): Promise<b
     }
 
     await client.end();
-
-    // AUDIT LOG: DELETE DOCUMENT
     logAuditAction(userId, 'DELETE_DOCUMENT', { docId: id });
 
     return true;

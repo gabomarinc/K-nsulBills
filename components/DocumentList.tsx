@@ -68,8 +68,9 @@ const DocumentList: React.FC<DocumentListProps> = ({
         : doc.type === 'Quote';
     
     if (viewMode === 'GALLERY') {
-       if (galleryStage === 'DRAFT') return matchesSearch && (doc.status === 'Borrador' || doc.status === 'Creada' || doc.status === 'PendingSync');
-       if (galleryStage === 'ALL_ACTIVE') return matchesSearch && (doc.status === 'Enviada' || doc.status === 'Seguimiento' || doc.status === 'Negociacion');
+       if (galleryStage === 'DRAFT') return matchesSearch && (doc.status === 'Borrador' || doc.status === 'PendingSync');
+       // MOVED 'Creada' here:
+       if (galleryStage === 'ALL_ACTIVE') return matchesSearch && (doc.status === 'Creada' || doc.status === 'Enviada' || doc.status === 'Seguimiento' || doc.status === 'Negociacion');
        if (galleryStage === 'TO_COLLECT') return matchesSearch && doc.type === 'Invoice' && (doc.status === 'Enviada' || doc.status === 'Seguimiento' || doc.status === 'Negociacion');
        if (galleryStage === 'NEGOTIATION') return matchesSearch && doc.type === 'Quote' && (doc.status === 'Enviada' || doc.status === 'Seguimiento' || doc.status === 'Negociacion');
        if (galleryStage === 'DONE') return matchesSearch && (doc.status === 'Aceptada' || doc.status === 'Rechazada');
@@ -98,6 +99,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
       case 'Enviada': return '#0ea5e9';
       case 'Rechazada': return '#ef4444';
       case 'PendingSync': return '#f59e0b';
+      case 'Creada': return '#1c2938'; // Dark blue for Created
       default: return '#94a3b8';
     }
   };

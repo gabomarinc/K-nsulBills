@@ -9,9 +9,10 @@ import { Invoice, UserProfile } from '../types';
 
 interface ClientListProps {
   invoices: Invoice[];
+  dbClients?: any[]; // NEW: Clients fetched from DB directly
   onSelectClient?: (clientName: string) => void;
   onCreateDocument: () => void;
-  onCreateClient?: () => void; // New prop for specific client creation
+  onCreateClient?: () => void;
   currencySymbol: string;
   currentUser?: UserProfile;
 }
@@ -30,7 +31,7 @@ interface AggregatedClient {
   winRate: number; 
 }
 
-const ClientList: React.FC<ClientListProps> = ({ invoices, onSelectClient, onCreateDocument, onCreateClient, currencySymbol, currentUser }) => {
+const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSelectClient, onCreateDocument, onCreateClient, currencySymbol, currentUser }) => {
   const [viewMode, setViewMode] = useState<'LIST' | 'GALLERY'>('GALLERY');
   const [filter, setFilter] = useState<'ALL' | 'CLIENT' | 'PROSPECT' | 'VIP'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
@@ -42,6 +43,25 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, onSelectClient, onCre
   const { clients, stats } = useMemo(() => {
     const clientMap = new Map<string, AggregatedClient>();
 
+    // 1. Process DB Clients (Base Layer)
+    dbClients.forEach(dbClient => {
+        const nameKey = dbClient.name.trim();
+        clientMap.set(nameKey, {
+            name: nameKey,
+            taxId: dbClient.taxId || 'N/A',
+            totalRevenue: 0,
+            invoiceCount: 0,
+            quoteCount: 0,
+            quotesWon: 0,
+            lastInteraction: new Date(), // Created recently
+            status: dbClient.status || 'PROSPECT',
+            avgTicket: 0,
+            isVip: false,
+            winRate: 0
+        });
+    });
+
+    // 2. Process Invoices (Overlay Layer - Revenue)
     invoices.forEach(inv => {
       const nameKey = inv.clientName.trim();
       
@@ -66,6 +86,9 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, onSelectClient, onCre
 
       if (invDate > client.lastInteraction) client.lastInteraction = invDate;
 
+      // Update basic info from invoice if available
+      if (inv.clientTaxId) client.taxId = inv.clientTaxId;
+
       if (inv.type === 'Invoice') {
         client.invoiceCount++;
         if (inv.status === 'Aceptada') {
@@ -89,6 +112,7 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, onSelectClient, onCre
     const processedClients = allClients.map(c => {
       const avgTicket = c.invoiceCount > 0 ? c.totalRevenue / c.invoiceCount : 0;
       const winRate = c.quoteCount > 0 ? (c.quotesWon / c.quoteCount) * 100 : 0;
+      // VIP logic: Must be active client AND (have top revenue OR be manually set as VIP via rules)
       const isVip = c.status === 'CLIENT' && c.totalRevenue > 0 && c.totalRevenue >= vipThreshold;
       return { ...c, avgTicket, winRate, isVip };
     });
@@ -106,7 +130,7 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, onSelectClient, onCre
       stats: { totalPortfolioValue, totalActiveClients, avgGlobalTicket, globalWinRate } 
     };
 
-  }, [invoices]);
+  }, [invoices, dbClients]);
 
   const filteredClients = clients.filter(c => {
     const matchesSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -119,6 +143,8 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, onSelectClient, onCre
   }).sort((a, b) => {
     if (a.isVip && !b.isVip) return -1;
     if (!a.isVip && b.isVip) return 1;
+    // Newest interaction first if revenue matches
+    if (b.totalRevenue === a.totalRevenue) return b.lastInteraction.getTime() - a.lastInteraction.getTime();
     return b.totalRevenue - a.totalRevenue;
   });
 
@@ -141,7 +167,7 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, onSelectClient, onCre
         </div>
         
         <button 
-            onClick={onCreateClient || onCreateDocument} // Prefer specific handler
+            onClick={onCreateClient || onCreateDocument} 
             className="bg-[#1c2938] text-white px-6 py-3.5 rounded-2xl font-bold hover:bg-[#27bea5] transition-all flex items-center gap-2 shadow-xl group"
         >
             <UserPlus className="w-5 h-5 group-hover:scale-110 transition-transform" /> <span>Nuevo Cliente</span>
@@ -243,7 +269,7 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, onSelectClient, onCre
                 {filteredClients.map((client) => (
                   <div 
                     key={client.name} 
-                    onClick={() => onSelectClient && onSelectClient(client.name)} // NEW: Trigger selection
+                    onClick={() => onSelectClient && onSelectClient(client.name)}
                     className={`rounded-[2rem] p-6 border shadow-sm hover:shadow-xl transition-all duration-300 group relative flex flex-col justify-between h-[340px] cursor-pointer ${client.isVip ? 'bg-gradient-to-br from-amber-50/50 to-white border-amber-100' : 'bg-white border-slate-50 hover:border-[#27bea5]/30'}`}
                   >
                       <div className="flex justify-between items-start mb-4">
