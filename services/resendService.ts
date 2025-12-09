@@ -1,10 +1,19 @@
 
 import { Invoice, UserProfile } from '../types';
 
-// Default sender. 
-// IMPORTANT: In Resend Sandbox, this MUST be 'onboarding@resend.dev'.
-// Once you verify your domain, change this to 'No Reply <facturas@tu-dominio.com>'
-const DEFAULT_SENDER = 'FacturaZen <onboarding@resend.dev>';
+// Default sender logic
+// 1. Checks for a verified email in environment variables (Recommended for Production)
+// 2. Fallbacks to Resend Sandbox email if no variable is found.
+const getSender = (name: string = 'FacturaZen') => {
+  const verifiedEmail = process.env.RESEND_FROM_EMAIL;
+  
+  if (verifiedEmail) {
+    return `${name} <${verifiedEmail}>`;
+  }
+  
+  console.warn("⚠️ RESEND_FROM_EMAIL no está configurado en .env. Usando modo Sandbox (onboarding@resend.dev). Solo podrás enviar correos a ti mismo.");
+  return `${name} <onboarding@resend.dev>`;
+};
 
 interface Attachment {
   content: string; // Base64 string
@@ -29,8 +38,10 @@ export const sendEmail = async (
 ): Promise<{ success: boolean; id?: string; error?: string }> => {
   
   try {
+    const sender = getSender(payload.senderName || 'FacturaZen');
+
     const body: any = {
-      from: DEFAULT_SENDER, 
+      from: sender, 
       to: [payload.to],
       subject: payload.subject,
     };
@@ -63,7 +74,7 @@ export const sendEmail = async (
     if (!response.ok) {
       let errorMsg = data.error || 'Error al enviar email';
       if (data.details?.name === 'validation_error' && data.details?.message?.includes('domain')) {
-        errorMsg = 'Modo Sandbox: Solo puedes enviar correos a tu propia dirección verificada o debes verificar tu dominio en Resend.';
+        errorMsg = `Error de Dominio: Estás intentando enviar desde "${sender}". Asegúrate de que RESEND_FROM_EMAIL en tu archivo .env coincida con el dominio verificado en Resend.`;
       }
       return { success: false, error: errorMsg };
     }
