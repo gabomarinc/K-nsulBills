@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { AppView, Invoice, UserProfile, CatalogItem } from './types';
+import { AppView, Invoice, UserProfile, CatalogItem, InvoiceStatus, TimelineEvent } from './types';
 import LoginScreen from './components/LoginScreen';
 import OnboardingWizard from './components/OnboardingWizard';
 import Layout from './components/Layout';
@@ -159,6 +159,35 @@ const App: React.FC = () => {
     setDocumentToEdit(null);
   };
 
+  const handleUpdateStatus = async (id: string, newStatus: InvoiceStatus) => {
+    if (!currentUser) return;
+    
+    const targetInvoice = invoices.find(i => i.id === id);
+    if (!targetInvoice) return;
+
+    const event: TimelineEvent = {
+        id: Date.now().toString(),
+        type: 'STATUS_CHANGE',
+        title: `Estado cambiado a ${newStatus}`,
+        timestamp: new Date().toISOString()
+    };
+
+    const updatedInvoice = { 
+        ...targetInvoice, 
+        status: newStatus,
+        timeline: [...(targetInvoice.timeline || []), event]
+    };
+
+    const newInvoices = invoices.map(i => i.id === id ? updatedInvoice : i);
+    setInvoices(newInvoices);
+    
+    if (selectedInvoice?.id === id) {
+        setSelectedInvoice(updatedInvoice);
+    }
+
+    await saveInvoiceToDb({ ...updatedInvoice, userId: currentUser.id });
+  };
+
   const handleSaveNewClient = async (clientData: { name: string; taxId: string; email: string; address: string; phone: string }) => {
     if (!currentUser) return;
 
@@ -288,6 +317,7 @@ const App: React.FC = () => {
           onCreateNew={() => { setDocumentToEdit(null); setActiveView(AppView.WIZARD); }}
           onDeleteInvoice={handleDeleteInvoice}
           onEditInvoice={handleEditInvoice} 
+          onUpdateStatus={handleUpdateStatus} // New Prop
           currencySymbol={currentUser.defaultCurrency === 'EUR' ? '€' : '$'}
           currentUser={currentUser}
         />
@@ -303,6 +333,7 @@ const App: React.FC = () => {
              setSelectedInvoice(updated);
              saveInvoiceToDb({ ...updated, userId: currentUser.id });
           }}
+          onUpdateStatus={handleUpdateStatus} // New Prop
           onEdit={handleEditInvoice}
         />
       )}
@@ -310,7 +341,7 @@ const App: React.FC = () => {
       {activeView === AppView.CLIENTS && (
         <ClientList 
           invoices={invoices}
-          dbClients={dbClients} // Pass fetched clients
+          dbClients={dbClients} 
           onCreateDocument={() => { setDocumentToEdit(null); setActiveView(AppView.WIZARD); }}
           onCreateClient={() => setActiveView(AppView.CLIENT_WIZARD)} 
           currencySymbol={currentUser.defaultCurrency === 'EUR' ? '€' : '$'}

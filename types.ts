@@ -137,7 +137,7 @@ export interface InvoiceItem {
 
 export interface TimelineEvent {
   id: string;
-  type: 'CREATED' | 'SENT' | 'OPENED' | 'CLICKED' | 'APPROVED' | 'PAID' | 'REMINDER' | 'EDITED';
+  type: 'CREATED' | 'SENT' | 'OPENED' | 'CLICKED' | 'APPROVED' | 'PAID' | 'REMINDER' | 'EDITED' | 'STATUS_CHANGE';
   title: string;
   description?: string;
   timestamp: string;
@@ -149,9 +149,12 @@ export type InvoiceStatus =
   | 'Creada'        // Created
   | 'Enviada'       // Sent
   | 'Seguimiento'   // Follow-up/Viewed
-  | 'Negociacion'   // Negotiation
+  | 'Negociacion'   // Negotiation (Quotes)
+  | 'Aceptada'      // Accepted (Quotes) / Paid (Legacy Invoices)
   | 'Rechazada'     // Rejected
-  | 'Aceptada'      // Accepted/Paid
+  | 'Pagada'        // Paid (New Invoices)
+  | 'Abonada'       // Partially Paid (New Invoices)
+  | 'Incobrable'    // Uncollectible (New Invoices)
   | 'PendingSync';  // Internal: Offline
 
 export interface Invoice {

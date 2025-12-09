@@ -2,11 +2,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   ArrowLeft, Printer, Share2, Download, Building2, 
-  CheckCircle2, Loader2, Send, MessageCircle, Smartphone, Mail, Check, AlertTriangle, Edit2
+  CheckCircle2, Loader2, Send, MessageCircle, Smartphone, Mail, Check, AlertTriangle, Edit2, 
+  ChevronDown, XCircle, Wallet
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import { Invoice, UserProfile, TimelineEvent } from '../types';
+import { Invoice, UserProfile, TimelineEvent, InvoiceStatus } from '../types';
 import DocumentTimeline from './DocumentTimeline';
 import { sendEmail, generateDocumentHtml, getEmailStatus } from '../services/resendService';
 
@@ -16,12 +17,14 @@ interface InvoiceDetailProps {
   onBack: () => void;
   onEdit?: (invoice: Invoice) => void;
   onUpdateInvoice?: (invoice: Invoice) => void;
+  onUpdateStatus?: (id: string, status: InvoiceStatus) => void; // New Prop
 }
 
-const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, onEdit, onUpdateInvoice }) => {
+const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, onEdit, onUpdateInvoice, onUpdateStatus }) => {
   const [isSending, setIsSending] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [showStatusMenu, setShowStatusMenu] = useState(false);
   
   // Ref for PDF Generation
   const documentRef = useRef<HTMLDivElement>(null);
@@ -93,6 +96,13 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
   const color = branding.primaryColor;
   const logo = branding.logoUrl;
 
+  const handleStatusChange = (newStatus: InvoiceStatus) => {
+      if (onUpdateStatus) {
+          onUpdateStatus(invoice.id, newStatus);
+          setShowStatusMenu(false);
+      }
+  };
+
   const handleSend = async () => {
     // 1. Validation
     if (!invoice.clientEmail) {
@@ -137,8 +147,6 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
         const emailSubject = `${docTypeName} #${invoice.id} - ${issuer.name}`;
 
         // 4. Send Email
-        // We pass issuer.legalName or issuer.name as the sender name
-        // The service will automatically attach it to the Verified Sender Email (ENV VAR)
         const result = await sendEmail({
             to: invoice.clientEmail, 
             subject: emailSubject, 
@@ -197,14 +205,38 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
 
   const getStatusStyle = (status: string) => {
     switch(status) {
+      case 'Pagada':
       case 'Aceptada': return 'bg-green-50 text-green-700 border-green-200';
-      case 'Rechazada': return 'bg-red-50 text-red-700 border-red-200';
+      case 'Rechazada': 
+      case 'Incobrable': return 'bg-red-50 text-red-700 border-red-200';
       case 'Negociacion': return 'bg-purple-50 text-purple-700 border-purple-200';
       case 'Seguimiento': return 'bg-blue-50 text-blue-700 border-blue-200';
+      case 'Abonada': return 'bg-indigo-50 text-indigo-700 border-indigo-200';
       case 'Enviada': return 'bg-sky-50 text-sky-700 border-sky-200';
       case 'PendingSync': return 'bg-amber-50 text-amber-700 border-amber-200';
-      default: return 'bg-slate-50 text-slate-600 border-slate-200'; // Borrador, Creada
+      default: return 'bg-slate-50 text-slate-600 border-slate-200'; 
     }
+  };
+
+  // Status Options Renderer
+  const renderStatusOptions = () => {
+      const options = isQuote 
+        ? ['Negociacion', 'Aceptada', 'Rechazada', 'Enviada']
+        : ['Enviada', 'Seguimiento', 'Abonada', 'Pagada', 'Incobrable'];
+      
+      return (
+          <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 z-50 overflow-hidden animate-in fade-in zoom-in-95">
+              {options.map((opt) => (
+                  <button
+                    key={opt}
+                    onClick={() => handleStatusChange(opt as InvoiceStatus)}
+                    className="w-full text-left px-4 py-3 text-sm font-bold text-slate-600 hover:bg-slate-50 hover:text-[#1c2938] transition-colors"
+                  >
+                      {opt}
+                  </button>
+              ))}
+          </div>
+      );
   };
 
   // --- TEMPLATE RENDERERS ---
@@ -265,11 +297,17 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
               )}
             </div>
 
-            {/* Status Badge */}
-            <div className="mt-4 flex justify-end">
-              <span className={`px-4 py-1.5 rounded-full text-sm font-bold border uppercase tracking-wide ${getStatusStyle(invoice.status)}`}>
+            {/* Interactive Status Badge */}
+            <div className="mt-4 flex justify-end relative">
+              <button 
+                onClick={() => onUpdateStatus && setShowStatusMenu(!showStatusMenu)}
+                className={`px-4 py-1.5 rounded-full text-sm font-bold border uppercase tracking-wide flex items-center gap-1 ${getStatusStyle(invoice.status)} ${onUpdateStatus ? 'cursor-pointer hover:shadow-md' : ''}`}
+                disabled={!onUpdateStatus}
+              >
                 {invoice.status === 'PendingSync' ? 'Offline' : invoice.status}
-              </span>
+                {onUpdateStatus && <ChevronDown className="w-3 h-3" />}
+              </button>
+              {showStatusMenu && renderStatusOptions()}
             </div>
           </div>
         </div>
@@ -444,6 +482,21 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
             <p className="text-slate-400 uppercase tracking-widest text-sm font-bold mt-2">
               {invoice.currency} Total
             </p>
+            {/* Status in Minimal view */}
+            <div className="mt-4">
+                <button 
+                    onClick={() => onUpdateStatus && setShowStatusMenu(!showStatusMenu)}
+                    className={`inline-flex items-center gap-1 text-sm font-bold uppercase tracking-wide border px-3 py-1 rounded ${getStatusStyle(invoice.status)}`}
+                    disabled={!onUpdateStatus}
+                >
+                    {invoice.status} {onUpdateStatus && <ChevronDown className="w-3 h-3" />}
+                </button>
+                {showStatusMenu && (
+                    <div className="relative">
+                        {renderStatusOptions()}
+                    </div>
+                )}
+            </div>
          </div>
       </div>
 

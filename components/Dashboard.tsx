@@ -9,7 +9,7 @@ import {
   WifiOff, 
   ChevronRight, 
   FileText, 
-  FileBadge,
+  FileBadge, 
   Sparkles,
   TrendingUp,
   MoreHorizontal,
@@ -37,20 +37,20 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
 
-    // Only "Aceptada" (Paid) counts as Revenue
+    // "Aceptada" OR "Pagada" counts as Revenue for Invoices
     const thisMonthInvoices = recentInvoices.filter(inv => {
       const d = new Date(inv.date);
       return d.getMonth() === currentMonth && 
              d.getFullYear() === currentYear && 
              inv.type === 'Invoice' && 
-             inv.status === 'Aceptada';
+             (inv.status === 'Aceptada' || inv.status === 'Pagada');
     });
 
     const monthlyRevenue = thisMonthInvoices.reduce((acc, curr) => acc + curr.total, 0);
 
     // Pending (Sent but not Paid)
     const pendingAmount = recentInvoices
-      .filter(inv => inv.type === 'Invoice' && (inv.status === 'Enviada' || inv.status === 'Seguimiento'))
+      .filter(inv => inv.type === 'Invoice' && (inv.status === 'Enviada' || inv.status === 'Seguimiento' || inv.status === 'Abonada' || inv.status === 'Creada'))
       .reduce((acc, curr) => acc + curr.total, 0);
 
     // Quotes
@@ -93,10 +93,13 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
 
   const getStatusColor = (status: string) => {
     switch(status) {
+      case 'Pagada': 
       case 'Aceptada': return 'bg-green-50 text-green-700';
-      case 'Rechazada': return 'bg-red-50 text-red-700';
+      case 'Rechazada': 
+      case 'Incobrable': return 'bg-red-50 text-red-700';
       case 'Negociacion': return 'bg-purple-50 text-purple-700';
       case 'Seguimiento': return 'bg-blue-50 text-blue-700';
+      case 'Abonada': return 'bg-indigo-50 text-indigo-700';
       case 'Enviada': return 'bg-sky-50 text-sky-700';
       case 'PendingSync': return 'bg-amber-50 text-amber-700';
       default: return 'bg-slate-100 text-slate-500'; // Borrador, Creada

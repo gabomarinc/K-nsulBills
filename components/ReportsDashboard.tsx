@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
@@ -204,7 +205,7 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
       const key = d.toLocaleDateString('es-ES', { month: 'short', year: '2-digit' });
       if (!timelineMap.has(key)) timelineMap.set(key, { ingresos: 0, gastos: 0, date: d });
       const entry = timelineMap.get(key)!;
-      if (inv.type === 'Invoice' && inv.status === 'Aceptada') {
+      if (inv.type === 'Invoice' && (inv.status === 'Aceptada' || inv.status === 'Pagada')) {
         entry.ingresos += inv.total; totalRevenue += inv.total;
         const createdEvent = inv.timeline?.find(e => e.type === 'CREATED');
         const paidEvent = inv.timeline?.find(e => e.type === 'PAID'); 
@@ -219,11 +220,16 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
     const totalQuotes = quoteDocs.length;
     const wonQuotes = quoteDocs.filter(i => i.status === 'Aceptada').length;
     const conversionRate = totalQuotes > 0 ? (wonQuotes / totalQuotes) * 100 : 0;
-    const funnelData = [ { name: 'Borrador', value: filteredInvoices.filter(i => i.status === 'Borrador').length, fill: '#cbd5e1' }, { name: 'Enviadas', value: filteredInvoices.filter(i => i.status === 'Enviada').length, fill: '#3b82f6' }, { name: 'Vistas', value: filteredInvoices.filter(i => i.timeline?.some(e => e.type === 'OPENED')).length, fill: '#a855f7' }, { name: 'Cobradas', value: filteredInvoices.filter(i => i.status === 'Aceptada').length, fill: '#27bea5' }, ];
+    const funnelData = [ 
+        { name: 'Borrador', value: filteredInvoices.filter(i => i.status === 'Borrador').length, fill: '#cbd5e1' }, 
+        { name: 'Enviadas', value: filteredInvoices.filter(i => i.status === 'Enviada').length, fill: '#3b82f6' }, 
+        { name: 'Vistas', value: filteredInvoices.filter(i => i.timeline?.some(e => e.type === 'OPENED')).length, fill: '#a855f7' }, 
+        { name: 'Cobradas', value: filteredInvoices.filter(i => i.status === 'Aceptada' || i.status === 'Pagada').length, fill: '#27bea5' }, 
+    ];
     const scatterData = filteredInvoices.filter(i => i.type === 'Invoice' || i.type === 'Quote').map(i => ({ id: i.id, x: i.items.length, y: i.total, z: 1, status: i.status }));
     const clientMap = new Map<string, { revenue: number, count: number, lastDate: Date }>();
     const now = new Date();
-    filteredInvoices.forEach(inv => { if (!clientMap.has(inv.clientName)) clientMap.set(inv.clientName, { revenue: 0, count: 0, lastDate: new Date(0) }); const c = clientMap.get(inv.clientName)!; const invDate = new Date(inv.date); if (invDate > c.lastDate) c.lastDate = invDate; if (inv.type === 'Invoice') { c.count++; if (inv.status === 'Aceptada') { c.revenue += inv.total; } } });
+    filteredInvoices.forEach(inv => { if (!clientMap.has(inv.clientName)) clientMap.set(inv.clientName, { revenue: 0, count: 0, lastDate: new Date(0) }); const c = clientMap.get(inv.clientName)!; const invDate = new Date(inv.date); if (invDate > c.lastDate) c.lastDate = invDate; if (inv.type === 'Invoice') { c.count++; if (inv.status === 'Aceptada' || inv.status === 'Pagada') { c.revenue += inv.total; } } });
     const ltvData = Array.from(clientMap.entries()).map(([name, val]) => ({ name, revenue: val.revenue, count: val.count, daysSinceLast: Math.floor((now.getTime() - val.lastDate.getTime()) / (1000 * 3600 * 24)) })).sort((a, b) => b.revenue - a.revenue);
     const churnRiskCount = ltvData.filter(c => c.daysSinceLast > 90).length; 
     const activeClientsCount = ltvData.filter(c => c.daysSinceLast <= 90).length;
@@ -511,7 +517,7 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
                     <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ borderRadius: '12px', border: 'none' }} />
                     <Scatter name="Documentos" data={data.scatterData} fill="#8884d8">
                         {data.scatterData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.status === 'Aceptada' ? '#27bea5' : '#94a3b8'} />
+                          <Cell key={`cell-${index}`} fill={entry.status === 'Aceptada' || entry.status === 'Pagada' ? '#27bea5' : '#94a3b8'} />
                         ))}
                     </Scatter>
                   </ScatterChart>
@@ -633,232 +639,6 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
               </div>
           </div>
         </div>
-      </div>
-    </div>
-  );
-
-  return (
-    <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in pb-12">
-      
-      {/* HEADER WITH ACTIONS (Date Filters) */}
-      <div className="flex flex-col xl:flex-row justify-between items-end xl:items-center gap-6 pb-2">
-        {/* Title */}
-        <div>
-           <h1 className="text-3xl font-bold text-[#1c2938] tracking-tight">Centro de Inteligencia</h1>
-           <p className="text-slate-500 mt-1 text-lg font-light">
-             Radiografía completa de tu negocio basada en <span className="font-bold text-[#1c2938]">{filteredInvoices.length} operaciones</span>.
-           </p>
-        </div>
-
-        {/* Filters */}
-        <div className="flex flex-col sm:flex-row items-center gap-4">
-           {/* Date Filter Buttons */}
-           <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 overflow-x-auto max-w-full">
-             {(['30D', '90D', '12M'] as const).map((range) => (
-               <button
-                 key={range}
-                 onClick={() => setTimeRange(range)}
-                 className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 ${
-                   timeRange === range 
-                     ? 'bg-[#1c2938] text-white shadow-md' 
-                     : 'text-slate-400 hover:text-slate-600'
-                 }`}
-               >
-                 {range}
-               </button>
-             ))}
-             <button
-               onClick={() => setTimeRange('CUSTOM')}
-               className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 flex items-center gap-1 ${
-                 timeRange === 'CUSTOM'
-                   ? 'bg-[#1c2938] text-white shadow-md' 
-                   : 'text-slate-400 hover:text-slate-600'
-               }`}
-             >
-               <Calendar className="w-3 h-3" />
-               Personalizado
-             </button>
-           </div>
-        </div>
-      </div>
-
-      {/* Custom Range Inputs */}
-      {timeRange === 'CUSTOM' && (
-         <div className="flex justify-end -mt-6 mb-2">
-            <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-4 bg-white p-1 rounded-xl border border-slate-100 shadow-sm">
-                <input 
-                  type="date" 
-                  value={customStart}
-                  onChange={(e) => setCustomStart(e.target.value)}
-                  className="px-3 py-2 bg-slate-50 rounded-lg text-xs font-bold text-[#1c2938] outline-none focus:ring-1 focus:ring-[#27bea5]"
-                />
-                <span className="text-slate-400 text-xs font-bold">a</span>
-                <input 
-                  type="date" 
-                  value={customEnd}
-                  onChange={(e) => setCustomEnd(e.target.value)}
-                  className="px-3 py-2 bg-slate-50 rounded-lg text-xs font-bold text-[#1c2938] outline-none focus:ring-1 focus:ring-[#27bea5]"
-                />
-            </div>
-         </div>
-      )}
-
-      {/* CFO VIRTUAL IA SECTION (Prominent & Top) */}
-      <div className="bg-[#1c2938] rounded-[2.5rem] p-8 md:p-10 shadow-2xl relative overflow-hidden text-white transition-all duration-500">
-         {/* Abstract Background */}
-         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-[#27bea5] rounded-full blur-[120px] opacity-10 -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
-         <div className="absolute bottom-0 left-0 w-64 h-64 bg-blue-600 rounded-full blur-[80px] opacity-10 translate-y-1/2 -translate-x-1/2 pointer-events-none"></div>
-
-         <div className="relative z-10">
-            {/* IDLE STATE */}
-            {!analysis && (
-               <div className="flex flex-col md:flex-row items-center justify-between gap-8">
-                  <div className="max-w-2xl">
-                     <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#27bea5]/20 text-[#27bea5] text-xs font-bold uppercase tracking-wider mb-4 border border-[#27bea5]/20">
-                        <Sparkles className="w-3 h-3" /> Inteligencia Artificial
-                     </div>
-                     <h2 className="text-3xl md:text-4xl font-bold mb-4 tracking-tight">CFO Virtual</h2>
-                     <p className="text-slate-300 text-lg leading-relaxed">
-                        Analiza tus tendencias financieras, detecta riesgos de fuga y encuentra oportunidades de crecimiento ocultas en tus datos.
-                     </p>
-                  </div>
-                  
-                  {hasAiAccess ? (
-                    <button 
-                        onClick={handleAnalyze}
-                        disabled={isAnalyzing || invoices.length === 0}
-                        className="group bg-white text-[#1c2938] px-8 py-4 rounded-2xl font-bold hover:bg-[#27bea5] hover:text-white transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(39,190,165,0.4)] hover:-translate-y-1 active:translate-y-0 disabled:opacity-50 disabled:transform-none flex-shrink-0 flex items-center gap-3"
-                    >
-                        {isAnalyzing ? <Loader2 className="w-6 h-6 animate-spin" /> : <BrainCircuit className="w-6 h-6" />}
-                        <span className="text-lg">Generar Análisis</span>
-                        {!isAnalyzing && <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />}
-                    </button>
-                  ) : (
-                    <button 
-                        disabled
-                        className="group bg-slate-700 text-slate-400 px-8 py-4 rounded-2xl font-bold flex-shrink-0 flex items-center gap-3 border border-slate-600 cursor-not-allowed"
-                    >
-                        <Lock className="w-6 h-6" />
-                        <span className="text-lg">Configura tu API Key</span>
-                    </button>
-                  )}
-               </div>
-            )}
-
-            {/* ANALYZED STATE */}
-            {analysis && (
-               <div className="animate-in fade-in slide-in-from-bottom-4">
-                  <div className="flex justify-between items-start mb-8 border-b border-white/10 pb-6">
-                     <div>
-                        <div className="flex items-center gap-3 mb-2">
-                           <BrainCircuit className="w-8 h-8 text-[#27bea5]" />
-                           <h2 className="text-3xl font-bold">Diagnóstico Ejecutivo</h2>
-                        </div>
-                        <p className="text-slate-400">Análisis generado el {new Date().toLocaleDateString()} a las {new Date().toLocaleTimeString()}</p>
-                     </div>
-                     <button onClick={() => setAnalysis(null)} className="p-2 hover:bg-white/10 rounded-full transition-colors text-slate-400 hover:text-white">
-                        <X className="w-6 h-6" />
-                     </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-10 mb-8">
-                     {/* Score Card */}
-                     <div className="lg:col-span-1 bg-white/5 p-6 rounded-3xl border border-white/10 backdrop-blur-sm">
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Salud Financiera</p>
-                        <div className="flex items-center gap-4 mb-4">
-                           <span className={`text-6xl font-bold ${analysis.healthScore >= 80 ? 'text-[#27bea5]' : analysis.healthScore >= 50 ? 'text-amber-400' : 'text-rose-400'}`}>
-                              {analysis.healthScore}
-                           </span>
-                           <span className="text-sm text-slate-400 font-medium bg-white/5 px-3 py-1 rounded-lg">
-                              / 100
-                           </span>
-                        </div>
-                        <div className="w-full bg-black/20 h-2 rounded-full overflow-hidden mb-4">
-                           <div 
-                              className={`h-full rounded-full ${analysis.healthScore >= 80 ? 'bg-[#27bea5]' : analysis.healthScore >= 50 ? 'bg-amber-400' : 'bg-rose-400'}`} 
-                              style={{width: `${analysis.healthScore}%`}}
-                           ></div>
-                        </div>
-                        <p className="font-bold text-lg text-white mb-1">{analysis.healthStatus}</p>
-                        <p className="text-sm text-slate-400">{analysis.projection}</p>
-                     </div>
-
-                     {/* Diagnosis Text */}
-                     <div className="lg:col-span-2 space-y-6">
-                        <div>
-                           <h3 className="text-xl font-bold text-[#27bea5] mb-3">Resumen Estratégico</h3>
-                           <p className="text-lg text-slate-200 leading-relaxed">"{analysis.diagnosis}"</p>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                           {analysis.actionableTips.map((tip, idx) => (
-                              <div key={idx} className="flex gap-3 bg-white/5 p-4 rounded-2xl border border-white/5 hover:bg-white/10 transition-colors">
-                                 <div className="w-6 h-6 rounded-full bg-[#27bea5]/20 flex items-center justify-center flex-shrink-0 text-[#27bea5] mt-0.5">
-                                    <CheckCircle2 className="w-3.5 h-3.5" />
-                                 </div>
-                                 <p className="text-sm text-slate-300">{tip}</p>
-                              </div>
-                           ))}
-                        </div>
-                     </div>
-                  </div>
-
-                  {/* ACTION BUTTONS (Revealed on Generation) */}
-                  <div className="flex flex-wrap gap-4 pt-4 border-t border-white/10">
-                     <button 
-                        onClick={() => handleExportPdf(overviewRef, 'Reporte_CFO_IA')}
-                        disabled={!!isExporting}
-                        className="bg-white text-[#1c2938] px-6 py-3 rounded-xl font-bold hover:bg-[#27bea5] hover:text-white transition-all flex items-center gap-2 shadow-lg disabled:opacity-50"
-                     >
-                        {isExporting === 'pdf' ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
-                        Descargar Reporte PDF
-                     </button>
-                     <button 
-                        onClick={() => handleSendEmail(overviewRef, `Reporte CFO ${new Date().toLocaleDateString()}`)}
-                        disabled={emailStatus === 'SENDING'}
-                        className="bg-white/10 text-white px-6 py-3 rounded-xl font-bold hover:bg-white/20 transition-all flex items-center gap-2 border border-white/10 disabled:opacity-50"
-                     >
-                        {emailStatus === 'SENDING' ? <Loader2 className="w-5 h-5 animate-spin" /> : <Mail className="w-5 h-5" />}
-                        Enviar por Email
-                     </button>
-                     <button 
-                        onClick={() => handleShareWhatsapp(`CFO Diagnosis: ${analysis.diagnosis}`)}
-                        className="bg-[#25D366] text-white px-6 py-3 rounded-xl font-bold hover:bg-[#20bd5a] transition-all flex items-center gap-2 shadow-lg"
-                     >
-                        <Smartphone className="w-5 h-5" />
-                        WhatsApp
-                     </button>
-                  </div>
-               </div>
-            )}
-         </div>
-      </div>
-
-      {/* TABS NAVIGATION */}
-      <div id="no-print" className="flex justify-center w-full sticky top-4 z-30">
-         <div className="bg-white/80 backdrop-blur-md p-1.5 rounded-2xl shadow-lg border border-slate-100 flex overflow-x-auto max-w-full custom-scrollbar">
-            {(['OVERVIEW', 'DOCUMENTS', 'CLIENTS'] as const).map(tab => (
-               <button
-                 key={tab}
-                 onClick={() => setActiveTab(tab)}
-                 className={`px-6 py-3 rounded-xl text-sm font-bold transition-all duration-300 whitespace-nowrap flex items-center gap-2 ${
-                   activeTab === tab
-                     ? 'bg-[#1c2938] text-white shadow-md' 
-                     : 'text-slate-500 hover:text-[#1c2938] hover:bg-slate-100'
-                 }`}
-               >
-                 {tab === 'OVERVIEW' ? <LayoutDashboard className="w-4 h-4" /> : tab === 'DOCUMENTS' ? <FileBarChart className="w-4 h-4" /> : <Users className="w-4 h-4" />}
-                 {tab === 'OVERVIEW' ? 'Finanzas' : tab === 'DOCUMENTS' ? 'Operatividad' : 'Clientes'}
-               </button>
-            ))}
-         </div>
-      </div>
-      
-      {/* WRAPPER FOR TAB CONTENT */}
-      <div className="space-y-10 p-4 -m-4">
-        {activeTab === 'OVERVIEW' && renderOverview()}
-        {activeTab === 'DOCUMENTS' && renderDocumentsView()}
-        {activeTab === 'CLIENTS' && renderClientsView()}
       </div>
 
       {/* MODAL: DEEP DIVE REPORT */}

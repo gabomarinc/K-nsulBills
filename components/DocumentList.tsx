@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { 
   Search, Plus, FileText, CheckCircle2, 
@@ -6,18 +5,20 @@ import {
   ArrowUpRight, PieChart, Filter, CalendarDays, Wallet,
   FileBadge, LayoutList, LayoutGrid, MoreHorizontal,
   Send, AlertCircle, Sparkles, DollarSign, Repeat, Eye,
-  Activity, MessageCircle, Archive, Trash2, Lock, Edit2
+  Activity, MessageCircle, Archive, Trash2, Lock, Edit2, XCircle
 } from 'lucide-react';
-import { Invoice, UserProfile } from '../types';
+import { Invoice, InvoiceStatus, UserProfile } from '../types';
 
 interface DocumentListProps {
   invoices: Invoice[];
   onSelectInvoice: (invoice: Invoice) => void;
   onCreateNew: () => void;
-  onMarkPaid?: (id: string) => void;
-  onConvertQuote?: (id: string) => void;
+  onUpdateStatus?: (id: string, status: InvoiceStatus) => void; // Replaces specific actions
   onDeleteInvoice?: (id: string) => void; 
   onEditInvoice?: (invoice: Invoice) => void; 
+  // Legacy props kept optional to avoid break, but now handled by onUpdateStatus
+  onMarkPaid?: (id: string) => void; 
+  onConvertQuote?: (id: string) => void;
   currencySymbol: string;
   currentUser?: UserProfile;
 }
@@ -29,9 +30,10 @@ const DocumentList: React.FC<DocumentListProps> = ({
   invoices, 
   onSelectInvoice, 
   onCreateNew, 
+  onUpdateStatus,
   onMarkPaid, 
   onConvertQuote, 
-  onDeleteInvoice,
+  onDeleteInvoice, 
   onEditInvoice,
   currencySymbol,
   currentUser
@@ -40,17 +42,20 @@ const DocumentList: React.FC<DocumentListProps> = ({
   const [galleryStage, setGalleryStage] = useState<GalleryStage>('ALL_ACTIVE');
   const [filterType, setFilterType] = useState<'ALL' | 'INVOICE' | 'QUOTE'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Quick Action Menu State
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
 
   // Check AI Access
   const hasAiAccess = !!currentUser?.apiKeys?.gemini || !!currentUser?.apiKeys?.openai;
 
   // --- STATS CALCULATION ---
   const totalPaid = invoices
-    .filter(i => i.type === 'Invoice' && i.status === 'Aceptada')
+    .filter(i => i.type === 'Invoice' && (i.status === 'Aceptada' || i.status === 'Pagada'))
     .reduce((acc, curr) => acc + curr.total, 0);
 
   const totalPending = invoices
-    .filter(i => i.type === 'Invoice' && (i.status === 'Enviada' || i.status === 'Seguimiento' || i.status === 'Negociacion'))
+    .filter(i => i.type === 'Invoice' && (i.status === 'Enviada' || i.status === 'Seguimiento' || i.status === 'Abonada'))
     .reduce((acc, curr) => acc + curr.total, 0);
 
   const totalPipeline = invoices
@@ -69,11 +74,10 @@ const DocumentList: React.FC<DocumentListProps> = ({
     
     if (viewMode === 'GALLERY') {
        if (galleryStage === 'DRAFT') return matchesSearch && (doc.status === 'Borrador' || doc.status === 'PendingSync');
-       // MOVED 'Creada' here:
-       if (galleryStage === 'ALL_ACTIVE') return matchesSearch && (doc.status === 'Creada' || doc.status === 'Enviada' || doc.status === 'Seguimiento' || doc.status === 'Negociacion');
-       if (galleryStage === 'TO_COLLECT') return matchesSearch && doc.type === 'Invoice' && (doc.status === 'Enviada' || doc.status === 'Seguimiento' || doc.status === 'Negociacion');
+       if (galleryStage === 'ALL_ACTIVE') return matchesSearch && (doc.status === 'Creada' || doc.status === 'Enviada' || doc.status === 'Seguimiento' || doc.status === 'Negociacion' || doc.status === 'Abonada');
+       if (galleryStage === 'TO_COLLECT') return matchesSearch && doc.type === 'Invoice' && (doc.status === 'Enviada' || doc.status === 'Seguimiento' || doc.status === 'Abonada');
        if (galleryStage === 'NEGOTIATION') return matchesSearch && doc.type === 'Quote' && (doc.status === 'Enviada' || doc.status === 'Seguimiento' || doc.status === 'Negociacion');
-       if (galleryStage === 'DONE') return matchesSearch && (doc.status === 'Aceptada' || doc.status === 'Rechazada');
+       if (galleryStage === 'DONE') return matchesSearch && (doc.status === 'Aceptada' || doc.status === 'Rechazada' || doc.status === 'Pagada' || doc.status === 'Incobrable');
     }
 
     return matchesSearch && matchesType;
@@ -81,10 +85,13 @@ const DocumentList: React.FC<DocumentListProps> = ({
 
   const getStatusStyle = (status: string) => {
     switch(status) {
+      case 'Pagada':
       case 'Aceptada': return 'bg-green-50 text-green-700 border-green-100 group-hover:bg-green-100';
-      case 'Rechazada': return 'bg-red-50 text-red-700 border-red-100 group-hover:bg-red-100';
+      case 'Rechazada': 
+      case 'Incobrable': return 'bg-red-50 text-red-700 border-red-100 group-hover:bg-red-100';
       case 'Negociacion': return 'bg-purple-50 text-purple-700 border-purple-100 group-hover:bg-purple-100';
       case 'Seguimiento': return 'bg-blue-50 text-blue-700 border-blue-100 group-hover:bg-blue-100';
+      case 'Abonada': return 'bg-indigo-50 text-indigo-700 border-indigo-100 group-hover:bg-indigo-100';
       case 'Enviada': return 'bg-sky-50 text-sky-700 border-sky-100 group-hover:bg-sky-100';
       case 'PendingSync': return 'bg-amber-50 text-amber-700 border-amber-100';
       default: return 'bg-slate-50 text-slate-500 border-slate-100'; 
@@ -93,15 +100,59 @@ const DocumentList: React.FC<DocumentListProps> = ({
 
   const getCardColor = (status: string) => {
     switch(status) {
+      case 'Pagada':
       case 'Aceptada': return '#22c55e';
       case 'Negociacion': return '#a855f7';
       case 'Seguimiento': return '#3b82f6';
+      case 'Abonada': return '#6366f1';
       case 'Enviada': return '#0ea5e9';
-      case 'Rechazada': return '#ef4444';
+      case 'Rechazada':
+      case 'Incobrable': return '#ef4444';
       case 'PendingSync': return '#f59e0b';
-      case 'Creada': return '#1c2938'; // Dark blue for Created
+      case 'Creada': return '#1c2938'; 
       default: return '#94a3b8';
     }
+  };
+
+  const renderStatusMenu = (doc: Invoice) => {
+    if (!onUpdateStatus) return null;
+
+    const isQuote = doc.type === 'Quote';
+    const current = doc.status;
+
+    const options: { label: string, status: InvoiceStatus, icon: React.ReactNode, colorClass: string }[] = [];
+
+    if (isQuote) {
+        if (current !== 'Aceptada') options.push({ label: 'Aceptar', status: 'Aceptada', icon: <CheckCircle2 className="w-4 h-4" />, colorClass: 'text-green-600 hover:bg-green-50' });
+        if (current !== 'Rechazada') options.push({ label: 'Rechazar', status: 'Rechazada', icon: <XCircle className="w-4 h-4" />, colorClass: 'text-red-600 hover:bg-red-50' });
+        if (current !== 'Negociacion') options.push({ label: 'En Negociación', status: 'Negociacion', icon: <MessageCircle className="w-4 h-4" />, colorClass: 'text-purple-600 hover:bg-purple-50' });
+    } else {
+        // Invoice Options
+        if (current !== 'Pagada') options.push({ label: 'Marcar Pagada', status: 'Pagada', icon: <CheckCircle2 className="w-4 h-4" />, colorClass: 'text-green-600 hover:bg-green-50' });
+        if (current !== 'Abonada' && current !== 'Pagada') options.push({ label: 'Abonada (Parcial)', status: 'Abonada', icon: <Wallet className="w-4 h-4" />, colorClass: 'text-indigo-600 hover:bg-indigo-50' });
+        if (current !== 'Incobrable' && current !== 'Pagada') options.push({ label: 'Incobrable', status: 'Incobrable', icon: <AlertCircle className="w-4 h-4" />, colorClass: 'text-slate-600 hover:bg-slate-100' });
+    }
+
+    // Common options
+    if (current === 'Borrador') options.push({ label: 'Marcar Enviada', status: 'Enviada', icon: <Send className="w-4 h-4" />, colorClass: 'text-sky-600 hover:bg-sky-50' });
+
+    return (
+        <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 z-50 overflow-hidden animate-in fade-in zoom-in-95">
+            {options.map((opt) => (
+                <button
+                    key={opt.status}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onUpdateStatus(doc.id, opt.status);
+                        setActiveMenuId(null);
+                    }}
+                    className={`w-full text-left px-4 py-3 text-sm font-bold flex items-center gap-2 transition-colors ${opt.colorClass}`}
+                >
+                    {opt.icon} {opt.label}
+                </button>
+            ))}
+        </div>
+    );
   };
 
   const renderGalleryView = () => {
@@ -138,28 +189,34 @@ const DocumentList: React.FC<DocumentListProps> = ({
             {filteredDocs.length > 0 ? filteredDocs.map(doc => (
                <div 
                  key={doc.id}
-                 className="group bg-white rounded-[2rem] border border-slate-100 hover:border-[#27bea5]/30 shadow-sm hover:shadow-xl transition-all duration-300 relative overflow-hidden flex flex-col hover:-translate-y-2 h-[280px]"
+                 className="group bg-white rounded-[2rem] border border-slate-100 hover:border-[#27bea5]/30 shadow-sm hover:shadow-xl transition-all duration-300 relative overflow-visible flex flex-col hover:-translate-y-2 h-[280px]"
+                 onMouseLeave={() => setActiveMenuId(null)} // Close menu on leave
                >
-                  <div className="h-2 w-full transition-colors" style={{ backgroundColor: getCardColor(doc.status) }}></div>
+                  <div className="h-2 w-full transition-colors rounded-t-[2rem]" style={{ backgroundColor: getCardColor(doc.status) }}></div>
                   
                   {/* ACTIONS OVERLAY - Positioned Top Right */}
-                  <div className="absolute top-4 right-4 flex gap-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="absolute top-4 right-4 flex gap-2 z-20">
+                     {/* Status Menu Button */}
+                     {onUpdateStatus && (
+                         <div className="relative">
+                             <button
+                                 onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === doc.id ? null : doc.id); }}
+                                 className="p-2 bg-white text-slate-400 rounded-xl hover:bg-slate-50 hover:text-[#1c2938] transition-all shadow-sm border border-slate-100"
+                             >
+                                 <MoreHorizontal className="w-4 h-4" />
+                             </button>
+                             {activeMenuId === doc.id && renderStatusMenu(doc)}
+                         </div>
+                     )}
+
+                     {/* Edit Button (Visible on Hover) */}
                      {onEditInvoice && (
                         <button 
                           onClick={(e) => { e.stopPropagation(); onEditInvoice(doc); }}
-                          className="p-2 bg-white text-slate-400 rounded-xl hover:bg-[#27bea5] hover:text-white transition-all shadow-md border border-slate-100"
+                          className="p-2 bg-white text-slate-400 rounded-xl hover:bg-[#27bea5] hover:text-white transition-all shadow-md border border-slate-100 opacity-0 group-hover:opacity-100"
                           title="Editar"
                         >
                           <Edit2 className="w-4 h-4" />
-                        </button>
-                     )}
-                     {onDeleteInvoice && (
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); onDeleteInvoice(doc.id); }}
-                          className="p-2 bg-white text-slate-400 rounded-xl hover:bg-red-50 hover:text-red-500 transition-all shadow-md border border-slate-100"
-                          title="Eliminar"
-                        >
-                          <Trash2 className="w-4 h-4" />
                         </button>
                      )}
                   </div>
@@ -189,23 +246,17 @@ const DocumentList: React.FC<DocumentListProps> = ({
                      </div>
                   </div>
 
-                  <div className="absolute bottom-0 left-0 w-full bg-white/95 backdrop-blur-md border-t border-slate-100 p-4 transform translate-y-full group-hover:translate-y-0 transition-transform duration-300 z-20 flex gap-2">
-                     {doc.type === 'Quote' && (doc.status === 'Negociacion' || doc.status === 'Enviada' || doc.status === 'Seguimiento') && onConvertQuote && (
+                  <div className="absolute bottom-0 left-0 w-full bg-white/95 backdrop-blur-md border-t border-slate-100 p-4 transform translate-y-full group-hover:translate-y-0 transition-transform duration-300 z-20 flex gap-2 rounded-b-[2rem]">
+                     {/* Primary Actions based on Status */}
+                     {doc.type === 'Quote' && doc.status === 'Aceptada' && onConvertQuote && (
                         <button 
                           onClick={(e) => { e.stopPropagation(); onConvertQuote(doc.id); }}
                           className="flex-1 bg-[#27bea5] text-white py-2 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 hover:bg-[#22a890] transition-colors"
                         >
-                           <Repeat className="w-4 h-4" /> <span>Convertir</span>
+                           <Repeat className="w-4 h-4" /> <span>Facturar</span>
                         </button>
                      )}
-                     {doc.type === 'Invoice' && (doc.status === 'Enviada' || doc.status === 'Seguimiento') && onMarkPaid && (
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); onMarkPaid(doc.id); }}
-                          className="flex-1 bg-green-500 text-white py-2 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 hover:bg-green-600 transition-colors"
-                        >
-                           <DollarSign className="w-4 h-4" /> <span>Cobrar</span>
-                        </button>
-                     )}
+                     
                      <button 
                        onClick={(e) => { e.stopPropagation(); onSelectInvoice(doc); }}
                        className="flex-1 bg-slate-100 text-[#1c2938] py-2 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 hover:bg-slate-200 transition-colors"
@@ -347,7 +398,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
                     <div className="text-right">
                        <p className="font-bold text-[#1c2938] text-lg">{doc.currency} {doc.total.toLocaleString()}</p>
                        <span className={`text-[10px] font-bold uppercase ${
-                          doc.status === 'Aceptada' ? 'text-green-600' : 
+                          doc.status === 'Aceptada' || doc.status === 'Pagada' ? 'text-green-600' : 
                           doc.status === 'PendingSync' ? 'text-amber-600' : 'text-slate-400'
                        }`}>{doc.status}</span>
                     </div>
@@ -365,7 +416,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
                   <div className="col-span-1"></div>
               </div>
               {filteredDocs.map((doc) => (
-                  <div key={doc.id} onClick={() => onSelectInvoice(doc)} className="group bg-white rounded-3xl p-4 md:px-8 md:py-5 border border-slate-50 shadow-sm hover:shadow-lg cursor-pointer grid grid-cols-12 items-center relative overflow-hidden">
+                  <div key={doc.id} onClick={() => onSelectInvoice(doc)} className="group bg-white rounded-3xl p-4 md:px-8 md:py-5 border border-slate-50 shadow-sm hover:shadow-lg cursor-pointer grid grid-cols-12 items-center relative overflow-visible">
                     <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${doc.type === 'Quote' ? 'bg-[#27bea5]' : 'bg-[#1c2938]'}`}></div>
                     <div className="col-span-4 w-full flex items-center gap-4">
                       <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${doc.type === 'Quote' ? 'bg-[#27bea5]/10 text-[#27bea5]' : 'bg-[#1c2938]/5 text-[#1c2938]'}`}>
@@ -388,11 +439,18 @@ const DocumentList: React.FC<DocumentListProps> = ({
                         {doc.status}
                       </span>
                     </div>
-                    <div className="col-span-1 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                       {onEditInvoice && (
-                          <button onClick={(e) => { e.stopPropagation(); onEditInvoice(doc); }} className="w-10 h-10 rounded-full bg-slate-50 text-[#1c2938] flex items-center justify-center hover:bg-[#27bea5] hover:text-white transition-colors">
-                             <Edit2 className="w-5 h-5" />
-                          </button>
+                    <div className="col-span-1 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity relative">
+                       {onUpdateStatus && (
+                          <>
+                            <button onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === doc.id ? null : doc.id); }} className="w-10 h-10 rounded-full bg-slate-50 text-[#1c2938] flex items-center justify-center hover:bg-[#27bea5] hover:text-white transition-colors">
+                                <MoreHorizontal className="w-5 h-5" />
+                            </button>
+                            {activeMenuId === doc.id && (
+                                <div className="absolute top-10 right-0 w-48 z-50">
+                                    {renderStatusMenu(doc)}
+                                </div>
+                            )}
+                          </>
                        )}
                     </div>
                   </div>
