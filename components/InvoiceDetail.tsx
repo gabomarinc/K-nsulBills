@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   ArrowLeft, Printer, Share2, Download, Building2, 
   CheckCircle2, Loader2, Send, MessageCircle, Smartphone, Mail, Check, AlertTriangle
 } from 'lucide-react';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 import { Invoice, UserProfile } from '../types';
 import DocumentTimeline from './DocumentTimeline';
-import { sendEmail, generateDocumentHtml } from '../services/resendService';
+import { sendEmail } from '../services/resendService';
 
 interface InvoiceDetailProps {
   invoice: Invoice;
@@ -17,6 +19,9 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack }
   const [isSending, setIsSending] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  
+  // Ref for PDF Generation
+  const documentRef = useRef<HTMLDivElement>(null);
 
   // Re-calculate derived values for display
   const subtotal = invoice.items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
@@ -28,30 +33,91 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack }
   const logo = branding.logoUrl;
 
   const handleSend = async () => {
+    // 1. Validation
+    if (!invoice.clientEmail) {
+        setSendError("El cliente no tiene un email registrado en el documento.");
+        return;
+    }
+
     setIsSending(true);
     setSendError(null);
 
-    // Determine recipient email (mock logic if not present)
-    const recipientEmail = invoice.clientEmail || 'cliente@prueba.com';
-    const subject = `${isQuote ? 'Cotización' : 'Factura'} #${invoice.id} de ${issuer.name}`;
-    const html = generateDocumentHtml(invoice, issuer);
+    try {
+        // 2. Generate PDF
+        if (!documentRef.current) throw new Error("No se pudo capturar el documento.");
+        
+        // Use html2canvas to capture the visual component
+        const canvas = await html2canvas(documentRef.current, {
+            scale: 2, // Higher quality
+            useCORS: true, // Allow cross-origin images (like logos)
+            logging: false,
+            backgroundColor: '#ffffff'
+        });
 
-    // Using system env var in service, no key passing needed
-    const result = await sendEmail({
-      to: recipientEmail, 
-      subject: subject, 
-      html: html, 
-      senderName: issuer.name
-    });
+        const imgData = canvas.toDataURL('image/jpeg', 0.95);
+        const pdf = new jsPDF({
+            orientation: 'portrait',
+            unit: 'mm',
+            format: 'a4'
+        });
 
-    if (result.success) {
-      setShowSuccessModal(true);
-      // NOTE: In a real app, update timeline here via prop callback or context
-    } else {
-      setSendError(result.error || 'Error desconocido al enviar.');
+        const imgProps = pdf.getImageProperties(imgData);
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+        
+        // Get raw base64 without data prefix
+        const pdfBase64 = pdf.output('datauristring').split(',')[1];
+
+        // 3. Prepare Data for Resend Template
+        const docTypeName = isQuote ? 'Cotización' : 'Factura';
+        const emailSubject = `${docTypeName} #${invoice.id} - ${issuer.name}`;
+
+        // 4. Send Email
+        const result = await sendEmail({
+            to: invoice.clientEmail, 
+            subject: emailSubject, 
+            templateId: 'document-notification', // Resend Template Alias
+            data: {
+                client_name: invoice.clientName,
+                document_type: docTypeName,
+                document_number: invoice.id,
+                amount: invoice.total.toLocaleString('es-ES', { minimumFractionDigits: 2 }),
+                currency: invoice.currency,
+                issuer_name: issuer.name
+            },
+            attachments: [{
+                filename: `${docTypeName}_${invoice.id}.pdf`,
+                content: pdfBase64
+            }]
+        });
+
+        if (result.success) {
+            setShowSuccessModal(true);
+        } else {
+            throw new Error(result.error || 'Error al enviar el correo.');
+        }
+    } catch (error: any) {
+        console.error("Error sending document:", error);
+        setSendError(error.message || 'Error desconocido al procesar el envío.');
+    } finally {
+        setIsSending(false);
     }
-    
-    setIsSending(false);
+  };
+
+  const handleDownloadPdf = async () => {
+      if (!documentRef.current) return;
+      
+      const canvas = await html2canvas(documentRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const imgProps = pdf.getImageProperties(imgData);
+      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+      
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`${isQuote ? 'Cotizacion' : 'Factura'}_${invoice.id}.pdf`);
   };
 
   const getStatusStyle = (status: string) => {
@@ -79,7 +145,6 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack }
           <div>
               <div className="flex items-center gap-3 mb-4">
                 {logo ? (
-                   // LOGO SIZE INCREASED
                    <img src={logo} alt="Logo" className="h-24 max-w-[250px] object-contain" />
                 ) : (
                   <div className="w-16 h-16 bg-slate-100 rounded-lg flex items-center justify-center text-slate-400">
@@ -206,7 +271,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack }
 
       {/* Footer */}
       <div className="bg-slate-50 p-8 text-center border-t border-slate-100 mt-auto">
-          <p className="text-slate-400 text-xs font-medium">Generado con FacturaZen</p>
+          <p className="text-slate-400 text-xs font-medium">Generado con Kônsul Bills</p>
       </div>
     </div>
   );
@@ -216,7 +281,6 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack }
        
        <div className="text-center border-b-2 pb-8 mb-8" style={{ borderColor: color }}>
           {logo ? (
-             // LOGO SIZE INCREASED
              <img src={logo} alt="Logo" className="h-32 mx-auto mb-6 object-contain" />
           ) : (
              <h1 className="font-serif text-5xl font-bold text-slate-900 mb-2">{issuer.name}</h1>
@@ -289,7 +353,6 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack }
       <div className="flex justify-between items-start mb-20">
          <div>
             {logo ? (
-              // LOGO SIZE INCREASED
               <img src={logo} alt="Logo" className="h-20 object-contain mb-8" />
             ) : (
               <div style={{ backgroundColor: color }} className="w-16 h-16 rounded-full mb-8"></div>
@@ -365,7 +428,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack }
             
             <h3 className="text-2xl font-bold text-[#1c2938] mb-2">¡Enviado con Éxito!</h3>
             <p className="text-slate-500 mb-8">
-              El correo con el documento ha sido entregado a {invoice.clientName} vía Resend.
+              El correo y el PDF han sido entregados a {invoice.clientName} vía Resend.
             </p>
 
             <div className="space-y-3">
@@ -410,10 +473,10 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack }
         </button>
         
         <div className="flex items-center gap-2">
-           <button className="p-3 text-slate-500 hover:bg-white hover:shadow-sm rounded-xl transition-all" title="Descargar PDF">
+           <button onClick={handleDownloadPdf} className="p-3 text-slate-500 hover:bg-white hover:shadow-sm rounded-xl transition-all" title="Descargar PDF">
              <Download className="w-5 h-5" />
            </button>
-           <button className="p-3 text-slate-500 hover:bg-white hover:shadow-sm rounded-xl transition-all" title="Imprimir">
+           <button onClick={() => window.print()} className="p-3 text-slate-500 hover:bg-white hover:shadow-sm rounded-xl transition-all" title="Imprimir">
              <Printer className="w-5 h-5" />
            </button>
            
@@ -437,9 +500,12 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack }
         
         {/* DOCUMENT VIEW (Left 2 cols) */}
         <div className="lg:col-span-2">
-           {branding.templateStyle === 'Classic' && renderClassic()}
-           {branding.templateStyle === 'Minimal' && renderMinimal()}
-           {(branding.templateStyle === 'Modern' || !branding.templateStyle) && renderModern()}
+           {/* WRAPPED WITH REF FOR PDF GENERATION */}
+           <div ref={documentRef} className="h-full">
+              {branding.templateStyle === 'Classic' && renderClassic()}
+              {branding.templateStyle === 'Minimal' && renderMinimal()}
+              {(branding.templateStyle === 'Modern' || !branding.templateStyle) && renderModern()}
+           </div>
         </div>
 
         {/* TIMELINE SIDEBAR (Right 1 col) */}
