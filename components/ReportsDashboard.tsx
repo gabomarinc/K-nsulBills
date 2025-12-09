@@ -8,7 +8,7 @@ import {
   Sparkles, TrendingUp, Loader2, 
   BrainCircuit, Activity, Target, Lightbulb,
   X, TrendingDown, Wallet, FileText,
-  LayoutDashboard, FileBarChart, Users, Funnel, Calendar, Download, Share2, Mail, Smartphone, CheckCircle2,
+  LayoutDashboard, FileBarChart, Users, Filter, Calendar, Download, Share2, Mail, Smartphone, CheckCircle2,
   Clock, AlertTriangle, Percent, Trophy, Grid, ArrowRight, Lock, Settings
 } from 'lucide-react';
 import { Invoice, FinancialAnalysisResult, DeepDiveReport, UserProfile } from '../types';
@@ -437,7 +437,7 @@ const ReportsDashboard: React.FC<ReportsDashboardProps> = ({ invoices, currencyS
                   <div>
                     <h3 className="font-bold text-[#1c2938] text-xl flex items-center gap-2">
                       <div className="p-2 bg-slate-50 rounded-xl text-indigo-500">
-                        <Funnel className="w-5 h-5" />
+                        <Filter className="w-5 h-5" />
                       </div>
                       Embudo Real
                     </h3>
