@@ -15,6 +15,7 @@ interface ClientDetailProps {
   onBack: () => void;
   onSelectInvoice: (invoice: Invoice) => void;
   onUpdateClientContact: (oldName: string, newContact: DbClient) => void;
+  onCreateDocument?: (type: 'Invoice' | 'Quote') => void; // New prop for direct creation
   currencySymbol: string;
 }
 
@@ -25,6 +26,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
   onBack, 
   onSelectInvoice,
   onUpdateClientContact,
+  onCreateDocument,
   currencySymbol 
 }) => {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -400,11 +402,17 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
             <div className="bg-[#27bea5]/5 p-6 rounded-[2rem] border border-[#27bea5]/20">
                <h3 className="font-bold text-[#1c2938] mb-4 text-sm uppercase tracking-wider">Acciones Rápidas</h3>
                <div className="grid grid-cols-2 gap-3">
-                  <button className="bg-white p-3 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all text-left group">
+                  <button 
+                    onClick={() => onCreateDocument && onCreateDocument('Quote')} 
+                    className="bg-white p-3 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all text-left group"
+                  >
                      <div className="p-2 bg-purple-50 text-purple-600 rounded-lg w-fit mb-2 group-hover:bg-purple-600 group-hover:text-white transition-colors"><FileBadge className="w-4 h-4" /></div>
                      <span className="text-xs font-bold text-slate-600 block">Nueva Cotización</span>
                   </button>
-                  <button className="bg-white p-3 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all text-left group">
+                  <button 
+                    onClick={() => onCreateDocument && onCreateDocument('Invoice')} 
+                    className="bg-white p-3 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all text-left group"
+                  >
                      <div className="p-2 bg-blue-50 text-blue-600 rounded-lg w-fit mb-2 group-hover:bg-blue-600 group-hover:text-white transition-colors"><FileText className="w-4 h-4" /></div>
                      <span className="text-xs font-bold text-slate-600 block">Nueva Factura</span>
                   </button>

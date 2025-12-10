@@ -23,7 +23,12 @@ interface InvoiceWizardProps {
 type Step = 'TYPE_SELECT' | 'AI_INPUT' | 'SMART_EDITOR' | 'SUCCESS';
 
 const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, onSave, onCancel, onViewDetail, onSelectInvoiceForDetail, initialData, dbClients = [] }) => {
-  // Initialize state based on initialData (Edit Mode)
+  // Initialize state based on initialData (Edit Mode OR Template Mode)
+  // If initialData exists, we skip to editor. 
+  // If initialData has NO ID, it means it's a "New Document for Client" template.
+  const isTemplateMode = initialData && !initialData.id;
+  const isEditMode = initialData && !!initialData.id;
+
   const [step, setStep] = useState<Step>(initialData ? 'SMART_EDITOR' : 'TYPE_SELECT');
   const [docType, setDocType] = useState<'Invoice' | 'Quote'>(initialData?.type as 'Invoice' | 'Quote' || 'Invoice');
   const [input, setInput] = useState('');
@@ -206,8 +211,8 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
 
     let newId = generatedId;
     
-    // Only generate new ID if we are NOT editing
-    if (!initialData) {
+    // Only generate new ID if we are NOT editing an existing valid ID
+    if (!newId) {
         const sequences = currentUser.documentSequences || {
         invoicePrefix: 'FAC', invoiceNextNumber: 1,
         quotePrefix: 'COT', quoteNextNumber: 1
@@ -288,13 +293,13 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
           {isDraft ? <Archive className="w-12 h-12" /> : <Check className="w-12 h-12" />}
         </div>
         <h2 className="text-3xl font-bold text-[#1c2938] mb-2">
-          {initialData ? 'Cambios Guardados' : (isDraft ? 'Borrador Guardado' : (docType === 'Quote' ? 'Cotización Lista' : 'Factura Creada'))}
+          {isEditMode ? 'Cambios Guardados' : (isDraft ? 'Borrador Guardado' : (docType === 'Quote' ? 'Cotización Lista' : 'Factura Creada'))}
         </h2>
         <div className="bg-slate-50 px-4 py-2 rounded-lg border border-slate-200 mb-6">
            <span className="font-mono text-xl font-bold text-[#1c2938]">{generatedId}</span>
         </div>
         <p className="text-lg text-slate-500 mb-8 max-w-md">
-          {initialData ? "El documento ha sido actualizado correctamente." : "Listo para el siguiente paso."}
+          {isEditMode ? "El documento ha sido actualizado correctamente." : "Listo para el siguiente paso."}
         </p>
         <div className="flex gap-4">
            <button onClick={onCancel} className="text-slate-500 font-medium hover:text-slate-800 px-6">
@@ -331,7 +336,7 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
           )}
         </div>
         <div className="text-sm font-medium text-slate-400 uppercase tracking-wide">
-          {step === 'SMART_EDITOR' ? (initialData ? 'Editando Documento' : (docType === 'Quote' ? 'Editando Cotización' : 'Editando Factura')) : 'Asistente'}
+          {step === 'SMART_EDITOR' ? (isEditMode ? 'Editando Documento' : (isTemplateMode ? 'Nuevo para Cliente' : (docType === 'Quote' ? 'Nueva Cotización' : 'Nueva Factura'))) : 'Asistente'}
         </div>
       </div>
 

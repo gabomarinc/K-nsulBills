@@ -239,6 +239,25 @@ const App: React.FC = () => {
     setActiveView(AppView.WIZARD);
   };
 
+  // NEW: Handle creation starting from a client profile or list card
+  const handleCreateDocumentForClient = (client: DbClient, type: 'Invoice' | 'Quote') => {
+    const templateDoc: Invoice = {
+      id: '', // Empty ID signals "New Document" to Wizard
+      clientName: client.name,
+      clientTaxId: client.taxId,
+      clientEmail: client.email,
+      clientAddress: client.address,
+      type: type,
+      status: 'Borrador',
+      date: new Date().toISOString(),
+      total: 0,
+      currency: currentUser?.defaultCurrency || 'USD',
+      items: []
+    };
+    setDocumentToEdit(templateDoc);
+    setActiveView(AppView.WIZARD);
+  };
+
   const handleUpdateProfile = async (updated: UserProfile) => {
     setCurrentUser(updated);
     localStorage.setItem('konsul_user_data', JSON.stringify(updated)); 
@@ -357,7 +376,17 @@ const App: React.FC = () => {
         <ClientList 
           invoices={invoices}
           dbClients={dbClients} 
-          onCreateDocument={() => { setDocumentToEdit(null); setActiveView(AppView.WIZARD); }}
+          // Updated to handle both global create and context-aware create
+          onCreateDocument={(client) => {
+             if (client) {
+                // If a client is passed, assume Invoice by default or prompt? 
+                // For list view quick action, let's default to Invoice
+                handleCreateDocumentForClient(client, 'Invoice');
+             } else {
+                setDocumentToEdit(null); 
+                setActiveView(AppView.WIZARD);
+             }
+          }}
           onCreateClient={() => setActiveView(AppView.CLIENT_WIZARD)} 
           currencySymbol={currentUser.defaultCurrency === 'EUR' ? '€' : '$'}
           currentUser={currentUser}
@@ -390,6 +419,13 @@ const App: React.FC = () => {
               // Refresh clients
               const updated = await fetchClientsFromDb(currentUser.id);
               setDbClients(updated);
+           }}
+           // Pass the context-aware create handler
+           onCreateDocument={(type) => {
+              const client = dbClients.find(c => c.name === selectedClientName);
+              if (client) {
+                 handleCreateDocumentForClient(client, type);
+              }
            }}
          />
       )}

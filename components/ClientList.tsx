@@ -5,13 +5,13 @@ import {
   Plus, Crown, Sparkles, TrendingUp, Target, 
   Trophy, Percent, ArrowUpRight, BarChart3, Star, Lock, UserPlus
 } from 'lucide-react';
-import { Invoice, UserProfile } from '../types';
+import { Invoice, UserProfile, DbClient } from '../types';
 
 interface ClientListProps {
   invoices: Invoice[];
   dbClients?: any[]; // NEW: Clients fetched from DB directly
   onSelectClient?: (clientName: string) => void;
-  onCreateDocument: () => void;
+  onCreateDocument: (client?: DbClient) => void; // Updated signature
   onCreateClient?: () => void;
   currencySymbol: string;
   currentUser?: UserProfile;
@@ -28,7 +28,9 @@ interface AggregatedClient {
   status: 'CLIENT' | 'PROSPECT';
   avgTicket: number;
   isVip: boolean; 
-  winRate: number; 
+  winRate: number;
+  // Keep ref to full object
+  fullData: any; 
 }
 
 const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSelectClient, onCreateDocument, onCreateClient, currencySymbol, currentUser }) => {
@@ -57,7 +59,8 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
             status: dbClient.status || 'PROSPECT',
             avgTicket: 0,
             isVip: false,
-            winRate: 0
+            winRate: 0,
+            fullData: dbClient
         });
     });
 
@@ -77,7 +80,8 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
           status: 'PROSPECT',
           avgTicket: 0,
           isVip: false,
-          winRate: 0
+          winRate: 0,
+          fullData: { name: nameKey, taxId: inv.clientTaxId } // Fallback
         });
       }
 
@@ -167,7 +171,7 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
         </div>
         
         <button 
-            onClick={onCreateClient || onCreateDocument} 
+            onClick={onCreateClient || (() => onCreateDocument())} 
             className="bg-[#1c2938] text-white px-6 py-3.5 rounded-2xl font-bold hover:bg-[#27bea5] transition-all flex items-center gap-2 shadow-xl group"
         >
             <UserPlus className="w-5 h-5 group-hover:scale-110 transition-transform" /> <span>Nuevo Cliente</span>
@@ -296,8 +300,14 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
                             <span className="text-[10px] text-slate-400 uppercase font-bold">Ticket Prom.</span>
                             <span className="text-sm font-bold text-slate-600">{currencySymbol} {client.avgTicket.toLocaleString()}</span>
                           </div>
-                          {/* Stop Propagation to prevent card click triggering doc create */}
-                          <button onClick={(e) => { e.stopPropagation(); onCreateDocument(); }} className={`p-2.5 rounded-xl transition-colors shadow-sm ${client.isVip ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-slate-50 text-slate-600 hover:bg-[#1c2938] hover:text-white'}`}><Plus className="w-4 h-4" /></button>
+                          {/* Pass the client data to the creation handler */}
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); onCreateDocument(client.fullData); }} 
+                            className={`p-2.5 rounded-xl transition-colors shadow-sm ${client.isVip ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-slate-50 text-slate-600 hover:bg-[#1c2938] hover:text-white'}`}
+                            title="Crear Documento"
+                          >
+                            <Plus className="w-4 h-4" />
+                          </button>
                       </div>
                   </div>
                 ))}
