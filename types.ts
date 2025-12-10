@@ -133,7 +133,6 @@ export interface UserProfile {
   apiKeys?: {
     gemini?: string;
     openai?: string;
-    resend?: string; // Added Resend Key
   };
 
   avatar: string;
@@ -180,6 +179,7 @@ export interface Invoice {
   date: string;
   items: InvoiceItem[];
   total: number;
+  amountPaid?: number; // New: Track partial payments
   status: InvoiceStatus;
   currency: string;
   type: 'Invoice' | 'Quote' | 'Expense'; 

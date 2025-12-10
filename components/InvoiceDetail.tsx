@@ -1,8 +1,9 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   ArrowLeft, Printer, Share2, Download, Building2, 
   CheckCircle2, Loader2, Send, MessageCircle, Smartphone, Mail, Check, AlertTriangle, Edit2, 
-  ChevronDown, XCircle, Wallet, ArrowRight, X, Trash2
+  ChevronDown, XCircle, Wallet, ArrowRight, X, Trash2, CreditCard
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -26,6 +27,10 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
   const [sendError, setSendError] = useState<string | null>(null);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   
+  // Payment Modal State
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState('');
+
   // Ref for PDF Generation
   const documentRef = useRef<HTMLDivElement>(null);
 
@@ -90,6 +95,8 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
   // Re-calculate derived values for display
   const subtotal = invoice.items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
   const taxTotal = invoice.items.reduce((acc, item) => acc + (item.price * item.quantity * (item.tax / 100)), 0);
+  const amountPaid = invoice.amountPaid || 0;
+  const remainingBalance = Math.max(0, invoice.total - amountPaid);
   
   const isQuote = invoice.type === 'Quote';
   const branding = issuer.branding || { primaryColor: '#27bea5', templateStyle: 'Modern' };
@@ -101,6 +108,40 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
           onUpdateStatus(invoice.id, newStatus);
           setShowStatusMenu(false);
       }
+  };
+
+  const handleRegisterPayment = () => {
+    const amount = parseFloat(paymentAmount);
+    if (isNaN(amount) || amount <= 0) return;
+
+    const newTotalPaid = amountPaid + amount;
+    const newRemaining = invoice.total - newTotalPaid;
+    
+    // Determine status
+    // Use a small epsilon for float comparison logic or simple check
+    const newStatus: InvoiceStatus = newRemaining <= 0.01 ? 'Pagada' : 'Abonada';
+
+    const paymentEvent: TimelineEvent = {
+        id: Date.now().toString(),
+        type: 'PAID',
+        title: `Pago registrado: ${invoice.currency} ${amount.toFixed(2)}`,
+        description: newRemaining > 0.01 ? `Resta: ${invoice.currency} ${newRemaining.toFixed(2)}` : 'Deuda saldada',
+        timestamp: new Date().toISOString()
+    };
+
+    const updatedInvoice: Invoice = {
+        ...invoice,
+        amountPaid: newTotalPaid,
+        status: newStatus,
+        timeline: [...(invoice.timeline || []), paymentEvent]
+    };
+
+    if (onUpdateInvoice) {
+        onUpdateInvoice(updatedInvoice);
+    }
+    
+    setIsPaymentModalOpen(false);
+    setPaymentAmount('');
   };
 
   const handleSend = async () => {
@@ -379,6 +420,26 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                     {invoice.currency} ${invoice.total.toFixed(2)}
                   </span>
               </div>
+              
+              {/* Payment Progress Bar (Partial Payments) */}
+              {!isQuote && amountPaid > 0 && (
+                <div className="pt-4 mt-2 border-t border-slate-100">
+                    <div className="flex justify-between text-sm mb-1">
+                        <span className="font-bold text-green-600">Pagado</span>
+                        <span className="font-bold text-slate-600">{invoice.currency} {amountPaid.toFixed(2)}</span>
+                    </div>
+                    <div className="w-full bg-slate-100 rounded-full h-2.5 mb-1">
+                        <div 
+                            className="bg-green-500 h-2.5 rounded-full" 
+                            style={{ width: `${Math.min(100, (amountPaid / invoice.total) * 100)}%` }}
+                        ></div>
+                    </div>
+                    <div className="flex justify-between text-xs text-slate-400">
+                        <span>{((amountPaid / invoice.total) * 100).toFixed(0)}% Completado</span>
+                        <span>Resta: {invoice.currency} {remainingBalance.toFixed(2)}</span>
+                    </div>
+                </div>
+              )}
             </div>
         </div>
       </div>
@@ -453,6 +514,13 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                <span>Total</span>
                <span>{invoice.currency} ${invoice.total.toFixed(2)}</span>
             </div>
+            {/* Minimal partial payment info for classic */}
+            {!isQuote && amountPaid > 0 && (
+                <div className="pt-2 text-right text-sm">
+                    <p className="text-green-700">Abonado: {invoice.currency} {amountPaid.toFixed(2)}</p>
+                    <p className="text-slate-500">Pendiente: {invoice.currency} {remainingBalance.toFixed(2)}</p>
+                </div>
+            )}
           </div>
        </div>
 
@@ -576,7 +644,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
 
       {/* Success Modal */}
       {showSuccessModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md animate-in fade-in">
           <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full text-center relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-2 bg-[#27bea5]"></div>
             
@@ -609,6 +677,49 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Payment Modal */}
+      {isPaymentModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1c2938]/60 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-sm relative shadow-2xl animate-in zoom-in-95">
+                <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-xl font-bold text-[#1c2938] flex items-center gap-2">
+                        <Wallet className="w-5 h-5 text-[#27bea5]" /> Registrar Abono
+                    </h3>
+                    <button onClick={() => setIsPaymentModalOpen(false)} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors">
+                        <X className="w-4 h-4" />
+                    </button>
+                </div>
+                
+                <div className="mb-6 bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center">
+                    <p className="text-xs text-slate-400 font-bold uppercase mb-1">Pendiente de Pago</p>
+                    <p className="text-3xl font-bold text-[#1c2938]">{invoice.currency} {remainingBalance.toFixed(2)}</p>
+                </div>
+
+                <div className="space-y-4">
+                    <div>
+                        <label className="text-xs font-bold text-slate-400 uppercase ml-1">Monto a Abonar</label>
+                        <input 
+                            type="number" 
+                            value={paymentAmount}
+                            onChange={(e) => setPaymentAmount(e.target.value)}
+                            className="w-full p-4 text-xl font-bold text-center border-2 border-slate-200 rounded-2xl focus:border-[#27bea5] focus:outline-none focus:ring-0 mt-1"
+                            placeholder="0.00"
+                            autoFocus
+                        />
+                    </div>
+                    
+                    <button 
+                        onClick={handleRegisterPayment}
+                        disabled={!paymentAmount || parseFloat(paymentAmount) <= 0}
+                        className="w-full bg-[#1c2938] text-white py-4 rounded-2xl font-bold hover:bg-[#27bea5] transition-all shadow-xl disabled:opacity-50 disabled:shadow-none"
+                    >
+                        Confirmar Pago
+                    </button>
+                </div>
+            </div>
         </div>
       )}
 
@@ -646,6 +757,17 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                title="Eliminar Documento"
              >
                <Trash2 className="w-5 h-5" />
+             </button>
+           )}
+
+           {/* PAYMENT BUTTON (New) */}
+           {!isQuote && remainingBalance > 0 && onUpdateInvoice && (
+             <button 
+               onClick={() => setIsPaymentModalOpen(true)}
+               className="p-3 bg-white text-slate-500 hover:text-green-600 hover:shadow-sm rounded-xl transition-all border border-transparent hover:border-green-100 mr-2"
+               title="Registrar Pago Parcial"
+             >
+                <Wallet className="w-5 h-5" />
              </button>
            )}
 
