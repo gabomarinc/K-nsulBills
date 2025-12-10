@@ -48,10 +48,18 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
     // Extract latest contact info from most recent doc or DB
     const latestDoc = clientDocs[0] || {};
     
-    // Stats
+    // Stats: Total Revenue Logic with Partial Payments
     const totalRevenue = clientDocs
-      .filter(i => i.type === 'Invoice' && i.status === 'Aceptada')
-      .reduce((acc, curr) => acc + curr.total, 0);
+      .filter(i => i.type === 'Invoice')
+      .reduce((acc, curr) => {
+          let collected = 0;
+          if (curr.amountPaid && curr.amountPaid > 0) {
+              collected = curr.amountPaid;
+          } else if (curr.status === 'Pagada' || curr.status === 'Aceptada') {
+              collected = curr.total;
+          }
+          return acc + collected;
+      }, 0);
       
     const openQuotes = clientDocs.filter(i => i.type === 'Quote' && (i.status === 'Enviada' || i.status === 'Negociacion'));
     const pendingInvoices = clientDocs.filter(i => i.type === 'Invoice' && (i.status === 'Enviada' || i.status === 'Seguimiento'));
@@ -155,8 +163,11 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
   const getStatusColor = (status: InvoiceStatus) => {
     switch(status) {
       case 'Aceptada': return 'text-green-600 bg-green-50 border-green-100';
+      case 'Pagada': return 'text-green-600 bg-green-50 border-green-100';
+      case 'Abonada': return 'text-indigo-600 bg-indigo-50 border-indigo-100';
       case 'Negociacion': return 'text-purple-600 bg-purple-50 border-purple-100';
       case 'Rechazada': return 'text-red-600 bg-red-50 border-red-100';
+      case 'Incobrable': return 'text-red-600 bg-red-50 border-red-100';
       case 'PendingSync': return 'text-amber-600 bg-amber-50 border-amber-100';
       default: return 'text-blue-600 bg-blue-50 border-blue-100';
     }
@@ -483,7 +494,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                        className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors cursor-pointer first:rounded-t-3xl last:rounded-b-3xl"
                      >
                         <div className="flex items-center gap-4">
-                           <div className={`w-2 h-2 rounded-full ${doc.status === 'Aceptada' ? 'bg-green-400' : 'bg-red-400'}`}></div>
+                           <div className={`w-2 h-2 rounded-full ${doc.status === 'Aceptada' || doc.status === 'Pagada' ? 'bg-green-400' : 'bg-red-400'}`}></div>
                            <div>
                               <p className="font-medium text-[#1c2938] text-sm">{doc.type === 'Quote' ? 'Cotización' : 'Factura'} #{doc.id}</p>
                               <p className="text-xs text-slate-400">{new Date(doc.date).toLocaleDateString()}</p>
@@ -492,6 +503,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                         <div className="text-right">
                            <p className="font-bold text-slate-600 text-sm">{currencySymbol}{doc.total.toLocaleString()}</p>
                            {doc.status === 'Rechazada' && <span className="text-[10px] text-red-400 font-bold">Rechazada</span>}
+                           {doc.status === 'Incobrable' && <span className="text-[10px] text-red-400 font-bold">Incobrable</span>}
                         </div>
                      </div>
                   ))}

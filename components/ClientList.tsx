@@ -95,8 +95,19 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
 
       if (inv.type === 'Invoice') {
         client.invoiceCount++;
-        if (inv.status === 'Aceptada') {
-          client.totalRevenue += inv.total;
+        
+        let collected = 0;
+        // Logic: Use amountPaid if available (Partial/Full via payment flow)
+        if (inv.amountPaid && inv.amountPaid > 0) {
+            collected = inv.amountPaid;
+        } 
+        // Fallback: If status is 'Pagada'/'Aceptada' but no amountPaid (Legacy/QuickAction), assume total
+        else if (inv.status === 'Pagada' || inv.status === 'Aceptada') {
+            collected = inv.total;
+        }
+
+        if (collected > 0) {
+          client.totalRevenue += collected;
           client.status = 'CLIENT';
         }
       } else if (inv.type === 'Quote') {

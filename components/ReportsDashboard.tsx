@@ -205,13 +205,38 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
       if (!timelineMap.has(key)) timelineMap.set(key, { ingresos: 0, gastos: 0, date: d });
       const entry = timelineMap.get(key)!;
       
-      // Changed: Include 'Pagada' status for revenue
-      if (inv.type === 'Invoice' && (inv.status === 'Aceptada' || inv.status === 'Pagada')) {
-        entry.ingresos += inv.total; totalRevenue += inv.total;
-        const createdEvent = inv.timeline?.find(e => e.type === 'CREATED');
-        const paidEvent = inv.timeline?.find(e => e.type === 'PAID'); 
-        if (createdEvent && paidEvent) { const days = (new Date(paidEvent.timestamp).getTime() - new Date(createdEvent.timestamp).getTime()) / (1000 * 3600 * 24); paymentDaysSum += days; paidInvoicesCount++; }
-      } else if (inv.type === 'Expense') { entry.gastos += inv.total; totalExpenses += inv.total; }
+      // Logic for collected amount
+      if (inv.type === 'Invoice') {
+        let collected = 0;
+        
+        // Priority to amountPaid (Handles 'Abonada' and modern 'Pagada' flows)
+        if (typeof inv.amountPaid === 'number' && inv.amountPaid > 0) {
+            collected = inv.amountPaid;
+        } 
+        // Fallback for legacy 'Pagada'/'Aceptada' invoices that might not have amountPaid set
+        else if (inv.status === 'Pagada' || inv.status === 'Aceptada') {
+            collected = inv.total;
+        }
+
+        if (collected > 0) {
+            entry.ingresos += collected;
+            totalRevenue += collected;
+        }
+
+        // Calculate DSO only for fully paid invoices for accuracy
+        if (inv.status === 'Pagada' || inv.status === 'Aceptada') {
+            const createdEvent = inv.timeline?.find(e => e.type === 'CREATED');
+            const paidEvent = inv.timeline?.find(e => e.type === 'PAID'); 
+            if (createdEvent && paidEvent) { 
+                const days = (new Date(paidEvent.timestamp).getTime() - new Date(createdEvent.timestamp).getTime()) / (1000 * 3600 * 24); 
+                paymentDaysSum += days; 
+                paidInvoicesCount++; 
+            }
+        }
+      } else if (inv.type === 'Expense') { 
+          entry.gastos += inv.total; 
+          totalExpenses += inv.total; 
+      }
     });
 
     const monthlyData = Array.from(timelineMap.entries()).map(([name, val]) => ({ name, ingresos: val.ingresos, gastos: val.gastos, _date: val.date })).sort((a, b) => a._date.getTime() - b._date.getTime());
@@ -228,7 +253,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
         { name: 'Borrador', value: filteredInvoices.filter(i => i.status === 'Borrador').length, fill: '#cbd5e1' }, 
         { name: 'Enviadas', value: filteredInvoices.filter(i => i.status === 'Enviada').length, fill: '#3b82f6' }, 
         { name: 'Vistas', value: filteredInvoices.filter(i => i.timeline?.some(e => e.type === 'OPENED')).length, fill: '#a855f7' }, 
-        { name: 'Cobradas', value: filteredInvoices.filter(i => i.status === 'Aceptada' || i.status === 'Pagada').length, fill: '#27bea5' }, 
+        { name: 'Cobradas', value: filteredInvoices.filter(i => i.status === 'Aceptada' || i.status === 'Pagada' || (i.status === 'Abonada' && (i.amountPaid || 0) > 0)).length, fill: '#27bea5' }, 
     ];
     
     const scatterData = filteredInvoices.filter(i => i.type === 'Invoice' || i.type === 'Quote').map(i => ({ id: i.id, x: i.items.length, y: i.total, z: 1, status: i.status }));
@@ -243,7 +268,12 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
         if (invDate > c.lastDate) c.lastDate = invDate; 
         if (inv.type === 'Invoice') { 
             c.count++; 
-            if (inv.status === 'Aceptada' || inv.status === 'Pagada') { c.revenue += inv.total; } 
+            // Add collected revenue
+            if (inv.amountPaid && inv.amountPaid > 0) {
+                c.revenue += inv.amountPaid;
+            } else if (inv.status === 'Aceptada' || inv.status === 'Pagada') { 
+                c.revenue += inv.total; 
+            } 
         } 
     });
     
@@ -312,7 +342,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
            <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-50">
               <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Ingreso Neto</p>
               <h3 className="text-2xl font-bold text-[#1c2938]">{currencySymbol}{compactNumber(data.kpis.totalRevenue)}</h3>
-              <span className="text-[10px] text-slate-400">Cobrado</span>
+              <span className="text-[10px] text-slate-400">Cobrado (Total + Abonos)</span>
            </div>
            <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-50">
               <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Margen Real</p>

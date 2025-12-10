@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { 
   Search, Plus, FileText, CheckCircle2, 
@@ -52,12 +51,23 @@ const DocumentList: React.FC<DocumentListProps> = ({
 
   // --- STATS CALCULATION ---
   const totalPaid = invoices
-    .filter(i => i.type === 'Invoice' && (i.status === 'Aceptada' || i.status === 'Pagada'))
-    .reduce((acc, curr) => acc + curr.total, 0);
+    .filter(i => i.type === 'Invoice')
+    .reduce((acc, curr) => {
+        // Updated Logic: Use amountPaid if available, else total if status is paid
+        if (curr.amountPaid && curr.amountPaid > 0) return acc + curr.amountPaid;
+        if (curr.status === 'Aceptada' || curr.status === 'Pagada') return acc + curr.total;
+        return acc;
+    }, 0);
 
   const totalPending = invoices
     .filter(i => i.type === 'Invoice' && (i.status === 'Enviada' || i.status === 'Seguimiento' || i.status === 'Abonada'))
-    .reduce((acc, curr) => acc + curr.total, 0);
+    .reduce((acc, curr) => {
+       // Only count remaining amount for pending totals
+       if (curr.status === 'Abonada' && curr.amountPaid) {
+           return acc + (curr.total - curr.amountPaid);
+       }
+       return acc + curr.total;
+    }, 0);
 
   const totalPipeline = invoices
     .filter(i => i.type === 'Quote' && i.status !== 'Rechazada')
