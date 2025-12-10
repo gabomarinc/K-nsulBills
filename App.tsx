@@ -149,6 +149,7 @@ const AppContent: React.FC = () => {
       // CREATE NEW
       newInvoices = [invoice, ...invoices];
 
+      // Update sequence if needed based on the new ID number
       const currentSequences = currentUser.documentSequences || {
         invoicePrefix: 'FAC', invoiceNextNumber: 1,
         quotePrefix: 'COT', quoteNextNumber: 1
@@ -157,12 +158,27 @@ const AppContent: React.FC = () => {
       let updatedSequences = { ...currentSequences };
       let profileUpdated = false;
 
-      if (invoice.type === 'Invoice') {
-          updatedSequences.invoiceNextNumber += 1;
-          profileUpdated = true;
-      } else if (invoice.type === 'Quote') {
-          updatedSequences.quoteNextNumber += 1;
-          profileUpdated = true;
+      // Extract number from ID (e.g., "FAC-0005" -> 5)
+      const idParts = invoice.id.split('-');
+      const idNum = parseInt(idParts[idParts.length - 1] || '0', 10);
+
+      if (!isNaN(idNum)) {
+          if (invoice.type === 'Invoice') {
+              // Ensure next number is greater than current ID
+              if (idNum >= updatedSequences.invoiceNextNumber) {
+                  updatedSequences.invoiceNextNumber = idNum + 1;
+                  profileUpdated = true;
+              }
+          } else if (invoice.type === 'Quote') {
+              if (idNum >= updatedSequences.quoteNextNumber) {
+                  updatedSequences.quoteNextNumber = idNum + 1;
+                  profileUpdated = true;
+              }
+          }
+      } else {
+          // Fallback if ID parsing fails (shouldn't happen with standard IDs)
+          if (invoice.type === 'Invoice') { updatedSequences.invoiceNextNumber += 1; profileUpdated = true; }
+          if (invoice.type === 'Quote') { updatedSequences.quoteNextNumber += 1; profileUpdated = true; }
       }
 
       if (profileUpdated) {
@@ -220,8 +236,17 @@ const AppContent: React.FC = () => {
 
         if(confirmed) {
             const sequences = currentUser.documentSequences || { invoicePrefix: 'FAC', invoiceNextNumber: 1, quotePrefix: 'COT', quoteNextNumber: 1 };
-            const newInvoiceId = `${sequences.invoicePrefix}-${String(sequences.invoiceNextNumber).padStart(4, '0')}`;
             
+            // Generate unique invoice ID
+            let nextNum = sequences.invoiceNextNumber;
+            let newInvoiceId = `${sequences.invoicePrefix}-${String(nextNum).padStart(4, '0')}`;
+            
+            // Collision detection
+            while(invoices.some(i => i.id === newInvoiceId)) {
+                nextNum++;
+                newInvoiceId = `${sequences.invoicePrefix}-${String(nextNum).padStart(4, '0')}`;
+            }
+
             const newInvoice: Invoice = {
                 ...targetInvoice,
                 id: newInvoiceId,
@@ -424,6 +449,7 @@ const AppContent: React.FC = () => {
           }}
           initialData={documentToEdit}
           dbClients={dbClients}
+          invoices={invoices}
         />
       )}
 

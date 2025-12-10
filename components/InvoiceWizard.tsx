@@ -12,17 +12,18 @@ import { parseInvoiceRequest, AI_ERROR_BLOCKED } from '../services/geminiService
 interface InvoiceWizardProps {
   currentUser: UserProfile;
   isOffline: boolean;
-  onSave: (invoice: Invoice) => Promise<void>; // Updated to Promise for async awaiting
+  onSave: (invoice: Invoice) => Promise<void>; 
   onCancel: () => void;
   onViewDetail?: () => void;
-  onSelectInvoiceForDetail?: (invoice: Invoice) => void; // New explicit handler
+  onSelectInvoiceForDetail?: (invoice: Invoice) => void; 
   initialData?: Invoice | null; 
-  dbClients?: any[]; // Passed from App to allow real search
+  dbClients?: any[]; 
+  invoices: Invoice[]; // New prop for collision detection
 }
 
 type Step = 'TYPE_SELECT' | 'AI_INPUT' | 'SMART_EDITOR' | 'SUCCESS';
 
-const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, onSave, onCancel, onViewDetail, onSelectInvoiceForDetail, initialData, dbClients = [] }) => {
+const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, onSave, onCancel, onViewDetail, onSelectInvoiceForDetail, initialData, dbClients = [], invoices = [] }) => {
   // Initialize state based on initialData (Edit Mode OR Template Mode)
   // If initialData exists, we skip to editor. 
   // If initialData has NO ID, it means it's a "New Document for Client" template.
@@ -33,7 +34,7 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
   const [docType, setDocType] = useState<'Invoice' | 'Quote'>(initialData?.type as 'Invoice' | 'Quote' || 'Invoice');
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isSaving, setIsSaving] = useState(false); // New state for saving process
+  const [isSaving, setIsSaving] = useState(false); 
   const [aiError, setAiError] = useState<string | null>(null);
   
   const [clientSearch, setClientSearch] = useState(initialData?.clientName || '');
@@ -64,7 +65,7 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
   });
 
   const [generatedId, setGeneratedId] = useState(initialData?.id || '');
-  const [finalInvoiceObj, setFinalInvoiceObj] = useState<Invoice | null>(null); // Store final object for viewing
+  const [finalInvoiceObj, setFinalInvoiceObj] = useState<Invoice | null>(null); 
   const [savedStatus, setSavedStatus] = useState<InvoiceStatus>('Creada');
 
   // Check AI Access
@@ -153,7 +154,6 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
     setAiError(null);
     try {
       const contextInput = `${docType === 'Quote' ? 'Cotización: ' : 'Factura: '} ${input}`;
-      // Pass full apiKeys object for dual AI support
       const result = await parseInvoiceRequest(contextInput, currentUser.apiKeys);
       
       if (result) {
@@ -163,7 +163,7 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
           description: result.concept || 'Servicios Profesionales',
           quantity: 1,
           price: result.amount || 0,
-          tax: applyTax ? 7 : 0 // Default to 7% or 0 based on toggle
+          tax: applyTax ? 7 : 0 
         }];
 
         // Try to match client against real DB
@@ -172,21 +172,16 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
             matchedClient = findBestClientMatch(result.clientName);
         }
 
-        // Update draft state fully
         setDraft(prev => ({
           ...prev,
-          // Use matched data if available, otherwise AI data, otherwise keep existing
           clientName: matchedClient ? matchedClient.name : (result.clientName || prev.clientName),
-          clientTaxId: matchedClient ? (matchedClient.taxId || '') : (result.clientName ? '' : prev.clientTaxId), // Clear ID if new unknown name
+          clientTaxId: matchedClient ? (matchedClient.taxId || '') : (result.clientName ? '' : prev.clientTaxId),
           clientEmail: matchedClient ? (matchedClient.email || '') : prev.clientEmail,
           currency: result.currency || prev.currency,
           items: newItems
         }));
         
-        // Update UI search field
         setClientSearch(matchedClient ? matchedClient.name : (result.clientName || ''));
-        
-        // Move to editor
         setStep('SMART_EDITOR');
       }
     } catch (error: any) {
@@ -205,29 +200,36 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
     setStep('SMART_EDITOR');
   };
 
+  const generateUniqueId = () => {
+    const sequences = currentUser.documentSequences || {
+        invoicePrefix: 'FAC', invoiceNextNumber: 1,
+        quotePrefix: 'COT', quoteNextNumber: 1
+    };
+    
+    let prefix = docType === 'Invoice' ? sequences.invoicePrefix : sequences.quotePrefix;
+    let nextNum = docType === 'Invoice' ? sequences.invoiceNextNumber : sequences.quoteNextNumber;
+    
+    let candidateId = `${prefix}-${String(nextNum).padStart(4, '0')}`;
+    
+    // Safety Loop: Check if this ID already exists in the provided invoices list
+    // This prevents overwriting if the user sequence is out of sync with actual data
+    while (invoices.some(inv => inv.id === candidateId)) {
+        nextNum++;
+        candidateId = `${prefix}-${String(nextNum).padStart(4, '0')}`;
+    }
+    
+    return candidateId;
+  };
+
   const handleSave = async (targetStatus: 'Borrador' | 'Creada') => {
     if (!draft.clientName) return;
-    setIsSaving(true); // START SAVING STATE
+    setIsSaving(true); 
 
     let newId = generatedId;
     
     // Only generate new ID if we are NOT editing an existing valid ID
     if (!newId) {
-        // NOTE: The incrementing happens in App.tsx handleSaveInvoice logic to avoid collisions.
-        // We generate a temp placeholder or rely on App.tsx to finalize it? 
-        // Ideally App.tsx should handle ID generation to be atomic. 
-        // BUT current architecture has ID generation here. 
-        // Let's generate a PREVIEW ID here based on current sequence, but App.tsx will confirm/collision check.
-        
-        const sequences = currentUser.documentSequences || {
-            invoicePrefix: 'FAC', invoiceNextNumber: 1,
-            quotePrefix: 'COT', quoteNextNumber: 1
-        };
-        if (docType === 'Invoice') {
-            newId = `${sequences.invoicePrefix}-${String(sequences.invoiceNextNumber).padStart(4, '0')}`;
-        } else {
-            newId = `${sequences.quotePrefix}-${String(sequences.quoteNextNumber).padStart(4, '0')}`;
-        }
+        newId = generateUniqueId();
     }
 
     const finalInvoice: Invoice = {
@@ -235,24 +237,21 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
       clientName: draft.clientName,
       clientTaxId: draft.clientTaxId,
       clientEmail: draft.clientEmail,
-      date: initialData?.date || new Date().toISOString(), // Keep original date if editing
+      date: initialData?.date || new Date().toISOString(), 
       items: draft.items,
       total: totals.total,
-      // If offline, prioritize pending sync, otherwise use target status
       status: isOffline ? 'PendingSync' : targetStatus,
       currency: draft.currency,
       type: docType,
-      // Preserve timeline if editing
       timeline: initialData?.timeline 
     };
     
-    // AWAIT THE DB SAVE before moving UI
     await onSave(finalInvoice);
     
     setGeneratedId(newId);
     setFinalInvoiceObj(finalInvoice);
     setSavedStatus(targetStatus);
-    setIsSaving(false); // END SAVING STATE
+    setIsSaving(false); 
     setStep('SUCCESS');
   };
 
@@ -273,7 +272,7 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
         description: catalogItem?.name || '',
         quantity: 1,
         price: catalogItem?.price || 0,
-        tax: applyTax ? 7 : 0 // Inherit current tax setting
+        tax: applyTax ? 7 : 0 
       }]
     }));
     setShowCatalog(false);
@@ -477,7 +476,6 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
                     ) : (
                         <div className="px-4 py-3 text-slate-400 text-sm text-center">No hay clientes guardados.</div>
                     )}
-                    {/* Fallback if filtering returns nothing but there are clients */}
                     {dbClients.length > 0 && dbClients.filter(c => c.name.toLowerCase().includes(clientSearch.toLowerCase())).length === 0 && (
                         <div className="px-4 py-3 text-slate-400 text-sm">Creando "{clientSearch}" como nuevo...</div>
                     )}
