@@ -1,4 +1,3 @@
-
 import React, { useMemo } from 'react';
 import { 
   Plus, 
@@ -16,9 +15,10 @@ import {
   AlertCircle,
   Users,
   BarChart3,
-  Hourglass
+  Hourglass,
+  Target
 } from 'lucide-react';
-import { Invoice, AppView } from '../types';
+import { Invoice, AppView, UserProfile } from '../types';
 
 interface DashboardProps {
   recentInvoices: Invoice[];
@@ -27,9 +27,10 @@ interface DashboardProps {
   onNewAction: () => void;
   onSelectInvoice: (invoice: Invoice) => void;
   onNavigate?: (view: AppView) => void; // Added for Mobile Nav
+  currentUser: UserProfile;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendingCount, onNewAction, onSelectInvoice, onNavigate }) => {
+const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendingCount, onNewAction, onSelectInvoice, onNavigate, currentUser }) => {
   
   // --- REAL TIME STATS CALCULATION ---
   const stats = useMemo(() => {
@@ -71,8 +72,9 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
     // Total Attention Items
     const pendingReview = draftsCount + negotiationCount + followupCount + pendingSyncCount;
 
-    // Simulate a "Growth" percentage for visceral satisfaction
-    const growth = 12.5; 
+    // Growth calculation (Mock vs previous month or based on target)
+    const monthlyTarget = currentUser.hourlyRateConfig?.targetIncome || 0;
+    const progressPercent = monthlyTarget > 0 ? (monthlyRevenue / monthlyTarget) * 100 : 0;
 
     return { 
       monthlyRevenue, 
@@ -80,7 +82,8 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
       quotesCount,
       quotesAmount,
       uniqueClients,
-      growth,
+      monthlyTarget,
+      progressPercent,
       attention: {
         total: pendingReview,
         drafts: draftsCount,
@@ -89,7 +92,7 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
         sync: pendingSyncCount
       }
     };
-  }, [recentInvoices]);
+  }, [recentInvoices, currentUser.hourlyRateConfig]);
 
   const getStatusColor = (status: string) => {
     switch(status) {
@@ -118,7 +121,25 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
           <h1 className="text-6xl font-black text-[#1c2938] tracking-tight">
              ${stats.monthlyRevenue.toLocaleString()}
           </h1>
-          <div className="pt-2">
+          
+          {/* Mobile Goal Progress */}
+          {stats.monthlyTarget > 0 ? (
+             <div className="flex justify-center items-center gap-2 pt-1">
+                <div className="w-32 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                   <div className="h-full bg-[#27bea5]" style={{ width: `${Math.min(100, stats.progressPercent)}%` }}></div>
+                </div>
+                <span className="text-xs font-bold text-slate-400">{stats.progressPercent.toFixed(0)}%</span>
+             </div>
+          ) : (
+             <button 
+                onClick={() => onNavigate && onNavigate(AppView.EXPENSES)}
+                className="text-xs font-bold text-[#27bea5] bg-[#27bea5]/10 px-3 py-1 rounded-full"
+             >
+                + Definir Meta
+             </button>
+          )}
+
+          <div className="pt-4">
              <button 
                onClick={() => onNavigate && onNavigate(AppView.INVOICES)}
                className="bg-[#1c2938] text-white px-6 py-3 rounded-full text-sm font-bold shadow-lg hover:scale-105 active:scale-95 transition-all flex items-center gap-2 mx-auto"
@@ -223,14 +244,14 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
               </span>
             </div>
             <h1 className="text-4xl font-bold text-[#1c2938] tracking-tight">
-              Hola, Juan <span className="inline-block animate-wave">👋</span>
+              Hola, {currentUser.name} <span className="inline-block animate-wave">👋</span>
             </h1>
             <p className="text-slate-500 text-lg font-light mt-1">
               Hoy es un buen día para hacer crecer tu negocio.
             </p>
           </div>
 
-          {/* Offline Status: Re-framed as "Secure Vault" (Reflective) */}
+          {/* Offline Status */}
           {isOffline && (
             <div className="bg-amber-50 border border-amber-100 px-6 py-3 rounded-2xl flex items-center gap-4 animate-in slide-in-from-right shadow-sm">
               <div className="bg-amber-100 p-2 rounded-xl text-amber-600">
@@ -249,7 +270,7 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
         {/* 2. BENTO GRID HERO SECTION */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-auto md:h-80">
           
-          {/* CARD 1: Monthly Revenue (Visceral: Stability & Success) */}
+          {/* CARD 1: Monthly Revenue (Dynamic Target) */}
           <div className="col-span-1 md:col-span-1 bg-[#1c2938] rounded-[2.5rem] p-8 text-white relative overflow-hidden group shadow-xl">
             {/* Abstract Background */}
             <div className="absolute top-0 right-0 w-64 h-64 bg-[#27bea5] rounded-full blur-[80px] opacity-10 group-hover:opacity-20 transition-opacity duration-500 -translate-y-1/2 translate-x-1/2"></div>
@@ -259,10 +280,19 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
                   <div className="p-3 bg-white/10 rounded-2xl backdrop-blur-md">
                     <Wallet className="w-6 h-6 text-[#27bea5]" />
                   </div>
-                  <div className="flex items-center gap-1 bg-green-500/20 px-3 py-1 rounded-full border border-green-500/20">
-                      <TrendingUp className="w-3 h-3 text-green-400" />
-                      <span className="text-xs font-bold text-green-400">+{stats.growth}%</span>
-                  </div>
+                  {stats.monthlyTarget > 0 ? (
+                    <div className="flex items-center gap-1 bg-green-500/20 px-3 py-1 rounded-full border border-green-500/20">
+                        <TrendingUp className="w-3 h-3 text-green-400" />
+                        <span className="text-xs font-bold text-green-400">
+                            {stats.progressPercent >= 100 ? 'Meta Superada' : 'En Progreso'}
+                        </span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1 bg-white/10 px-3 py-1 rounded-full border border-white/10">
+                        <Target className="w-3 h-3 text-slate-300" />
+                        <span className="text-xs font-bold text-slate-300">Sin Meta</span>
+                    </div>
+                  )}
                 </div>
                 
                 <div>
@@ -270,15 +300,35 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
                   <h2 className="text-4xl lg:text-5xl font-bold tracking-tight">
                     ${stats.monthlyRevenue.toLocaleString()}
                   </h2>
+                  
+                  {/* Dynamic Progress Bar */}
                   <div className="mt-4 h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
-                    <div className="h-full bg-[#27bea5] w-[65%] rounded-full shadow-[0_0_10px_rgba(39,190,165,0.5)]"></div>
+                    <div 
+                      className="h-full bg-[#27bea5] rounded-full shadow-[0_0_10px_rgba(39,190,165,0.5)] transition-all duration-1000 ease-out"
+                      style={{ width: `${Math.min(100, Math.max(stats.monthlyTarget > 0 ? 5 : 0, stats.progressPercent))}%` }}
+                    ></div>
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-2 text-right">Meta mensual al 65%</p>
+                  
+                  {/* Dynamic Goal Text or CTA */}
+                  <div className="mt-2 flex justify-end">
+                    {stats.monthlyTarget > 0 ? (
+                        <p className="text-[10px] text-slate-400 text-right">
+                           Meta: {stats.progressPercent.toFixed(0)}% de ${stats.monthlyTarget.toLocaleString()}
+                        </p>
+                    ) : (
+                        <button 
+                           onClick={() => onNavigate && onNavigate(AppView.EXPENSES)}
+                           className="text-[10px] text-[#27bea5] font-bold hover:text-white hover:underline transition-colors flex items-center gap-1"
+                        >
+                           + Definir Meta Mensual
+                        </button>
+                    )}
+                  </div>
                 </div>
             </div>
           </div>
 
-          {/* CARD 2: Primary Action (Behavioral: Obvious CTA) */}
+          {/* CARD 2: Primary Action */}
           <button 
             onClick={onNewAction}
             className="col-span-1 md:col-span-1 bg-gradient-to-br from-[#27bea5] to-[#20a08a] rounded-[2.5rem] p-8 text-white relative overflow-hidden shadow-xl shadow-teal-200/50 group hover:-translate-y-1 transition-all duration-300 active:translate-y-0 active:scale-95 text-left"
@@ -302,7 +352,7 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
             </div>
           </button>
 
-          {/* CARD 3: Quick Status / Tasks (Behavioral: Clarity & Detail) */}
+          {/* CARD 3: Quick Status / Tasks */}
           <div className="col-span-1 md:col-span-1 bg-white rounded-[2.5rem] p-8 border border-slate-50 shadow-sm flex flex-col justify-between group hover:shadow-lg transition-all duration-300">
             <div className="flex justify-between items-start">
                 <div className="p-3 bg-amber-50 rounded-2xl text-amber-500">

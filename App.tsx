@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { AppView, Invoice, UserProfile, CatalogItem, InvoiceStatus, TimelineEvent } from './types';
 import LoginScreen from './components/LoginScreen';
@@ -292,6 +291,7 @@ const App: React.FC = () => {
           onNewAction={() => { setDocumentToEdit(null); setActiveView(AppView.WIZARD); }}
           onSelectInvoice={(inv) => { setSelectedInvoice(inv); setActiveView(AppView.INVOICE_DETAIL); }}
           onNavigate={setActiveView}
+          currentUser={currentUser!}
         />
       )}
 
