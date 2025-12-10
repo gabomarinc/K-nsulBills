@@ -19,7 +19,11 @@ import {
   Hourglass,
   Target,
   ArrowRight,
-  Eye
+  Eye,
+  CheckCircle2,
+  XCircle,
+  Ban,
+  Archive
 } from 'lucide-react';
 import { Invoice, AppView, UserProfile } from '../types';
 
@@ -77,13 +81,18 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
         sent: recentInvoices.filter(i => i.type === 'Invoice' && i.status === 'Enviada').length,
         viewed: recentInvoices.filter(i => i.type === 'Invoice' && i.status === 'Seguimiento').length,
         partial: recentInvoices.filter(i => i.type === 'Invoice' && i.status === 'Abonada').length,
+        paid: recentInvoices.filter(i => i.type === 'Invoice' && (i.status === 'Pagada' || i.status === 'Aceptada')).length,
+        uncollectible: recentInvoices.filter(i => i.type === 'Invoice' && i.status === 'Incobrable').length,
         pendingSync: recentInvoices.filter(i => i.type === 'Invoice' && i.status === 'PendingSync').length
     };
 
     const quoteStats = {
         drafts: recentInvoices.filter(i => i.type === 'Quote' && i.status === 'Borrador').length,
         sent: recentInvoices.filter(i => i.type === 'Quote' && i.status === 'Enviada').length,
-        negotiation: recentInvoices.filter(i => i.type === 'Quote' && i.status === 'Negociacion').length
+        viewed: recentInvoices.filter(i => i.type === 'Quote' && i.status === 'Seguimiento').length,
+        negotiation: recentInvoices.filter(i => i.type === 'Quote' && i.status === 'Negociacion').length,
+        accepted: recentInvoices.filter(i => i.type === 'Quote' && i.status === 'Aceptada').length,
+        rejected: recentInvoices.filter(i => i.type === 'Quote' && i.status === 'Rechazada').length
     };
 
     return { 
@@ -273,62 +282,77 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
         </div>
 
         {/* 2. BENTO GRID HERO SECTION */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-auto md:h-96">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 h-auto lg:h-96">
           
-          {/* CARD 1: Monthly Revenue (Dynamic Target) */}
-          <div className="col-span-1 md:col-span-1 bg-[#1c2938] rounded-[2.5rem] p-8 text-white relative overflow-hidden group shadow-xl">
+          {/* CARD 1: Monthly Revenue (Dynamic Target) - HERO */}
+          <div className="col-span-1 md:col-span-2 lg:col-span-2 bg-[#1c2938] rounded-[2.5rem] p-8 md:p-10 text-white relative overflow-hidden group shadow-2xl flex flex-col justify-between">
             {/* Abstract Background */}
-            <div className="absolute top-0 right-0 w-64 h-64 bg-[#27bea5] rounded-full blur-[80px] opacity-10 group-hover:opacity-20 transition-opacity duration-500 -translate-y-1/2 translate-x-1/2"></div>
+            <div className="absolute top-0 right-0 w-96 h-96 bg-[#27bea5] rounded-full blur-[100px] opacity-10 group-hover:opacity-20 transition-opacity duration-500 -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+            <div className="absolute bottom-0 left-0 w-64 h-64 bg-blue-600 rounded-full blur-[80px] opacity-10 translate-y-1/2 -translate-x-1/2 pointer-events-none"></div>
             
             <div className="relative z-10 flex flex-col h-full justify-between">
                 <div className="flex justify-between items-start">
-                  <div className="p-3 bg-white/10 rounded-2xl backdrop-blur-md">
-                    <Wallet className="w-6 h-6 text-[#27bea5]" />
+                  <div className="p-4 bg-white/10 rounded-2xl backdrop-blur-md">
+                    <Wallet className="w-8 h-8 text-[#27bea5]" />
                   </div>
                   {stats.monthlyTarget > 0 ? (
-                    <div className="flex items-center gap-1 bg-green-500/20 px-3 py-1 rounded-full border border-green-500/20">
-                        <TrendingUp className="w-3 h-3 text-green-400" />
-                        <span className="text-xs font-bold text-green-400">
-                            {stats.progressPercent >= 100 ? 'Meta Superada' : 'En Progreso'}
+                    <div className="flex items-center gap-2 bg-green-500/20 px-4 py-2 rounded-full border border-green-500/20 backdrop-blur-sm">
+                        <TrendingUp className="w-4 h-4 text-green-400" />
+                        <span className="text-sm font-bold text-green-400">
+                            {stats.progressPercent >= 100 ? '¡Meta Superada!' : 'En Camino'}
                         </span>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-1 bg-white/10 px-3 py-1 rounded-full border border-white/10">
-                        <Target className="w-3 h-3 text-slate-300" />
-                        <span className="text-xs font-bold text-slate-300">Sin Meta</span>
+                    <div className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-full border border-white/10">
+                        <Target className="w-4 h-4 text-slate-300" />
+                        <span className="text-sm font-bold text-slate-300">Sin Meta Definida</span>
                     </div>
                   )}
                 </div>
                 
-                <div>
-                  <p className="text-slate-400 text-sm font-medium mb-1">Facturado este mes</p>
-                  <h2 className="text-4xl lg:text-5xl font-bold tracking-tight">
+                <div className="mt-4">
+                  <p className="text-slate-400 text-lg font-medium mb-1 flex items-center gap-2">
+                    Facturado este mes
+                    {stats.progressPercent > 0 && (
+                        <span className="text-xs font-bold text-[#27bea5] bg-[#27bea5]/10 px-2 py-0.5 rounded-lg border border-[#27bea5]/20">
+                            {stats.progressPercent.toFixed(0)}% Completado
+                        </span>
+                    )}
+                  </p>
+                  <h2 className="text-6xl lg:text-7xl font-black tracking-tighter text-white drop-shadow-sm">
                     ${stats.monthlyRevenue.toLocaleString()}
                   </h2>
                   
-                  {/* Dynamic Progress Bar */}
-                  <div className="mt-4 h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-[#27bea5] rounded-full shadow-[0_0_10px_rgba(39,190,165,0.5)] transition-all duration-1000 ease-out"
-                      style={{ width: `${Math.min(100, Math.max(stats.monthlyTarget > 0 ? 5 : 0, stats.progressPercent))}%` }}
-                    ></div>
-                  </div>
-                  
-                  {/* Dynamic Goal Text or CTA */}
-                  <div className="mt-2 flex justify-end">
-                    {stats.monthlyTarget > 0 ? (
-                        <p className="text-[10px] text-slate-400 text-right">
-                           Meta: {stats.progressPercent.toFixed(0)}% de ${stats.monthlyTarget.toLocaleString()}
-                        </p>
-                    ) : (
-                        <button 
-                           onClick={() => onNavigate && onNavigate(AppView.EXPENSES)}
-                           className="text-[10px] text-[#27bea5] font-bold hover:text-white hover:underline transition-colors flex items-center gap-1"
+                  {/* Hero Progress Bar */}
+                  <div className="mt-8 relative">
+                    <div className="h-4 w-full bg-slate-800/50 rounded-full overflow-hidden border border-white/5">
+                        <div 
+                        className="h-full bg-gradient-to-r from-[#27bea5] to-teal-400 rounded-full shadow-[0_0_20px_rgba(39,190,165,0.6)] transition-all duration-1000 ease-out relative"
+                        style={{ width: `${Math.min(100, Math.max(stats.monthlyTarget > 0 ? 5 : 0, stats.progressPercent))}%` }}
                         >
-                           + Definir Meta Mensual
-                        </button>
+                            <div className="absolute inset-0 bg-white/20 animate-pulse-slow"></div>
+                        </div>
+                    </div>
+                    {/* Tick marks or labels */}
+                    {stats.monthlyTarget > 0 && (
+                        <div className="flex justify-between mt-3 text-sm font-medium text-slate-400">
+                            <span>$0</span>
+                            <span className="text-slate-300">Meta: ${stats.monthlyTarget.toLocaleString()}</span>
+                        </div>
                     )}
                   </div>
+                  
+                  {/* CTA if no goal */}
+                  {stats.monthlyTarget <= 0 && (
+                    <div className="mt-4">
+                        <button 
+                           onClick={() => onNavigate && onNavigate(AppView.EXPENSES)}
+                           className="text-sm text-[#27bea5] font-bold hover:text-white hover:underline transition-colors flex items-center gap-1"
+                        >
+                           + Definir Meta Mensual para visualizar progreso
+                        </button>
+                    </div>
+                  )}
                 </div>
             </div>
           </div>
@@ -336,7 +360,7 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
           {/* CARD 2: Primary Action */}
           <button 
             onClick={onNewAction}
-            className="col-span-1 md:col-span-1 bg-gradient-to-br from-[#27bea5] to-[#20a08a] rounded-[2.5rem] p-8 text-white relative overflow-hidden shadow-xl shadow-teal-200/50 group hover:-translate-y-1 transition-all duration-300 active:translate-y-0 active:scale-95 text-left"
+            className="col-span-1 md:col-span-1 lg:col-span-1 bg-gradient-to-br from-[#27bea5] to-[#20a08a] rounded-[2.5rem] p-8 text-white relative overflow-hidden shadow-xl shadow-teal-200/50 group hover:-translate-y-1 transition-all duration-300 active:translate-y-0 active:scale-95 text-left h-full"
           >
             <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
             <div className="absolute bottom-0 right-0 w-40 h-40 bg-white rounded-full blur-[60px] opacity-20 translate-y-1/2 translate-x-1/2 group-hover:opacity-30 transition-opacity"></div>
@@ -358,7 +382,7 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
           </button>
 
           {/* CARD 3: TABBED STATUS (Clean & Emotional) */}
-          <div className="col-span-1 md:col-span-1 bg-white rounded-[2.5rem] p-6 border border-slate-50 shadow-sm flex flex-col relative overflow-hidden">
+          <div className="col-span-1 md:col-span-1 lg:col-span-1 bg-white rounded-[2.5rem] p-6 border border-slate-50 shadow-sm flex flex-col relative overflow-hidden h-full">
             
             {/* Tab Switcher */}
             <div className="flex justify-between items-center mb-6">
@@ -382,89 +406,152 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
                </div>
             </div>
 
-            {/* Content Area */}
-            <div className="flex-1 flex flex-col justify-between">
+            {/* Content Area - Scrollable */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 -mr-2">
                 
                 {activeTab === 'INVOICES' && (
-                   <div className="space-y-3 animate-in fade-in slide-in-from-right-8">
-                      <div className="flex items-center justify-between p-3 rounded-2xl bg-blue-50/50 hover:bg-blue-50 transition-colors border border-blue-50">
+                   <div className="space-y-2 animate-in fade-in slide-in-from-right-8">
+                      {/* Borradores */}
+                      <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100">
                          <div className="flex items-center gap-3">
-                            <div className="p-2 bg-blue-100 text-blue-600 rounded-xl">
+                            <div className="p-1.5 bg-slate-200 text-slate-500 rounded-lg">
                                <FileText className="w-4 h-4" />
                             </div>
-                            <div>
-                               <p className="font-bold text-[#1c2938] text-sm">Por Cobrar</p>
-                               <p className="text-[10px] text-slate-400 font-medium">Enviadas</p>
-                            </div>
+                            <span className="text-sm font-bold text-slate-600">Borradores</span>
                          </div>
-                         <span className="text-xl font-bold text-blue-600">{stats.invoiceStats.sent}</span>
+                         <span className="text-sm font-bold text-slate-600">{stats.invoiceStats.drafts}</span>
                       </div>
 
-                      <div className="flex items-center justify-between p-3 rounded-2xl bg-sky-50/50 hover:bg-sky-50 transition-colors border border-sky-50">
+                      {/* Enviadas */}
+                      <div className="flex items-center justify-between p-2 rounded-xl bg-blue-50 border border-blue-100">
                          <div className="flex items-center gap-3">
-                            <div className="p-2 bg-sky-100 text-sky-600 rounded-xl">
+                            <div className="p-1.5 bg-blue-100 text-blue-600 rounded-lg">
+                               <ArrowRight className="w-4 h-4" />
+                            </div>
+                            <span className="text-sm font-bold text-[#1c2938]">Enviadas</span>
+                         </div>
+                         <span className="text-sm font-bold text-blue-600">{stats.invoiceStats.sent}</span>
+                      </div>
+
+                      {/* Vistas */}
+                      <div className="flex items-center justify-between p-2 rounded-xl bg-sky-50 border border-sky-100">
+                         <div className="flex items-center gap-3">
+                            <div className="p-1.5 bg-sky-100 text-sky-600 rounded-lg">
                                <Eye className="w-4 h-4" />
                             </div>
-                            <div>
-                               <p className="font-bold text-[#1c2938] text-sm">En Seguimiento</p>
-                               <p className="text-[10px] text-slate-400 font-medium">Vistas por cliente</p>
-                            </div>
+                            <span className="text-sm font-bold text-[#1c2938]">Vistas</span>
                          </div>
-                         <span className="text-xl font-bold text-sky-600">{stats.invoiceStats.viewed}</span>
+                         <span className="text-sm font-bold text-sky-600">{stats.invoiceStats.viewed}</span>
                       </div>
 
-                      <div className="flex items-center justify-between p-3 rounded-2xl bg-indigo-50/50 hover:bg-indigo-50 transition-colors border border-indigo-50">
+                      {/* Parciales */}
+                      <div className="flex items-center justify-between p-2 rounded-xl bg-indigo-50 border border-indigo-100">
                          <div className="flex items-center gap-3">
-                            <div className="p-2 bg-indigo-100 text-indigo-600 rounded-xl">
+                            <div className="p-1.5 bg-indigo-100 text-indigo-600 rounded-lg">
                                <Wallet className="w-4 h-4" />
                             </div>
-                            <div>
-                               <p className="font-bold text-[#1c2938] text-sm">Parciales</p>
-                               <p className="text-[10px] text-slate-400 font-medium">Abonadas</p>
-                            </div>
+                            <span className="text-sm font-bold text-[#1c2938]">Parciales</span>
                          </div>
-                         <span className="text-xl font-bold text-indigo-600">{stats.invoiceStats.partial}</span>
+                         <span className="text-sm font-bold text-indigo-600">{stats.invoiceStats.partial}</span>
                       </div>
+
+                      {/* Pagadas */}
+                      <div className="flex items-center justify-between p-2 rounded-xl bg-green-50 border border-green-100">
+                         <div className="flex items-center gap-3">
+                            <div className="p-1.5 bg-green-100 text-green-600 rounded-lg">
+                               <CheckCircle2 className="w-4 h-4" />
+                            </div>
+                            <span className="text-sm font-bold text-[#1c2938]">Pagadas</span>
+                         </div>
+                         <span className="text-sm font-bold text-green-600">{stats.invoiceStats.paid}</span>
+                      </div>
+
+                      {/* Incobrables */}
+                      {stats.invoiceStats.uncollectible > 0 && (
+                        <div className="flex items-center justify-between p-2 rounded-xl bg-red-50 border border-red-100">
+                           <div className="flex items-center gap-3">
+                              <div className="p-1.5 bg-red-100 text-red-600 rounded-lg">
+                                 <Ban className="w-4 h-4" />
+                              </div>
+                              <span className="text-sm font-bold text-[#1c2938]">Incobrables</span>
+                           </div>
+                           <span className="text-sm font-bold text-red-600">{stats.invoiceStats.uncollectible}</span>
+                        </div>
+                      )}
                    </div>
                 )}
 
                 {activeTab === 'QUOTES' && (
-                   <div className="space-y-3 animate-in fade-in slide-in-from-right-8">
-                      <div className="flex items-center justify-between p-3 rounded-2xl bg-purple-50/50 hover:bg-purple-50 transition-colors border border-purple-50">
+                   <div className="space-y-2 animate-in fade-in slide-in-from-right-8">
+                      {/* Borradores */}
+                      <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100">
                          <div className="flex items-center gap-3">
-                            <div className="p-2 bg-purple-100 text-purple-600 rounded-xl">
-                               <MoreHorizontal className="w-4 h-4" />
+                            <div className="p-1.5 bg-slate-200 text-slate-500 rounded-lg">
+                               <Archive className="w-4 h-4" />
                             </div>
-                            <div>
-                               <p className="font-bold text-[#1c2938] text-sm">Negociación</p>
-                               <p className="text-[10px] text-slate-400 font-medium">En proceso</p>
-                            </div>
+                            <span className="text-sm font-bold text-slate-600">Borradores</span>
                          </div>
-                         <span className="text-xl font-bold text-purple-600">{stats.quoteStats.negotiation}</span>
+                         <span className="text-sm font-bold text-slate-600">{stats.quoteStats.drafts}</span>
                       </div>
 
-                      <div className="flex items-center justify-between p-3 rounded-2xl bg-fuchsia-50/50 hover:bg-fuchsia-50 transition-colors border border-fuchsia-50">
+                      {/* Enviadas */}
+                      <div className="flex items-center justify-between p-2 rounded-xl bg-fuchsia-50 border border-fuchsia-100">
                          <div className="flex items-center gap-3">
-                            <div className="p-2 bg-fuchsia-100 text-fuchsia-600 rounded-xl">
+                            <div className="p-1.5 bg-fuchsia-100 text-fuchsia-600 rounded-lg">
                                <ArrowRight className="w-4 h-4" />
                             </div>
-                            <div>
-                               <p className="font-bold text-[#1c2938] text-sm">Enviadas</p>
-                               <p className="text-[10px] text-slate-400 font-medium">Esperando respuesta</p>
-                            </div>
+                            <span className="text-sm font-bold text-[#1c2938]">Enviadas</span>
                          </div>
-                         <span className="text-xl font-bold text-fuchsia-600">{stats.quoteStats.sent}</span>
+                         <span className="text-sm font-bold text-fuchsia-600">{stats.quoteStats.sent}</span>
                       </div>
+
+                      {/* Vistas */}
+                      <div className="flex items-center justify-between p-2 rounded-xl bg-sky-50 border border-sky-100">
+                         <div className="flex items-center gap-3">
+                            <div className="p-1.5 bg-sky-100 text-sky-600 rounded-lg">
+                               <Eye className="w-4 h-4" />
+                            </div>
+                            <span className="text-sm font-bold text-[#1c2938]">Vistas</span>
+                         </div>
+                         <span className="text-sm font-bold text-sky-600">{stats.quoteStats.viewed}</span>
+                      </div>
+
+                      {/* Negociacion */}
+                      <div className="flex items-center justify-between p-2 rounded-xl bg-purple-50 border border-purple-100">
+                         <div className="flex items-center gap-3">
+                            <div className="p-1.5 bg-purple-100 text-purple-600 rounded-lg">
+                               <MoreHorizontal className="w-4 h-4" />
+                            </div>
+                            <span className="text-sm font-bold text-[#1c2938]">Negociación</span>
+                         </div>
+                         <span className="text-sm font-bold text-purple-600">{stats.quoteStats.negotiation}</span>
+                      </div>
+
+                      {/* Aceptadas */}
+                      <div className="flex items-center justify-between p-2 rounded-xl bg-green-50 border border-green-100">
+                         <div className="flex items-center gap-3">
+                            <div className="p-1.5 bg-green-100 text-green-600 rounded-lg">
+                               <CheckCircle2 className="w-4 h-4" />
+                            </div>
+                            <span className="text-sm font-bold text-[#1c2938]">Aceptadas</span>
+                         </div>
+                         <span className="text-sm font-bold text-green-600">{stats.quoteStats.accepted}</span>
+                      </div>
+
+                      {/* Rechazadas */}
+                      {stats.quoteStats.rejected > 0 && (
+                        <div className="flex items-center justify-between p-2 rounded-xl bg-red-50 border border-red-100">
+                           <div className="flex items-center gap-3">
+                              <div className="p-1.5 bg-red-100 text-red-600 rounded-lg">
+                                 <XCircle className="w-4 h-4" />
+                              </div>
+                              <span className="text-sm font-bold text-[#1c2938]">Rechazadas</span>
+                           </div>
+                           <span className="text-sm font-bold text-red-600">{stats.quoteStats.rejected}</span>
+                        </div>
+                      )}
                    </div>
                 )}
-
-                {/* Footer Drafts */}
-                <div className="mt-4 pt-4 border-t border-slate-50 flex justify-between items-center text-xs">
-                   <span className="text-slate-400 font-bold">Borradores pendientes</span>
-                   <span className="bg-slate-100 text-slate-500 px-2 py-1 rounded-lg font-bold">
-                      {activeTab === 'INVOICES' ? stats.invoiceStats.drafts : stats.quoteStats.drafts}
-                   </span>
-                </div>
             </div>
           </div>
         </div>
