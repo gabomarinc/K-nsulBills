@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { 
   Search, Plus, FileText, CheckCircle2, 
@@ -152,6 +151,22 @@ const DocumentList: React.FC<DocumentListProps> = ({
                     {opt.icon} {opt.label}
                 </button>
             ))}
+            
+            {/* DELETE OPTION */}
+            {onDeleteInvoice && (
+                <div className="border-t border-slate-100 mt-1 pt-1">
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteInvoice(doc.id);
+                            setActiveMenuId(null);
+                        }}
+                        className="w-full text-left px-4 py-3 text-sm font-bold flex items-center gap-2 transition-colors text-red-500 hover:bg-red-50"
+                    >
+                        <Trash2 className="w-4 h-4" /> Eliminar
+                    </button>
+                </div>
+            )}
         </div>
     );
   };

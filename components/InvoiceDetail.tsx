@@ -1,9 +1,8 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   ArrowLeft, Printer, Share2, Download, Building2, 
   CheckCircle2, Loader2, Send, MessageCircle, Smartphone, Mail, Check, AlertTriangle, Edit2, 
-  ChevronDown, XCircle, Wallet, ArrowRight, X
+  ChevronDown, XCircle, Wallet, ArrowRight, X, Trash2
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -18,9 +17,10 @@ interface InvoiceDetailProps {
   onEdit?: (invoice: Invoice) => void;
   onUpdateInvoice?: (invoice: Invoice) => void;
   onUpdateStatus?: (id: string, status: InvoiceStatus) => void; // New Prop
+  onDelete?: (id: string) => void; // New Prop
 }
 
-const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, onEdit, onUpdateInvoice, onUpdateStatus }) => {
+const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, onEdit, onUpdateInvoice, onUpdateStatus, onDelete }) => {
   const [isSending, setIsSending] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -635,6 +635,17 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
            {onEdit && (
              <button onClick={() => onEdit(invoice)} className="p-3 text-slate-500 hover:bg-white hover:text-[#27bea5] hover:shadow-sm rounded-xl transition-all mr-2" title="Editar Documento">
                <Edit2 className="w-5 h-5" />
+             </button>
+           )}
+
+           {/* DELETE BUTTON (New) */}
+           {onDelete && (
+             <button 
+               onClick={() => onDelete(invoice.id)} 
+               className="p-3 text-slate-500 hover:bg-red-50 hover:text-red-500 hover:shadow-sm rounded-xl transition-all mr-2 group" 
+               title="Eliminar Documento"
+             >
+               <Trash2 className="w-5 h-5" />
              </button>
            )}
 

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { AppView, Invoice, UserProfile, CatalogItem, InvoiceStatus, TimelineEvent, DbClient } from './types';
 import LoginScreen from './components/LoginScreen';
@@ -439,6 +438,7 @@ const App: React.FC = () => {
           }}
           onUpdateStatus={handleUpdateStatus} // New Prop
           onEdit={handleEditInvoice}
+          onDelete={handleDeleteInvoice}
         />
       )}
 
