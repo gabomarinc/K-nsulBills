@@ -4,7 +4,7 @@ import {
   ArrowLeft, Mail, MapPin, Building2, Crown, 
   Clock, CheckCircle2, FileText, FileBadge, 
   TrendingUp, Edit2, Calendar, Save, X, Phone,
-  ExternalLink, Send, Wallet, Trash2, Tag, StickyNote, Plus
+  ExternalLink, Send, Wallet, Trash2, Tag, StickyNote, Plus, Check
 } from 'lucide-react';
 import { Invoice, InvoiceStatus, DbClient } from '../types';
 
@@ -27,8 +27,15 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
   onUpdateClientContact,
   currencySymbol 
 }) => {
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
   
+  // Local states for quick edits
+  const [isAddingTag, setIsAddingTag] = useState(false);
+  const [newTag, setNewTag] = useState('');
+  
+  const [isEditingNote, setIsEditingNote] = useState(false);
+  const [tempNote, setTempNote] = useState('');
+
   // Aggregate Client Data
   const { clientData, activeDocs, historyDocs, stats } = useMemo(() => {
     const clientDocs = invoices.filter(i => i.clientName === clientName);
@@ -75,26 +82,72 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
     };
   }, [invoices, clientName, dbClientData]);
 
-  // Edit State
+  // Edit State for Profile
   const [editForm, setEditForm] = useState(clientData);
 
   // Sync form when client changes
   useEffect(() => {
     setEditForm(clientData);
+    setTempNote(clientData.notes || '');
   }, [clientData]);
 
-  const handleSave = () => {
+  // --- HANDLERS ---
+
+  // 1. General Profile Save
+  const handleProfileSave = () => {
     onUpdateClientContact(clientName, {
-      ...dbClientData, // Preserve ID etc
+      ...dbClientData, 
       name: clientName,
       email: editForm.email,
       address: editForm.address,
       taxId: editForm.taxId,
       phone: editForm.phone,
-      tags: editForm.tags,
-      notes: editForm.notes
+      // Keep existing tags/notes when saving profile info
+      tags: clientData.tags,
+      notes: clientData.notes
     });
-    setIsEditing(false);
+    setIsEditingProfile(false);
+  };
+
+  // 2. Tag Logic
+  const handleAddTag = () => {
+    if (!newTag.trim()) {
+        setIsAddingTag(false);
+        return;
+    }
+    const currentTags = clientData.tags ? clientData.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+    if (!currentTags.includes(newTag.trim())) {
+        const updatedTags = [...currentTags, newTag.trim()].join(',');
+        
+        onUpdateClientContact(clientName, {
+            ...dbClientData,
+            name: clientName,
+            tags: updatedTags
+        });
+    }
+    setNewTag('');
+    setIsAddingTag(false);
+  };
+
+  const handleRemoveTag = (tagToRemove: string) => {
+    const currentTags = clientData.tags ? clientData.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+    const updatedTags = currentTags.filter(t => t !== tagToRemove).join(',');
+    
+    onUpdateClientContact(clientName, {
+        ...dbClientData,
+        name: clientName,
+        tags: updatedTags
+    });
+  };
+
+  // 3. Note Logic
+  const handleNoteSave = () => {
+    onUpdateClientContact(clientName, {
+        ...dbClientData,
+        name: clientName,
+        notes: tempNote
+    });
+    setIsEditingNote(false);
   };
 
   const getStatusColor = (status: InvoiceStatus) => {
@@ -160,10 +213,10 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                      <Building2 className="w-5 h-5 text-slate-400" /> Perfil
                   </h3>
                   <button 
-                    onClick={() => setIsEditing(!isEditing)}
-                    className={`p-2 rounded-xl transition-all ${isEditing ? 'bg-slate-100 text-[#1c2938]' : 'text-slate-400 hover:text-[#27bea5] hover:bg-slate-50'}`}
+                    onClick={() => setIsEditingProfile(!isEditingProfile)}
+                    className={`p-2 rounded-xl transition-all ${isEditingProfile ? 'bg-slate-100 text-[#1c2938]' : 'text-slate-400 hover:text-[#27bea5] hover:bg-slate-50'}`}
                   >
-                     {isEditing ? <X className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
+                     {isEditingProfile ? <X className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
                   </button>
                </div>
 
@@ -173,7 +226,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                      <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1 mb-1">
                         <Mail className="w-3 h-3" /> Email
                      </label>
-                     {isEditing ? (
+                     {isEditingProfile ? (
                         <input 
                           value={editForm.email}
                           onChange={(e) => setEditForm({...editForm, email: e.target.value})}
@@ -192,7 +245,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                      <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1 mb-1">
                         <Phone className="w-3 h-3" /> Teléfono
                      </label>
-                     {isEditing ? (
+                     {isEditingProfile ? (
                         <input 
                           value={editForm.phone}
                           onChange={(e) => setEditForm({...editForm, phone: e.target.value})}
@@ -211,7 +264,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                      <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1 mb-1">
                         <FileText className="w-3 h-3" /> ID Fiscal
                      </label>
-                     {isEditing ? (
+                     {isEditingProfile ? (
                         <input 
                           value={editForm.taxId}
                           onChange={(e) => setEditForm({...editForm, taxId: e.target.value})}
@@ -227,7 +280,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                      <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1 mb-1">
                         <MapPin className="w-3 h-3" /> Dirección
                      </label>
-                     {isEditing ? (
+                     {isEditingProfile ? (
                         <textarea 
                           value={editForm.address}
                           onChange={(e) => setEditForm({...editForm, address: e.target.value})}
@@ -238,57 +291,107 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                      )}
                   </div>
 
-                  {isEditing && (
+                  {isEditingProfile && (
                      <button 
-                       onClick={handleSave}
+                       onClick={handleProfileSave}
                        className="w-full py-3 bg-[#1c2938] text-white rounded-xl font-bold text-sm hover:bg-[#27bea5] transition-colors flex items-center justify-center gap-2 mt-4 shadow-lg"
                      >
-                        <Save className="w-4 h-4" /> Guardar Cambios
+                        <Save className="w-4 h-4" /> Guardar Perfil
                      </button>
                   )}
                </div>
             </div>
 
-            {/* TAGS CARD */}
+            {/* TAGS CARD (OPERATIONAL) */}
             <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm relative overflow-hidden">
-                <h3 className="font-bold text-[#1c2938] flex items-center gap-2 mb-4 text-sm uppercase tracking-wider">
-                    <Tag className="w-4 h-4 text-slate-400" /> Etiquetas
-                </h3>
-                {isEditing ? (
-                    <input 
-                       value={editForm.tags}
-                       onChange={(e) => setEditForm({...editForm, tags: e.target.value})}
-                       className="w-full p-3 bg-slate-50 border rounded-xl text-sm outline-none focus:border-[#27bea5]"
-                       placeholder="Separadas por coma..."
-                    />
-                ) : (
-                    <div className="flex flex-wrap gap-2">
-                        {clientData.tags ? clientData.tags.split(',').map((tag, idx) => (
-                            <span key={idx} className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-xs font-bold border border-slate-200">
-                                {tag.trim()}
-                            </span>
-                        )) : (
-                            <p className="text-xs text-slate-400 italic">Sin etiquetas.</p>
-                        )}
-                    </div>
-                )}
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-bold text-[#1c2938] flex items-center gap-2 text-sm uppercase tracking-wider">
+                        <Tag className="w-4 h-4 text-slate-400" /> Etiquetas
+                    </h3>
+                </div>
+                
+                <div className="flex flex-wrap gap-2 items-center">
+                    {clientData.tags ? clientData.tags.split(',').filter(Boolean).map((tag, idx) => (
+                        <span key={idx} className="pl-3 pr-1 py-1 bg-slate-100 text-slate-600 rounded-full text-xs font-bold border border-slate-200 flex items-center gap-1 group">
+                            {tag.trim()}
+                            <button 
+                                onClick={() => handleRemoveTag(tag.trim())}
+                                className="p-0.5 rounded-full hover:bg-slate-300 hover:text-red-500 transition-colors"
+                            >
+                                <X className="w-3 h-3" />
+                            </button>
+                        </span>
+                    )) : (
+                        <p className="text-xs text-slate-400 italic">Sin etiquetas.</p>
+                    )}
+
+                    {/* Quick Add Tag */}
+                    {isAddingTag ? (
+                        <div className="flex items-center gap-1 animate-in fade-in slide-in-from-right-4">
+                            <input 
+                                value={newTag}
+                                onChange={(e) => setNewTag(e.target.value)}
+                                className="w-24 px-2 py-1 text-xs bg-white border border-[#27bea5] rounded-lg outline-none focus:ring-1 focus:ring-[#27bea5]"
+                                placeholder="Nueva..."
+                                onKeyDown={(e) => e.key === 'Enter' && handleAddTag()}
+                                autoFocus
+                            />
+                            <button onClick={handleAddTag} className="p-1 bg-[#27bea5] text-white rounded-full hover:scale-110 transition-transform">
+                                <Check className="w-3 h-3" />
+                            </button>
+                            <button onClick={() => setIsAddingTag(false)} className="p-1 bg-slate-200 text-slate-500 rounded-full hover:bg-slate-300 transition-colors">
+                                <X className="w-3 h-3" />
+                            </button>
+                        </div>
+                    ) : (
+                        <button 
+                            onClick={() => setIsAddingTag(true)}
+                            className="p-1 rounded-full border border-dashed border-slate-300 text-slate-400 hover:text-[#27bea5] hover:border-[#27bea5] transition-all"
+                            title="Agregar etiqueta"
+                        >
+                            <Plus className="w-3 h-3" />
+                        </button>
+                    )}
+                </div>
             </div>
 
-            {/* NOTES CARD */}
-            <div className="bg-yellow-50 p-6 rounded-[2rem] border border-yellow-100 shadow-sm relative overflow-hidden">
-                <h3 className="font-bold text-yellow-800 flex items-center gap-2 mb-4 text-sm uppercase tracking-wider">
-                    <StickyNote className="w-4 h-4" /> Notas Internas
-                </h3>
-                {isEditing ? (
-                    <textarea 
-                       value={editForm.notes}
-                       onChange={(e) => setEditForm({...editForm, notes: e.target.value})}
-                       className="w-full p-3 bg-white/50 border border-yellow-200 rounded-xl text-sm outline-none focus:border-yellow-400 h-24 resize-none text-yellow-900"
-                       placeholder="Preferencias, recordatorios..."
-                    />
+            {/* NOTES CARD (OPERATIONAL) */}
+            <div className="bg-amber-50 p-6 rounded-[2rem] border border-amber-100 shadow-sm relative overflow-hidden group">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-bold text-amber-800 flex items-center gap-2 text-sm uppercase tracking-wider">
+                        <StickyNote className="w-4 h-4" /> Notas Internas
+                    </h3>
+                    {!isEditingNote && (
+                        <button 
+                            onClick={() => setIsEditingNote(true)}
+                            className="text-amber-600 hover:text-amber-900 p-1 rounded-lg hover:bg-amber-100 transition-colors opacity-0 group-hover:opacity-100"
+                        >
+                            <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                    )}
+                </div>
+                
+                {isEditingNote ? (
+                    <div className="animate-in fade-in">
+                        <textarea 
+                           value={tempNote}
+                           onChange={(e) => setTempNote(e.target.value)}
+                           className="w-full p-3 bg-white/80 border border-amber-200 rounded-xl text-sm outline-none focus:border-amber-400 h-24 resize-none text-amber-900 mb-2"
+                           placeholder="Preferencias, recordatorios..."
+                           autoFocus
+                        />
+                        <div className="flex justify-end gap-2">
+                            <button onClick={() => setIsEditingNote(false)} className="text-xs font-bold text-amber-700 hover:bg-amber-100 px-3 py-1.5 rounded-lg transition-colors">Cancelar</button>
+                            <button onClick={handleNoteSave} className="text-xs font-bold bg-amber-500 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600 transition-colors shadow-sm">Guardar Nota</button>
+                        </div>
+                    </div>
                 ) : (
-                    <p className="text-sm text-yellow-800 leading-relaxed whitespace-pre-wrap">
-                        {clientData.notes || 'No hay notas privadas para este cliente.'}
+                    <p 
+                        className="text-sm text-amber-900 leading-relaxed whitespace-pre-wrap cursor-pointer hover:bg-amber-100/50 p-1 -m-1 rounded transition-colors"
+                        onClick={() => setIsEditingNote(true)}
+                        title="Clic para editar"
+                    >
+                        {clientData.notes || <span className="italic text-amber-700/50">Escribe aquí notas privadas sobre el cliente...</span>}
                     </p>
                 )}
             </div>

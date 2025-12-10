@@ -2,11 +2,11 @@
 import React, { useState } from 'react';
 import { 
   User, Mail, Phone, MapPin, Hash, Check, ArrowRight, ArrowLeft, 
-  Building2, Briefcase, Globe, Sparkles, Tag, StickyNote 
+  Building2, Briefcase, Globe, Sparkles, Tag, StickyNote, Target 
 } from 'lucide-react';
 
 interface ClientWizardProps {
-  onSave: (clientData: { name: string; taxId: string; email: string; address: string; phone: string; tags: string; notes: string }) => void;
+  onSave: (clientData: { name: string; taxId: string; email: string; address: string; phone: string; tags: string; notes: string; status: 'CLIENT' | 'PROSPECT' }) => void;
   onCancel: () => void;
 }
 
@@ -21,7 +21,8 @@ const ClientWizard: React.FC<ClientWizardProps> = ({ onSave, onCancel }) => {
     phone: '',
     address: '',
     tags: '',
-    notes: ''
+    notes: '',
+    status: 'PROSPECT' as 'CLIENT' | 'PROSPECT'
   });
 
   const handleChange = (field: string, value: string) => {
@@ -138,15 +139,31 @@ const ClientWizard: React.FC<ClientWizardProps> = ({ onSave, onCancel }) => {
              </div>
            )}
 
-           {/* STEP 3: DETAILS (Added Tags/Notes) */}
+           {/* STEP 3: DETAILS (Added Tags/Notes/Status) */}
            {step === 3 && (
              <div className="space-y-8 animate-in slide-in-from-right-8">
                 <div>
                    <h2 className="text-4xl font-bold text-[#1c2938] mb-2">Detalles Finales</h2>
-                   <p className="text-slate-500 text-lg">Dirección y notas internas para tu equipo.</p>
+                   <p className="text-slate-500 text-lg">Define la relación y añade notas importantes.</p>
                 </div>
 
                 <div className="space-y-4">
+                   {/* Relationship Status */}
+                   <div className="group">
+                      <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Tipo de Relación</label>
+                      <div className="relative">
+                         <Target className="absolute left-4 top-4 w-6 h-6 text-slate-300 group-focus-within:text-[#27bea5] transition-colors" />
+                         <select 
+                           value={formData.status}
+                           onChange={(e) => setFormData({...formData, status: e.target.value as 'CLIENT' | 'PROSPECT'})}
+                           className="w-full pl-14 p-4 text-lg font-medium text-[#1c2938] bg-white border-2 border-slate-100 rounded-2xl focus:border-[#27bea5] focus:ring-0 outline-none transition-all appearance-none shadow-sm cursor-pointer"
+                         >
+                            <option value="PROSPECT">Prospecto (Potencial)</option>
+                            <option value="CLIENT">Cliente Activo (Comprador)</option>
+                         </select>
+                      </div>
+                   </div>
+
                    <div className="group">
                       <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Dirección Física</label>
                       <div className="relative">
@@ -154,37 +171,37 @@ const ClientWizard: React.FC<ClientWizardProps> = ({ onSave, onCancel }) => {
                          <textarea 
                            value={formData.address}
                            onChange={(e) => handleChange('address', e.target.value)}
-                           className="w-full pl-14 p-4 text-lg font-medium text-[#1c2938] bg-white border-2 border-slate-100 rounded-2xl focus:border-[#27bea5] focus:ring-0 outline-none transition-all placeholder:text-slate-200 shadow-sm resize-none h-24"
+                           className="w-full pl-14 p-4 text-lg font-medium text-[#1c2938] bg-white border-2 border-slate-100 rounded-2xl focus:border-[#27bea5] focus:ring-0 outline-none transition-all placeholder:text-slate-200 shadow-sm resize-none h-20"
                            placeholder="Calle 50, Edificio Global, Piso 12..."
-                           autoFocus
                          />
                       </div>
                    </div>
 
-                   <div className="group">
-                      <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Etiquetas (Opcional)</label>
-                      <div className="relative">
-                         <Tag className="absolute left-4 top-4 w-6 h-6 text-slate-300 group-focus-within:text-[#27bea5] transition-colors" />
-                         <input 
-                           value={formData.tags}
-                           onChange={(e) => handleChange('tags', e.target.value)}
-                           className="w-full pl-14 p-4 text-lg font-medium text-[#1c2938] bg-white border-2 border-slate-100 rounded-2xl focus:border-[#27bea5] focus:ring-0 outline-none transition-all placeholder:text-slate-200 shadow-sm"
-                           placeholder="VIP, Retail, Pagos Tardíos..."
-                         />
-                      </div>
-                   </div>
-
-                   <div className="group">
-                      <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Notas Internas</label>
-                      <div className="relative">
-                         <StickyNote className="absolute left-4 top-4 w-6 h-6 text-slate-300 group-focus-within:text-[#27bea5] transition-colors" />
-                         <textarea 
-                           value={formData.notes}
-                           onChange={(e) => handleChange('notes', e.target.value)}
-                           className="w-full pl-14 p-4 text-lg font-medium text-[#1c2938] bg-white border-2 border-slate-100 rounded-2xl focus:border-[#27bea5] focus:ring-0 outline-none transition-all placeholder:text-slate-200 shadow-sm resize-none h-24"
-                           placeholder="Información clave sobre el cliente..."
-                         />
-                      </div>
+                   <div className="grid grid-cols-2 gap-4">
+                        <div className="group">
+                            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Etiquetas</label>
+                            <div className="relative">
+                                <Tag className="absolute left-4 top-4 w-5 h-5 text-slate-300 group-focus-within:text-[#27bea5] transition-colors" />
+                                <input 
+                                value={formData.tags}
+                                onChange={(e) => handleChange('tags', e.target.value)}
+                                className="w-full pl-12 p-3 text-sm font-medium text-[#1c2938] bg-white border-2 border-slate-100 rounded-2xl focus:border-[#27bea5] focus:ring-0 outline-none transition-all placeholder:text-slate-200 shadow-sm"
+                                placeholder="VIP, Retail..."
+                                />
+                            </div>
+                        </div>
+                        <div className="group">
+                            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Notas</label>
+                            <div className="relative">
+                                <StickyNote className="absolute left-4 top-4 w-5 h-5 text-slate-300 group-focus-within:text-[#27bea5] transition-colors" />
+                                <input 
+                                value={formData.notes}
+                                onChange={(e) => handleChange('notes', e.target.value)}
+                                className="w-full pl-12 p-3 text-sm font-medium text-[#1c2938] bg-white border-2 border-slate-100 rounded-2xl focus:border-[#27bea5] focus:ring-0 outline-none transition-all placeholder:text-slate-200 shadow-sm"
+                                placeholder="Datos clave..."
+                                />
+                            </div>
+                        </div>
                    </div>
                 </div>
              </div>
@@ -258,8 +275,12 @@ const ClientWizard: React.FC<ClientWizardProps> = ({ onSave, onCancel }) => {
 
                 {/* Status Badge */}
                 <div className="mt-8 flex justify-between items-center">
-                   <span className="px-3 py-1 bg-purple-50 text-purple-600 text-[10px] font-bold uppercase tracking-wider rounded-lg border border-purple-100 flex items-center gap-1">
-                      <Sparkles className="w-3 h-3" /> Nuevo
+                   <span className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg border flex items-center gap-1 ${
+                       formData.status === 'CLIENT' 
+                       ? 'bg-emerald-50 text-emerald-600 border-emerald-100' 
+                       : 'bg-purple-50 text-purple-600 border-purple-100'
+                   }`}>
+                      <Sparkles className="w-3 h-3" /> {formData.status === 'CLIENT' ? 'Cliente Activo' : 'Prospecto'}
                    </span>
                    <p className="text-[10px] text-slate-300 font-bold uppercase tracking-widest">Kônsul CRM</p>
                 </div>

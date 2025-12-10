@@ -1,4 +1,5 @@
-import React, { useMemo } from 'react';
+
+import React, { useMemo, useState } from 'react';
 import { 
   Plus, 
   ArrowUpRight, 
@@ -9,14 +10,16 @@ import {
   ChevronRight, 
   FileText, 
   FileBadge, 
-  Sparkles,
+  Sparkles, 
   TrendingUp,
   MoreHorizontal,
   AlertCircle,
   Users,
   BarChart3,
   Hourglass,
-  Target
+  Target,
+  ArrowRight,
+  Eye
 } from 'lucide-react';
 import { Invoice, AppView, UserProfile } from '../types';
 
@@ -31,6 +34,7 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendingCount, onNewAction, onSelectInvoice, onNavigate, currentUser }) => {
+  const [activeTab, setActiveTab] = useState<'INVOICES' | 'QUOTES'>('INVOICES');
   
   // --- REAL TIME STATS CALCULATION ---
   const stats = useMemo(() => {
@@ -353,71 +357,114 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
             </div>
           </button>
 
-          {/* CARD 3: SPLIT STATUS (Invoices & Quotes) */}
-          <div className="col-span-1 md:col-span-1 bg-white rounded-[2.5rem] p-6 border border-slate-50 shadow-sm flex flex-col group hover:shadow-lg transition-all duration-300 relative overflow-hidden">
+          {/* CARD 3: TABBED STATUS (Clean & Emotional) */}
+          <div className="col-span-1 md:col-span-1 bg-white rounded-[2.5rem] p-6 border border-slate-50 shadow-sm flex flex-col relative overflow-hidden">
             
-            {/* Header */}
-            <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-bold text-[#1c2938] uppercase tracking-wider flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-slate-400" /> Estado de Documentos
-                </h3>
-                {stats.invoiceStats.pendingSync > 0 && (
-                    <span className="bg-amber-100 text-amber-700 text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
-                        <WifiOff className="w-3 h-3" /> Offline
-                    </span>
-                )}
+            {/* Tab Switcher */}
+            <div className="flex justify-between items-center mb-6">
+               <h3 className="text-sm font-bold text-[#1c2938] uppercase tracking-wider flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-slate-400" /> Estado
+               </h3>
+               
+               <div className="bg-slate-100 p-1 rounded-xl flex items-center relative">
+                  <button 
+                    onClick={() => setActiveTab('INVOICES')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 relative z-10 ${activeTab === 'INVOICES' ? 'text-[#1c2938] bg-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    Facturas
+                  </button>
+                  <button 
+                    onClick={() => setActiveTab('QUOTES')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 relative z-10 ${activeTab === 'QUOTES' ? 'text-[#1c2938] bg-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    Cotizaciones
+                  </button>
+               </div>
             </div>
 
-            <div className="flex-1 flex flex-col gap-4 overflow-y-auto custom-scrollbar pr-2">
+            {/* Content Area */}
+            <div className="flex-1 flex flex-col justify-between">
                 
-                {/* SECTION 1: INVOICES (Blue) */}
-                <div className="bg-slate-50/50 rounded-2xl p-4 border border-slate-100">
-                    <div className="flex items-center gap-2 mb-3 text-blue-600">
-                        <FileText className="w-4 h-4" />
-                        <span className="font-bold text-xs uppercase">Facturas</span>
-                    </div>
-                    <div className="space-y-2">
-                        <div className="flex justify-between items-center text-sm">
-                            <span className="text-slate-500 text-xs">Por Cobrar</span>
-                            <span className="font-bold text-[#1c2938] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-lg">{stats.invoiceStats.sent}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-sm">
-                            <span className="text-slate-500 text-xs">En Seguimiento</span>
-                            <span className="font-bold text-[#1c2938] bg-sky-50 text-sky-700 px-2 py-0.5 rounded-lg">{stats.invoiceStats.viewed}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-sm">
-                            <span className="text-slate-500 text-xs">Parciales</span>
-                            <span className="font-bold text-[#1c2938] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-lg">{stats.invoiceStats.partial}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-sm pt-1 border-t border-slate-200/50 mt-1">
-                            <span className="text-slate-400 text-xs italic">Borradores</span>
-                            <span className="font-bold text-slate-400 text-xs">{stats.invoiceStats.drafts}</span>
-                        </div>
-                    </div>
-                </div>
+                {activeTab === 'INVOICES' && (
+                   <div className="space-y-3 animate-in fade-in slide-in-from-right-8">
+                      <div className="flex items-center justify-between p-3 rounded-2xl bg-blue-50/50 hover:bg-blue-50 transition-colors border border-blue-50">
+                         <div className="flex items-center gap-3">
+                            <div className="p-2 bg-blue-100 text-blue-600 rounded-xl">
+                               <FileText className="w-4 h-4" />
+                            </div>
+                            <div>
+                               <p className="font-bold text-[#1c2938] text-sm">Por Cobrar</p>
+                               <p className="text-[10px] text-slate-400 font-medium">Enviadas</p>
+                            </div>
+                         </div>
+                         <span className="text-xl font-bold text-blue-600">{stats.invoiceStats.sent}</span>
+                      </div>
 
-                {/* SECTION 2: QUOTES (Purple) */}
-                <div className="bg-slate-50/50 rounded-2xl p-4 border border-slate-100">
-                    <div className="flex items-center gap-2 mb-3 text-purple-600">
-                        <FileBadge className="w-4 h-4" />
-                        <span className="font-bold text-xs uppercase">Cotizaciones</span>
-                    </div>
-                    <div className="space-y-2">
-                        <div className="flex justify-between items-center text-sm">
-                            <span className="text-slate-500 text-xs">En Negociación</span>
-                            <span className="font-bold text-[#1c2938] bg-purple-50 text-purple-700 px-2 py-0.5 rounded-lg">{stats.quoteStats.negotiation}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-sm">
-                            <span className="text-slate-500 text-xs">Enviadas</span>
-                            <span className="font-bold text-[#1c2938] bg-fuchsia-50 text-fuchsia-700 px-2 py-0.5 rounded-lg">{stats.quoteStats.sent}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-sm pt-1 border-t border-slate-200/50 mt-1">
-                            <span className="text-slate-400 text-xs italic">Borradores</span>
-                            <span className="font-bold text-slate-400 text-xs">{stats.quoteStats.drafts}</span>
-                        </div>
-                    </div>
-                </div>
+                      <div className="flex items-center justify-between p-3 rounded-2xl bg-sky-50/50 hover:bg-sky-50 transition-colors border border-sky-50">
+                         <div className="flex items-center gap-3">
+                            <div className="p-2 bg-sky-100 text-sky-600 rounded-xl">
+                               <Eye className="w-4 h-4" />
+                            </div>
+                            <div>
+                               <p className="font-bold text-[#1c2938] text-sm">En Seguimiento</p>
+                               <p className="text-[10px] text-slate-400 font-medium">Vistas por cliente</p>
+                            </div>
+                         </div>
+                         <span className="text-xl font-bold text-sky-600">{stats.invoiceStats.viewed}</span>
+                      </div>
 
+                      <div className="flex items-center justify-between p-3 rounded-2xl bg-indigo-50/50 hover:bg-indigo-50 transition-colors border border-indigo-50">
+                         <div className="flex items-center gap-3">
+                            <div className="p-2 bg-indigo-100 text-indigo-600 rounded-xl">
+                               <Wallet className="w-4 h-4" />
+                            </div>
+                            <div>
+                               <p className="font-bold text-[#1c2938] text-sm">Parciales</p>
+                               <p className="text-[10px] text-slate-400 font-medium">Abonadas</p>
+                            </div>
+                         </div>
+                         <span className="text-xl font-bold text-indigo-600">{stats.invoiceStats.partial}</span>
+                      </div>
+                   </div>
+                )}
+
+                {activeTab === 'QUOTES' && (
+                   <div className="space-y-3 animate-in fade-in slide-in-from-right-8">
+                      <div className="flex items-center justify-between p-3 rounded-2xl bg-purple-50/50 hover:bg-purple-50 transition-colors border border-purple-50">
+                         <div className="flex items-center gap-3">
+                            <div className="p-2 bg-purple-100 text-purple-600 rounded-xl">
+                               <MoreHorizontal className="w-4 h-4" />
+                            </div>
+                            <div>
+                               <p className="font-bold text-[#1c2938] text-sm">Negociación</p>
+                               <p className="text-[10px] text-slate-400 font-medium">En proceso</p>
+                            </div>
+                         </div>
+                         <span className="text-xl font-bold text-purple-600">{stats.quoteStats.negotiation}</span>
+                      </div>
+
+                      <div className="flex items-center justify-between p-3 rounded-2xl bg-fuchsia-50/50 hover:bg-fuchsia-50 transition-colors border border-fuchsia-50">
+                         <div className="flex items-center gap-3">
+                            <div className="p-2 bg-fuchsia-100 text-fuchsia-600 rounded-xl">
+                               <ArrowRight className="w-4 h-4" />
+                            </div>
+                            <div>
+                               <p className="font-bold text-[#1c2938] text-sm">Enviadas</p>
+                               <p className="text-[10px] text-slate-400 font-medium">Esperando respuesta</p>
+                            </div>
+                         </div>
+                         <span className="text-xl font-bold text-fuchsia-600">{stats.quoteStats.sent}</span>
+                      </div>
+                   </div>
+                )}
+
+                {/* Footer Drafts */}
+                <div className="mt-4 pt-4 border-t border-slate-50 flex justify-between items-center text-xs">
+                   <span className="text-slate-400 font-bold">Borradores pendientes</span>
+                   <span className="bg-slate-100 text-slate-500 px-2 py-1 rounded-lg font-bold">
+                      {activeTab === 'INVOICES' ? stats.invoiceStats.drafts : stats.quoteStats.drafts}
+                   </span>
+                </div>
             </div>
           </div>
         </div>

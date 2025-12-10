@@ -145,8 +145,11 @@ const App: React.FC = () => {
     await saveInvoiceToDb({ ...invoice, userId: currentUser.id });
     
     if (invoice.clientName) {
-       // Also upsert client to ensure it exists, but don't overwrite tags/notes if just from invoice
+       // Also upsert client to ensure it exists
+       // Logic: If Invoice -> 'CLIENT', If Quote -> 'PROSPECT' (Database will handle "Once a client always a client" logic)
+       const clientStatus = invoice.type === 'Invoice' ? 'CLIENT' : 'PROSPECT';
        const existing = dbClients.find(c => c.name === invoice.clientName);
+       
        await saveClientToDb({ 
          id: existing?.id,
          name: invoice.clientName, 
@@ -157,7 +160,7 @@ const App: React.FC = () => {
          tags: existing?.tags,
          notes: existing?.notes,
          phone: existing?.phone
-       }, currentUser.id, 'CLIENT');
+       }, currentUser.id, clientStatus);
        
        const updatedClients = await fetchClientsFromDb(currentUser.id);
        setDbClients(updatedClients);
@@ -198,7 +201,7 @@ const App: React.FC = () => {
   const handleSaveNewClient = async (clientData: DbClient) => {
     if (!currentUser) return;
 
-    // 1. Save to DB with all fields
+    // 1. Save to DB with all fields, including status selected by user
     await saveClientToDb({
       name: clientData.name,
       taxId: clientData.taxId,
@@ -207,7 +210,7 @@ const App: React.FC = () => {
       phone: clientData.phone,
       tags: clientData.tags,
       notes: clientData.notes
-    }, currentUser.id, 'CLIENT');
+    }, currentUser.id, clientData.status || 'PROSPECT');
 
     // 2. Refresh local view explicitly so it shows up in ClientList
     const updatedClients = await fetchClientsFromDb(currentUser.id);
@@ -378,7 +381,12 @@ const App: React.FC = () => {
            onSelectInvoice={(inv) => { setSelectedInvoice(inv); setActiveView(AppView.INVOICE_DETAIL); }}
            currencySymbol={currentUser.defaultCurrency === 'EUR' ? '€' : '$'}
            onUpdateClientContact={async (oldName, updatedClient) => {
-              await saveClientToDb(updatedClient, currentUser.id, 'CLIENT');
+              // Note: updatedClient might lack 'status', so we use previous or default
+              const existing = dbClients.find(c => c.name === oldName);
+              const currentStatus = existing?.status || 'PROSPECT';
+              
+              await saveClientToDb(updatedClient, currentUser.id, currentStatus);
+              
               // Refresh clients
               const updated = await fetchClientsFromDb(currentUser.id);
               setDbClients(updated);
