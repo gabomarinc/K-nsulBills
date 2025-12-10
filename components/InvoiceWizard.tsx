@@ -17,17 +17,12 @@ interface InvoiceWizardProps {
   onViewDetail?: () => void;
   onSelectInvoiceForDetail?: (invoice: Invoice) => void; // New explicit handler
   initialData?: Invoice | null; 
+  dbClients?: any[]; // Passed from App to allow real search
 }
 
 type Step = 'TYPE_SELECT' | 'AI_INPUT' | 'SMART_EDITOR' | 'SUCCESS';
 
-const MOCK_CLIENTS = [
-  { name: 'TechSolutions SRL', taxId: 'B12345678', email: 'billing@techsolutions.com' },
-  { name: 'Restaurante El Sol', taxId: 'XEXX010101000', email: 'admin@elsol.mx' },
-  { name: 'Agencia Creativa One', taxId: 'A98765432', email: 'finanzas@one.com' },
-];
-
-const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, onSave, onCancel, onViewDetail, onSelectInvoiceForDetail, initialData }) => {
+const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, onSave, onCancel, onViewDetail, onSelectInvoiceForDetail, initialData, dbClients = [] }) => {
   // Initialize state based on initialData (Edit Mode)
   const [step, setStep] = useState<Step>(initialData ? 'SMART_EDITOR' : 'TYPE_SELECT');
   const [docType, setDocType] = useState<'Invoice' | 'Quote'>(initialData?.type as 'Invoice' | 'Quote' || 'Invoice');
@@ -113,12 +108,12 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
   const totals = calculateTotals();
 
   // --- LOGIC: Client Autocomplete ---
-  const handleClientSelect = (client: typeof MOCK_CLIENTS[0]) => {
+  const handleClientSelect = (client: any) => {
     setDraft(prev => ({ 
       ...prev, 
       clientName: client.name, 
-      clientTaxId: client.taxId,
-      clientEmail: client.email
+      clientTaxId: client.taxId || '',
+      clientEmail: client.email || ''
     }));
     setClientSearch(client.name);
     setShowClientDropdown(false);
@@ -128,10 +123,23 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
     setDraft(prev => ({ ...prev, clientTaxId: id }));
   };
 
-  // --- LOGIC: AI Parsing ---
+  // --- LOGIC: AI Parsing & Matching ---
   const handleTypeSelect = (type: 'Invoice' | 'Quote') => {
     setDocType(type);
     setStep('AI_INPUT');
+  };
+
+  const findBestClientMatch = (name: string) => {
+    if (!name || dbClients.length === 0) return null;
+    const lowerName = name.toLowerCase();
+    
+    // 1. Exact match
+    const exact = dbClients.find(c => c.name.toLowerCase() === lowerName);
+    if (exact) return exact;
+
+    // 2. Includes match (either way)
+    const partial = dbClients.find(c => c.name.toLowerCase().includes(lowerName) || lowerName.includes(c.name.toLowerCase()));
+    return partial || null;
   };
 
   const handleAiSubmit = async () => {
@@ -153,17 +161,25 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
           tax: applyTax ? 7 : 0 // Default to 7% or 0 based on toggle
         }];
 
+        // Try to match client against real DB
+        let matchedClient = null;
+        if (result.clientName) {
+            matchedClient = findBestClientMatch(result.clientName);
+        }
+
         // Update draft state fully
         setDraft(prev => ({
           ...prev,
-          clientName: result.clientName || prev.clientName,
-          clientTaxId: result.clientName ? '' : prev.clientTaxId, // Clear ID if new name detected
+          // Use matched data if available, otherwise AI data, otherwise keep existing
+          clientName: matchedClient ? matchedClient.name : (result.clientName || prev.clientName),
+          clientTaxId: matchedClient ? (matchedClient.taxId || '') : (result.clientName ? '' : prev.clientTaxId), // Clear ID if new unknown name
+          clientEmail: matchedClient ? (matchedClient.email || '') : prev.clientEmail,
           currency: result.currency || prev.currency,
           items: newItems
         }));
         
         // Update UI search field
-        setClientSearch(result.clientName || '');
+        setClientSearch(matchedClient ? matchedClient.name : (result.clientName || ''));
         
         // Move to editor
         setStep('SMART_EDITOR');
@@ -430,22 +446,30 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
                   />
                 </div>
 
-                {/* Autocomplete Dropdown */}
+                {/* Autocomplete Dropdown - REAL DB CLIENTS */}
                 {showClientDropdown && clientSearch && (
-                  <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-slate-100 z-20 overflow-hidden">
-                    {MOCK_CLIENTS.filter(c => c.name.toLowerCase().includes(clientSearch.toLowerCase())).map((c, idx) => (
-                      <button 
-                        key={idx}
-                        onClick={() => handleClientSelect(c)}
-                        className="w-full text-left px-4 py-3 hover:bg-[#27bea5]/10 transition-colors flex justify-between items-center group"
-                      >
-                        <div>
-                          <p className="font-bold text-slate-800">{c.name}</p>
-                          <p className="text-xs text-slate-500">{c.taxId}</p>
-                        </div>
-                        <Check className="w-4 h-4 text-[#27bea5] opacity-0 group-hover:opacity-100" />
-                      </button>
-                    ))}
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-slate-100 z-20 overflow-hidden max-h-60 overflow-y-auto">
+                    {dbClients.length > 0 ? (
+                        dbClients.filter(c => c.name.toLowerCase().includes(clientSearch.toLowerCase())).map((c, idx) => (
+                        <button 
+                            key={c.id || idx}
+                            onClick={() => handleClientSelect(c)}
+                            className="w-full text-left px-4 py-3 hover:bg-[#27bea5]/10 transition-colors flex justify-between items-center group border-b border-slate-50 last:border-0"
+                        >
+                            <div>
+                            <p className="font-bold text-slate-800">{c.name}</p>
+                            <p className="text-xs text-slate-500">{c.taxId || 'Sin RUC'}</p>
+                            </div>
+                            <Check className="w-4 h-4 text-[#27bea5] opacity-0 group-hover:opacity-100" />
+                        </button>
+                        ))
+                    ) : (
+                        <div className="px-4 py-3 text-slate-400 text-sm text-center">No hay clientes guardados.</div>
+                    )}
+                    {/* Fallback if filtering returns nothing but there are clients */}
+                    {dbClients.length > 0 && dbClients.filter(c => c.name.toLowerCase().includes(clientSearch.toLowerCase())).length === 0 && (
+                        <div className="px-4 py-3 text-slate-400 text-sm">Creando "{clientSearch}" como nuevo...</div>
+                    )}
                   </div>
                 )}
               </div>

@@ -63,18 +63,24 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
     // Active Clients
     const uniqueClients = new Set(recentInvoices.map(i => i.clientName)).size;
 
-    // Detailed Breakdown for "Requires Attention"
-    const draftsCount = recentInvoices.filter(inv => inv.status === 'Borrador').length;
-    const negotiationCount = recentInvoices.filter(inv => inv.status === 'Negociacion').length;
-    const followupCount = recentInvoices.filter(inv => inv.status === 'Seguimiento').length;
-    const pendingSyncCount = recentInvoices.filter(inv => inv.status === 'PendingSync').length; 
-    
-    // Total Attention Items
-    const pendingReview = draftsCount + negotiationCount + followupCount + pendingSyncCount;
-
     // Growth calculation (Mock vs previous month or based on target)
     const monthlyTarget = currentUser.hourlyRateConfig?.targetIncome || 0;
     const progressPercent = monthlyTarget > 0 ? (monthlyRevenue / monthlyTarget) * 100 : 0;
+
+    // --- DETAILED BREAKDOWN ---
+    const invoiceStats = {
+        drafts: recentInvoices.filter(i => i.type === 'Invoice' && i.status === 'Borrador').length,
+        sent: recentInvoices.filter(i => i.type === 'Invoice' && i.status === 'Enviada').length,
+        viewed: recentInvoices.filter(i => i.type === 'Invoice' && i.status === 'Seguimiento').length,
+        partial: recentInvoices.filter(i => i.type === 'Invoice' && i.status === 'Abonada').length,
+        pendingSync: recentInvoices.filter(i => i.type === 'Invoice' && i.status === 'PendingSync').length
+    };
+
+    const quoteStats = {
+        drafts: recentInvoices.filter(i => i.type === 'Quote' && i.status === 'Borrador').length,
+        sent: recentInvoices.filter(i => i.type === 'Quote' && i.status === 'Enviada').length,
+        negotiation: recentInvoices.filter(i => i.type === 'Quote' && i.status === 'Negociacion').length
+    };
 
     return { 
       monthlyRevenue, 
@@ -84,13 +90,8 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
       uniqueClients,
       monthlyTarget,
       progressPercent,
-      attention: {
-        total: pendingReview,
-        drafts: draftsCount,
-        negotiation: negotiationCount,
-        followup: followupCount,
-        sync: pendingSyncCount
-      }
+      invoiceStats,
+      quoteStats
     };
   }, [recentInvoices, currentUser.hourlyRateConfig]);
 
@@ -268,7 +269,7 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
         </div>
 
         {/* 2. BENTO GRID HERO SECTION */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-auto md:h-80">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-auto md:h-96">
           
           {/* CARD 1: Monthly Revenue (Dynamic Target) */}
           <div className="col-span-1 md:col-span-1 bg-[#1c2938] rounded-[2.5rem] p-8 text-white relative overflow-hidden group shadow-xl">
@@ -352,73 +353,71 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
             </div>
           </button>
 
-          {/* CARD 3: Quick Status / Tasks */}
-          <div className="col-span-1 md:col-span-1 bg-white rounded-[2.5rem] p-8 border border-slate-50 shadow-sm flex flex-col justify-between group hover:shadow-lg transition-all duration-300">
-            <div className="flex justify-between items-start">
-                <div className="p-3 bg-amber-50 rounded-2xl text-amber-500">
-                  <Clock className="w-6 h-6" />
-                </div>
-                <button className="text-slate-300 hover:text-slate-600 transition-colors">
-                  <MoreHorizontal className="w-6 h-6" />
-                </button>
-            </div>
+          {/* CARD 3: SPLIT STATUS (Invoices & Quotes) */}
+          <div className="col-span-1 md:col-span-1 bg-white rounded-[2.5rem] p-6 border border-slate-50 shadow-sm flex flex-col group hover:shadow-lg transition-all duration-300 relative overflow-hidden">
             
-            <div>
-                <p className="text-slate-500 text-sm font-bold uppercase tracking-wider mb-2">Requieren Atención</p>
-                <div className="flex items-baseline gap-2 mb-6">
-                  <span className="text-5xl font-bold text-[#1c2938]">{stats.attention.total}</span>
-                  <span className="text-slate-400 font-medium">documentos</span>
-                </div>
+            {/* Header */}
+            <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-[#1c2938] uppercase tracking-wider flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-slate-400" /> Estado de Documentos
+                </h3>
+                {stats.invoiceStats.pendingSync > 0 && (
+                    <span className="bg-amber-100 text-amber-700 text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                        <WifiOff className="w-3 h-3" /> Offline
+                    </span>
+                )}
+            </div>
+
+            <div className="flex-1 flex flex-col gap-4 overflow-y-auto custom-scrollbar pr-2">
                 
-                <div className="space-y-3">
-                  {/* Drafts Breakdown */}
-                  <div className="flex items-center justify-between text-sm group/item">
-                      <div className="flex items-center gap-3 text-slate-600">
-                        <div className="w-2 h-2 rounded-full bg-slate-400"></div>
-                        <span className="font-medium">Borradores</span>
-                      </div>
-                      <span className="font-bold text-[#1c2938] bg-slate-50 px-2 py-0.5 rounded-lg group-hover/item:bg-slate-200 transition-colors">
-                        {stats.attention.drafts}
-                      </span>
-                  </div>
-
-                  {/* Negotiation Breakdown */}
-                  {stats.attention.negotiation > 0 && (
-                    <div className="flex items-center justify-between text-sm group/item">
-                        <div className="flex items-center gap-3 text-slate-600">
-                          <div className="w-2 h-2 rounded-full bg-purple-400"></div>
-                          <span className="font-medium">En Negociación</span>
-                        </div>
-                        <span className="font-bold text-[#1c2938] bg-slate-50 px-2 py-0.5 rounded-lg group-hover/item:bg-purple-50 group-hover/item:text-purple-600 transition-colors">
-                          {stats.attention.negotiation}
-                        </span>
+                {/* SECTION 1: INVOICES (Blue) */}
+                <div className="bg-slate-50/50 rounded-2xl p-4 border border-slate-100">
+                    <div className="flex items-center gap-2 mb-3 text-blue-600">
+                        <FileText className="w-4 h-4" />
+                        <span className="font-bold text-xs uppercase">Facturas</span>
                     </div>
-                  )}
-
-                  {/* Follow-up Breakdown */}
-                  <div className="flex items-center justify-between text-sm group/item">
-                      <div className="flex items-center gap-3 text-slate-600">
-                        <div className="w-2 h-2 rounded-full bg-blue-400"></div>
-                        <span className="font-medium">En Seguimiento</span>
-                      </div>
-                      <span className="font-bold text-[#1c2938] bg-slate-50 px-2 py-0.5 rounded-lg group-hover/item:bg-blue-50 group-hover/item:text-blue-600 transition-colors">
-                        {stats.attention.followup}
-                      </span>
-                  </div>
-
-                  {/* Offline Sync Breakdown (Only if > 0) */}
-                  {stats.attention.sync > 0 && (
-                    <div className="flex items-center justify-between text-sm group/item animate-in slide-in-from-bottom-2">
-                        <div className="flex items-center gap-3 text-slate-600">
-                          <div className="w-2 h-2 rounded-full bg-red-400"></div>
-                          <span className="font-medium">Cola Offline</span>
+                    <div className="space-y-2">
+                        <div className="flex justify-between items-center text-sm">
+                            <span className="text-slate-500 text-xs">Por Cobrar</span>
+                            <span className="font-bold text-[#1c2938] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-lg">{stats.invoiceStats.sent}</span>
                         </div>
-                        <span className="font-bold text-[#1c2938] bg-slate-50 px-2 py-0.5 rounded-lg group-hover/item:bg-red-50 group-hover/item:text-red-600 transition-colors">
-                          {stats.attention.sync}
-                        </span>
+                        <div className="flex justify-between items-center text-sm">
+                            <span className="text-slate-500 text-xs">En Seguimiento</span>
+                            <span className="font-bold text-[#1c2938] bg-sky-50 text-sky-700 px-2 py-0.5 rounded-lg">{stats.invoiceStats.viewed}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                            <span className="text-slate-500 text-xs">Parciales</span>
+                            <span className="font-bold text-[#1c2938] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-lg">{stats.invoiceStats.partial}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm pt-1 border-t border-slate-200/50 mt-1">
+                            <span className="text-slate-400 text-xs italic">Borradores</span>
+                            <span className="font-bold text-slate-400 text-xs">{stats.invoiceStats.drafts}</span>
+                        </div>
                     </div>
-                  )}
                 </div>
+
+                {/* SECTION 2: QUOTES (Purple) */}
+                <div className="bg-slate-50/50 rounded-2xl p-4 border border-slate-100">
+                    <div className="flex items-center gap-2 mb-3 text-purple-600">
+                        <FileBadge className="w-4 h-4" />
+                        <span className="font-bold text-xs uppercase">Cotizaciones</span>
+                    </div>
+                    <div className="space-y-2">
+                        <div className="flex justify-between items-center text-sm">
+                            <span className="text-slate-500 text-xs">En Negociación</span>
+                            <span className="font-bold text-[#1c2938] bg-purple-50 text-purple-700 px-2 py-0.5 rounded-lg">{stats.quoteStats.negotiation}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                            <span className="text-slate-500 text-xs">Enviadas</span>
+                            <span className="font-bold text-[#1c2938] bg-fuchsia-50 text-fuchsia-700 px-2 py-0.5 rounded-lg">{stats.quoteStats.sent}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm pt-1 border-t border-slate-200/50 mt-1">
+                            <span className="text-slate-400 text-xs italic">Borradores</span>
+                            <span className="font-bold text-slate-400 text-xs">{stats.quoteStats.drafts}</span>
+                        </div>
+                    </div>
+                </div>
+
             </div>
           </div>
         </div>

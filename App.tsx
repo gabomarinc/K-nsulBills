@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect } from 'react';
-import { AppView, Invoice, UserProfile, CatalogItem, InvoiceStatus, TimelineEvent } from './types';
+import { AppView, Invoice, UserProfile, CatalogItem, InvoiceStatus, TimelineEvent, DbClient } from './types';
 import LoginScreen from './components/LoginScreen';
 import OnboardingWizard from './components/OnboardingWizard';
 import Layout from './components/Layout';
@@ -31,7 +32,7 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [activeView, setActiveView] = useState<AppView>(AppView.DASHBOARD);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [dbClients, setDbClients] = useState<any[]>([]); // NEW: Store pure clients
+  const [dbClients, setDbClients] = useState<DbClient[]>([]); // NEW: Store pure clients
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [selectedClientName, setSelectedClientName] = useState<string | null>(null);
   const [documentToEdit, setDocumentToEdit] = useState<Invoice | null>(null);
@@ -144,11 +145,18 @@ const App: React.FC = () => {
     await saveInvoiceToDb({ ...invoice, userId: currentUser.id });
     
     if (invoice.clientName) {
+       // Also upsert client to ensure it exists, but don't overwrite tags/notes if just from invoice
+       const existing = dbClients.find(c => c.name === invoice.clientName);
        await saveClientToDb({ 
+         id: existing?.id,
          name: invoice.clientName, 
          taxId: invoice.clientTaxId, 
          email: invoice.clientEmail,
-         address: invoice.clientAddress
+         address: invoice.clientAddress,
+         // Keep existing tags/notes if any
+         tags: existing?.tags,
+         notes: existing?.notes,
+         phone: existing?.phone
        }, currentUser.id, 'CLIENT');
        
        const updatedClients = await fetchClientsFromDb(currentUser.id);
@@ -187,15 +195,18 @@ const App: React.FC = () => {
     await saveInvoiceToDb({ ...updatedInvoice, userId: currentUser.id });
   };
 
-  const handleSaveNewClient = async (clientData: { name: string; taxId: string; email: string; address: string; phone: string }) => {
+  const handleSaveNewClient = async (clientData: DbClient) => {
     if (!currentUser) return;
 
-    // 1. Save to DB
+    // 1. Save to DB with all fields
     await saveClientToDb({
       name: clientData.name,
       taxId: clientData.taxId,
       email: clientData.email,
-      address: clientData.address
+      address: clientData.address,
+      phone: clientData.phone,
+      tags: clientData.tags,
+      notes: clientData.notes
     }, currentUser.id, 'CLIENT');
 
     // 2. Refresh local view explicitly so it shows up in ClientList
@@ -307,6 +318,7 @@ const App: React.FC = () => {
              setActiveView(AppView.INVOICE_DETAIL);
           }}
           initialData={documentToEdit}
+          dbClients={dbClients}
         />
       )}
 
@@ -361,11 +373,12 @@ const App: React.FC = () => {
          <ClientDetail 
            clientName={selectedClientName}
            invoices={invoices}
+           dbClientData={dbClients.find(c => c.name === selectedClientName)} // Pass rich data
            onBack={() => setActiveView(AppView.CLIENTS)}
            onSelectInvoice={(inv) => { setSelectedInvoice(inv); setActiveView(AppView.INVOICE_DETAIL); }}
            currencySymbol={currentUser.defaultCurrency === 'EUR' ? '€' : '$'}
-           onUpdateClientContact={async (name, contact) => {
-              await saveClientToDb({ name, ...contact }, currentUser.id, 'CLIENT');
+           onUpdateClientContact={async (oldName, updatedClient) => {
+              await saveClientToDb(updatedClient, currentUser.id, 'CLIENT');
               // Refresh clients
               const updated = await fetchClientsFromDb(currentUser.id);
               setDbClients(updated);

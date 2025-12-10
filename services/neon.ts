@@ -1,6 +1,6 @@
 
 import { Client } from '@neondatabase/serverless';
-import { Invoice, UserProfile } from '../types';
+import { Invoice, UserProfile, DbClient } from '../types';
 import bcrypt from 'bcryptjs';
 
 /**
@@ -408,14 +408,14 @@ export const fetchInvoicesFromDb = async (userId: string): Promise<Invoice[] | n
 /**
  * FETCH CLIENTS
  */
-export const fetchClientsFromDb = async (userId: string): Promise<any[]> => {
+export const fetchClientsFromDb = async (userId: string): Promise<DbClient[]> => {
   const client = getDbClient();
   if (!client) return [];
 
   try {
     await client.connect();
     
-    // Ensure table exists just in case
+    // Ensure table exists just in case (Added columns tags, notes, phone)
     await client.query(`
       CREATE TABLE IF NOT EXISTS clients (
         id TEXT PRIMARY KEY,
@@ -424,6 +424,9 @@ export const fetchClientsFromDb = async (userId: string): Promise<any[]> => {
         tax_id TEXT,
         email TEXT,
         address TEXT,
+        phone TEXT,
+        tags TEXT,
+        notes TEXT,
         status TEXT,
         updated_at TIMESTAMP DEFAULT NOW()
       );
@@ -438,6 +441,9 @@ export const fetchClientsFromDb = async (userId: string): Promise<any[]> => {
       taxId: row.tax_id,
       email: row.email,
       address: row.address,
+      phone: row.phone,
+      tags: row.tags,
+      notes: row.notes,
       status: row.status
     }));
   } catch (error) {
@@ -449,14 +455,14 @@ export const fetchClientsFromDb = async (userId: string): Promise<any[]> => {
 /**
  * SAVE CLIENT (Robust)
  */
-export const saveClientToDb = async (client: { name: string, taxId?: string, email?: string, address?: string }, userId: string, status: 'CLIENT' | 'PROSPECT'): Promise<boolean> => {
+export const saveClientToDb = async (client: DbClient, userId: string, status: 'CLIENT' | 'PROSPECT'): Promise<boolean> => {
   const clientDb = getDbClient();
   if (!clientDb) return false;
 
   try {
     await clientDb.connect();
 
-    // 1. Ensure Table Exists (Self-Healing)
+    // 1. Ensure Table Exists (Self-Healing with new columns)
     await clientDb.query(`
       CREATE TABLE IF NOT EXISTS clients (
         id TEXT PRIMARY KEY,
@@ -465,6 +471,9 @@ export const saveClientToDb = async (client: { name: string, taxId?: string, ema
         tax_id TEXT,
         email TEXT,
         address TEXT,
+        phone TEXT,
+        tags TEXT,
+        notes TEXT,
         status TEXT,
         updated_at TIMESTAMP DEFAULT NOW()
       );
@@ -472,17 +481,20 @@ export const saveClientToDb = async (client: { name: string, taxId?: string, ema
 
     // 2. Perform Upsert
     const safeName = client.name.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const clientId = `cli_${userId.substring(0,8)}_${safeName}`;
+    const clientId = client.id || `cli_${userId.substring(0,8)}_${safeName}`;
 
     const query = `
-      INSERT INTO clients (id, user_id, name, tax_id, email, address, status, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+      INSERT INTO clients (id, user_id, name, tax_id, email, address, phone, tags, notes, status, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
       ON CONFLICT (id) 
       DO UPDATE SET 
         name = EXCLUDED.name,
         tax_id = COALESCE(EXCLUDED.tax_id, clients.tax_id),
         email = COALESCE(EXCLUDED.email, clients.email),
         address = COALESCE(EXCLUDED.address, clients.address),
+        phone = COALESCE(EXCLUDED.phone, clients.phone),
+        tags = COALESCE(EXCLUDED.tags, clients.tags),
+        notes = COALESCE(EXCLUDED.notes, clients.notes),
         status = CASE 
            WHEN clients.status = 'CLIENT' THEN 'CLIENT'
            ELSE EXCLUDED.status
@@ -497,6 +509,9 @@ export const saveClientToDb = async (client: { name: string, taxId?: string, ema
       client.taxId || null,
       client.email || null,
       client.address || null,
+      client.phone || null,
+      client.tags || null,
+      client.notes || null,
       status
     ]);
 

@@ -2,11 +2,11 @@
 import React, { useState } from 'react';
 import { 
   User, Mail, Phone, MapPin, Hash, Check, ArrowRight, ArrowLeft, 
-  Building2, Briefcase, Globe, Sparkles 
+  Building2, Briefcase, Globe, Sparkles, Tag, StickyNote 
 } from 'lucide-react';
 
 interface ClientWizardProps {
-  onSave: (clientData: { name: string; taxId: string; email: string; address: string; phone: string }) => void;
+  onSave: (clientData: { name: string; taxId: string; email: string; address: string; phone: string; tags: string; notes: string }) => void;
   onCancel: () => void;
 }
 
@@ -20,6 +20,7 @@ const ClientWizard: React.FC<ClientWizardProps> = ({ onSave, onCancel }) => {
     email: '',
     phone: '',
     address: '',
+    tags: '',
     notes: ''
   });
 
@@ -137,15 +138,15 @@ const ClientWizard: React.FC<ClientWizardProps> = ({ onSave, onCancel }) => {
              </div>
            )}
 
-           {/* STEP 3: DETAILS */}
+           {/* STEP 3: DETAILS (Added Tags/Notes) */}
            {step === 3 && (
              <div className="space-y-8 animate-in slide-in-from-right-8">
                 <div>
-                   <h2 className="text-4xl font-bold text-[#1c2938] mb-2">Coordenadas</h2>
-                   <p className="text-slate-500 text-lg">Dirección fiscal para que los documentos sean válidos.</p>
+                   <h2 className="text-4xl font-bold text-[#1c2938] mb-2">Detalles Finales</h2>
+                   <p className="text-slate-500 text-lg">Dirección y notas internas para tu equipo.</p>
                 </div>
 
-                <div className="space-y-6">
+                <div className="space-y-4">
                    <div className="group">
                       <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Dirección Física</label>
                       <div className="relative">
@@ -153,9 +154,35 @@ const ClientWizard: React.FC<ClientWizardProps> = ({ onSave, onCancel }) => {
                          <textarea 
                            value={formData.address}
                            onChange={(e) => handleChange('address', e.target.value)}
-                           className="w-full pl-14 p-4 text-lg font-medium text-[#1c2938] bg-white border-2 border-slate-100 rounded-2xl focus:border-[#27bea5] focus:ring-0 outline-none transition-all placeholder:text-slate-200 shadow-sm resize-none h-32"
+                           className="w-full pl-14 p-4 text-lg font-medium text-[#1c2938] bg-white border-2 border-slate-100 rounded-2xl focus:border-[#27bea5] focus:ring-0 outline-none transition-all placeholder:text-slate-200 shadow-sm resize-none h-24"
                            placeholder="Calle 50, Edificio Global, Piso 12..."
                            autoFocus
+                         />
+                      </div>
+                   </div>
+
+                   <div className="group">
+                      <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Etiquetas (Opcional)</label>
+                      <div className="relative">
+                         <Tag className="absolute left-4 top-4 w-6 h-6 text-slate-300 group-focus-within:text-[#27bea5] transition-colors" />
+                         <input 
+                           value={formData.tags}
+                           onChange={(e) => handleChange('tags', e.target.value)}
+                           className="w-full pl-14 p-4 text-lg font-medium text-[#1c2938] bg-white border-2 border-slate-100 rounded-2xl focus:border-[#27bea5] focus:ring-0 outline-none transition-all placeholder:text-slate-200 shadow-sm"
+                           placeholder="VIP, Retail, Pagos Tardíos..."
+                         />
+                      </div>
+                   </div>
+
+                   <div className="group">
+                      <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Notas Internas</label>
+                      <div className="relative">
+                         <StickyNote className="absolute left-4 top-4 w-6 h-6 text-slate-300 group-focus-within:text-[#27bea5] transition-colors" />
+                         <textarea 
+                           value={formData.notes}
+                           onChange={(e) => handleChange('notes', e.target.value)}
+                           className="w-full pl-14 p-4 text-lg font-medium text-[#1c2938] bg-white border-2 border-slate-100 rounded-2xl focus:border-[#27bea5] focus:ring-0 outline-none transition-all placeholder:text-slate-200 shadow-sm resize-none h-24"
+                           placeholder="Información clave sobre el cliente..."
                          />
                       </div>
                    </div>
@@ -164,7 +191,7 @@ const ClientWizard: React.FC<ClientWizardProps> = ({ onSave, onCancel }) => {
            )}
 
            {/* ACTION BUTTON */}
-           <div className="mt-10">
+           <div className="mt-8">
               <button 
                 onClick={handleNext}
                 disabled={!formData.name}
@@ -220,14 +247,13 @@ const ClientWizard: React.FC<ClientWizardProps> = ({ onSave, onCancel }) => {
                          {formData.email || 'correo@ejemplo.com'}
                       </span>
                    </div>
-                   <div className="flex items-center gap-3">
-                      <div className="p-2 bg-slate-50 rounded-lg text-slate-400 group-hover:text-[#27bea5] group-hover:bg-[#27bea5]/10 transition-colors">
-                         <Globe className="w-4 h-4" />
+                   {formData.tags && (
+                      <div className="flex gap-2 flex-wrap">
+                         {formData.tags.split(',').map((tag, i) => (
+                            <span key={i} className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-md font-medium">{tag.trim()}</span>
+                         ))}
                       </div>
-                      <span className={`text-sm ${formData.address ? 'text-slate-600' : 'text-slate-300 italic'}`}>
-                         {formData.address ? 'Dirección registrada' : 'Sin dirección'}
-                      </span>
-                   </div>
+                   )}
                 </div>
 
                 {/* Status Badge */}

@@ -19,6 +19,19 @@ export enum ProfileType {
   COMPANY = 'Empresa (SAS/SL)',
 }
 
+// NEW: Database Client Structure
+export interface DbClient {
+  id?: string;
+  name: string;
+  taxId?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  tags?: string; // Comma separated string for simplicity in DB
+  notes?: string;
+  status?: 'CLIENT' | 'PROSPECT';
+}
+
 export interface CatalogItem {
   id: string;
   name: string;

@@ -1,25 +1,27 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   ArrowLeft, Mail, MapPin, Building2, Crown, 
   Clock, CheckCircle2, FileText, FileBadge, 
   TrendingUp, Edit2, Calendar, Save, X, Phone,
-  ExternalLink, Send, Wallet, Trash2
+  ExternalLink, Send, Wallet, Trash2, Tag, StickyNote, Plus
 } from 'lucide-react';
-import { Invoice, InvoiceStatus } from '../types';
+import { Invoice, InvoiceStatus, DbClient } from '../types';
 
 interface ClientDetailProps {
   clientName: string;
   invoices: Invoice[];
+  dbClientData?: DbClient; // NEW: Rich Data from DB
   onBack: () => void;
   onSelectInvoice: (invoice: Invoice) => void;
-  onUpdateClientContact: (oldName: string, newContact: { email: string, address: string, taxId: string }) => void;
+  onUpdateClientContact: (oldName: string, newContact: DbClient) => void;
   currencySymbol: string;
 }
 
 const ClientDetail: React.FC<ClientDetailProps> = ({ 
   clientName, 
   invoices, 
+  dbClientData,
   onBack, 
   onSelectInvoice,
   onUpdateClientContact,
@@ -34,7 +36,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
     // Sort: Newest first
     clientDocs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    // Extract latest contact info from most recent doc
+    // Extract latest contact info from most recent doc or DB
     const latestDoc = clientDocs[0] || {};
     
     // Stats
@@ -54,9 +56,13 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
     return {
       clientData: {
         name: clientName,
-        email: latestDoc.clientEmail || '',
-        taxId: latestDoc.clientTaxId || '',
-        address: latestDoc.clientAddress || '',
+        // Priority to DB Data, fallback to invoices
+        email: dbClientData?.email || latestDoc.clientEmail || '',
+        taxId: dbClientData?.taxId || latestDoc.clientTaxId || '',
+        address: dbClientData?.address || latestDoc.clientAddress || '',
+        phone: dbClientData?.phone || '',
+        tags: dbClientData?.tags || '',
+        notes: dbClientData?.notes || '',
       },
       activeDocs: active,
       historyDocs: history,
@@ -67,21 +73,26 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
         lastInteraction: latestDoc.date
       }
     };
-  }, [invoices, clientName]);
+  }, [invoices, clientName, dbClientData]);
 
   // Edit State
   const [editForm, setEditForm] = useState(clientData);
 
   // Sync form when client changes
-  React.useEffect(() => {
+  useEffect(() => {
     setEditForm(clientData);
   }, [clientData]);
 
   const handleSave = () => {
     onUpdateClientContact(clientName, {
+      ...dbClientData, // Preserve ID etc
+      name: clientName,
       email: editForm.email,
       address: editForm.address,
-      taxId: editForm.taxId
+      taxId: editForm.taxId,
+      phone: editForm.phone,
+      tags: editForm.tags,
+      notes: editForm.notes
     });
     setIsEditing(false);
   };
@@ -176,6 +187,25 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                      )}
                   </div>
 
+                  {/* Phone */}
+                  <div className="group">
+                     <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1 mb-1">
+                        <Phone className="w-3 h-3" /> Teléfono
+                     </label>
+                     {isEditing ? (
+                        <input 
+                          value={editForm.phone}
+                          onChange={(e) => setEditForm({...editForm, phone: e.target.value})}
+                          className="w-full p-2 bg-slate-50 border rounded-lg text-sm outline-none focus:border-[#27bea5]"
+                          placeholder="+507 6000-0000"
+                        />
+                     ) : (
+                        <div className="flex justify-between items-center">
+                           <p className="font-medium text-[#1c2938] truncate">{clientData.phone || 'No registrado'}</p>
+                        </div>
+                     )}
+                  </div>
+
                   {/* Tax ID */}
                   <div>
                      <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1 mb-1">
@@ -217,6 +247,50 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                      </button>
                   )}
                </div>
+            </div>
+
+            {/* TAGS CARD */}
+            <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm relative overflow-hidden">
+                <h3 className="font-bold text-[#1c2938] flex items-center gap-2 mb-4 text-sm uppercase tracking-wider">
+                    <Tag className="w-4 h-4 text-slate-400" /> Etiquetas
+                </h3>
+                {isEditing ? (
+                    <input 
+                       value={editForm.tags}
+                       onChange={(e) => setEditForm({...editForm, tags: e.target.value})}
+                       className="w-full p-3 bg-slate-50 border rounded-xl text-sm outline-none focus:border-[#27bea5]"
+                       placeholder="Separadas por coma..."
+                    />
+                ) : (
+                    <div className="flex flex-wrap gap-2">
+                        {clientData.tags ? clientData.tags.split(',').map((tag, idx) => (
+                            <span key={idx} className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-xs font-bold border border-slate-200">
+                                {tag.trim()}
+                            </span>
+                        )) : (
+                            <p className="text-xs text-slate-400 italic">Sin etiquetas.</p>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {/* NOTES CARD */}
+            <div className="bg-yellow-50 p-6 rounded-[2rem] border border-yellow-100 shadow-sm relative overflow-hidden">
+                <h3 className="font-bold text-yellow-800 flex items-center gap-2 mb-4 text-sm uppercase tracking-wider">
+                    <StickyNote className="w-4 h-4" /> Notas Internas
+                </h3>
+                {isEditing ? (
+                    <textarea 
+                       value={editForm.notes}
+                       onChange={(e) => setEditForm({...editForm, notes: e.target.value})}
+                       className="w-full p-3 bg-white/50 border border-yellow-200 rounded-xl text-sm outline-none focus:border-yellow-400 h-24 resize-none text-yellow-900"
+                       placeholder="Preferencias, recordatorios..."
+                    />
+                ) : (
+                    <p className="text-sm text-yellow-800 leading-relaxed whitespace-pre-wrap">
+                        {clientData.notes || 'No hay notas privadas para este cliente.'}
+                    </p>
+                )}
             </div>
 
             {/* QUICK ACTIONS CARD */}
