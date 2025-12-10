@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   ArrowLeft, Printer, Share2, Download, Building2, 
   CheckCircle2, Loader2, Send, MessageCircle, Smartphone, Mail, Check, AlertTriangle, Edit2, 
-  ChevronDown, XCircle, Wallet
+  ChevronDown, XCircle, Wallet, ArrowRight, X
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -545,6 +545,35 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
   return (
     <div className="max-w-7xl mx-auto pb-12 animate-in slide-in-from-bottom-4 duration-500 relative">
       
+      {/* QUOTE ACTION BANNER (New) */}
+      {isQuote && (invoice.status === 'Enviada' || invoice.status === 'Negociacion') && onUpdateStatus && (
+        <div className="bg-[#1c2938] text-white p-4 rounded-2xl flex items-center justify-between mb-6 shadow-lg">
+            <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/10 rounded-xl">
+                    <AlertTriangle className="w-6 h-6 text-yellow-400" />
+                </div>
+                <div>
+                    <p className="font-bold">Cotización Pendiente</p>
+                    <p className="text-xs text-slate-300">Esperando respuesta del cliente</p>
+                </div>
+            </div>
+            <div className="flex gap-3">
+                <button 
+                    onClick={() => onUpdateStatus(invoice.id, 'Rechazada')}
+                    className="px-4 py-2 bg-white/10 hover:bg-red-500/20 text-red-300 hover:text-red-200 rounded-xl font-bold text-sm transition-colors flex items-center gap-2"
+                >
+                    <X className="w-4 h-4" /> Rechazar
+                </button>
+                <button 
+                    onClick={() => onUpdateStatus(invoice.id, 'Aceptada')}
+                    className="px-6 py-2 bg-[#27bea5] hover:bg-[#22a890] text-white rounded-xl font-bold text-sm transition-colors flex items-center gap-2 shadow-lg"
+                >
+                    <CheckCircle2 className="w-4 h-4" /> Aceptar Cotización
+                </button>
+            </div>
+        </div>
+      )}
+
       {/* Success Modal */}
       {showSuccessModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in">

@@ -248,22 +248,33 @@ const DocumentList: React.FC<DocumentListProps> = ({
                   </div>
 
                   <div className="absolute bottom-0 left-0 w-full bg-white/95 backdrop-blur-md border-t border-slate-100 p-4 transform translate-y-full group-hover:translate-y-0 transition-transform duration-300 z-20 flex gap-2">
-                     {/* Primary Actions based on Status */}
-                     {doc.type === 'Quote' && doc.status === 'Aceptada' && onConvertQuote && (
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); onConvertQuote(doc.id); }}
-                          className="flex-1 bg-[#27bea5] text-white py-2 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 hover:bg-[#22a890] transition-colors"
-                        >
-                           <Repeat className="w-4 h-4" /> <span>Facturar</span>
-                        </button>
+                     {/* Primary Actions based on Status - SPECIFIC FOR QUOTES */}
+                     {doc.type === 'Quote' && (doc.status === 'Enviada' || doc.status === 'Negociacion') && onUpdateStatus && (
+                       <>
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); onUpdateStatus(doc.id, 'Aceptada'); }}
+                            className="flex-1 bg-green-500 text-white py-2 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 hover:bg-green-600 transition-colors"
+                          >
+                             <CheckCircle2 className="w-4 h-4" /> <span>Aceptar</span>
+                          </button>
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); onUpdateStatus(doc.id, 'Rechazada'); }}
+                            className="flex-1 bg-slate-100 text-red-500 py-2 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 hover:bg-red-50 transition-colors"
+                          >
+                             <XCircle className="w-4 h-4" /> <span>Rechazar</span>
+                          </button>
+                       </>
                      )}
                      
-                     <button 
-                       onClick={(e) => { e.stopPropagation(); onSelectInvoice(doc); }}
-                       className="flex-1 bg-slate-100 text-[#1c2938] py-2 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 hover:bg-slate-200 transition-colors"
-                     >
-                        <Eye className="w-4 h-4" /> <span>Ver Detalle</span>
-                     </button>
+                     {/* Fallback View Button if no specific actions or for Invoices */}
+                     {!(doc.type === 'Quote' && (doc.status === 'Enviada' || doc.status === 'Negociacion')) && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); onSelectInvoice(doc); }}
+                          className="flex-1 bg-slate-100 text-[#1c2938] py-2 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 hover:bg-slate-200 transition-colors"
+                        >
+                            <Eye className="w-4 h-4" /> <span>Ver Detalle</span>
+                        </button>
+                     )}
                   </div>
                </div>
             )) : (

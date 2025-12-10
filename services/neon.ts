@@ -415,7 +415,7 @@ export const fetchClientsFromDb = async (userId: string): Promise<DbClient[]> =>
   try {
     await client.connect();
     
-    // Ensure table exists just in case (Added columns tags, notes, phone)
+    // Ensure table exists just in case (Added columns tags, notes, phone, status)
     await client.query(`
       CREATE TABLE IF NOT EXISTS clients (
         id TEXT PRIMARY KEY,

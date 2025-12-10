@@ -27,7 +27,7 @@ export interface DbClient {
   email?: string;
   phone?: string;
   address?: string;
-  tags?: string; // Comma separated string for simplicity in DB
+  tags?: string; // Comma separated string
   notes?: string;
   status?: 'CLIENT' | 'PROSPECT';
 }

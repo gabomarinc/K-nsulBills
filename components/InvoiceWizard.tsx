@@ -213,14 +213,20 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
     
     // Only generate new ID if we are NOT editing an existing valid ID
     if (!newId) {
+        // NOTE: The incrementing happens in App.tsx handleSaveInvoice logic to avoid collisions.
+        // We generate a temp placeholder or rely on App.tsx to finalize it? 
+        // Ideally App.tsx should handle ID generation to be atomic. 
+        // BUT current architecture has ID generation here. 
+        // Let's generate a PREVIEW ID here based on current sequence, but App.tsx will confirm/collision check.
+        
         const sequences = currentUser.documentSequences || {
-        invoicePrefix: 'FAC', invoiceNextNumber: 1,
-        quotePrefix: 'COT', quoteNextNumber: 1
+            invoicePrefix: 'FAC', invoiceNextNumber: 1,
+            quotePrefix: 'COT', quoteNextNumber: 1
         };
         if (docType === 'Invoice') {
-        newId = `${sequences.invoicePrefix}-${String(sequences.invoiceNextNumber).padStart(4, '0')}`;
+            newId = `${sequences.invoicePrefix}-${String(sequences.invoiceNextNumber).padStart(4, '0')}`;
         } else {
-        newId = `${sequences.quotePrefix}-${String(sequences.quoteNextNumber).padStart(4, '0')}`;
+            newId = `${sequences.quotePrefix}-${String(sequences.quoteNextNumber).padStart(4, '0')}`;
         }
     }
 

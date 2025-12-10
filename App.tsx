@@ -133,30 +133,65 @@ const App: React.FC = () => {
   const handleSaveInvoice = async (invoice: Invoice) => {
     if (!currentUser) return;
     
+    // Check if this ID already exists in our invoices list
     const exists = invoices.find(i => i.id === invoice.id);
     let newInvoices = [];
+    
     if (exists) {
+      // UPDATE EXISTING
       newInvoices = invoices.map(i => i.id === invoice.id ? invoice : i);
     } else {
+      // CREATE NEW
       newInvoices = [invoice, ...invoices];
+
+      // --- CRITICAL FIX: Increment Sequence ---
+      // We must update the user profile sequence so the NEXT document gets a new ID
+      const currentSequences = currentUser.documentSequences || {
+        invoicePrefix: 'FAC', invoiceNextNumber: 1,
+        quotePrefix: 'COT', quoteNextNumber: 1
+      };
+
+      let updatedSequences = { ...currentSequences };
+      let profileUpdated = false;
+
+      if (invoice.type === 'Invoice') {
+          updatedSequences.invoiceNextNumber += 1;
+          profileUpdated = true;
+      } else if (invoice.type === 'Quote') {
+          updatedSequences.quoteNextNumber += 1;
+          profileUpdated = true;
+      }
+
+      if (profileUpdated) {
+          const updatedUser = { ...currentUser, documentSequences: updatedSequences };
+          setCurrentUser(updatedUser);
+          localStorage.setItem('konsul_user_data', JSON.stringify(updatedUser));
+          // Persist to DB in background
+          updateUserProfileInDb(updatedUser);
+      }
     }
+    
     setInvoices(newInvoices);
     
     await saveInvoiceToDb({ ...invoice, userId: currentUser.id });
     
     if (invoice.clientName) {
-       // Also upsert client to ensure it exists
-       // Logic: If Invoice -> 'CLIENT', If Quote -> 'PROSPECT' (Database will handle "Once a client always a client" logic)
-       const clientStatus = invoice.type === 'Invoice' ? 'CLIENT' : 'PROSPECT';
+       // Upsert client. If existing client, respect current status. If new, define based on doc type.
        const existing = dbClients.find(c => c.name === invoice.clientName);
+       // Logic: New Invoice = CLIENT. New Quote = PROSPECT (unless already CLIENT).
+       let clientStatus: 'CLIENT' | 'PROSPECT' = invoice.type === 'Invoice' ? 'CLIENT' : 'PROSPECT';
        
+       if (existing && existing.status === 'CLIENT') {
+           clientStatus = 'CLIENT'; // Once a client, always a client
+       }
+
        await saveClientToDb({ 
          id: existing?.id,
          name: invoice.clientName, 
          taxId: invoice.clientTaxId, 
          email: invoice.clientEmail,
          address: invoice.clientAddress,
-         // Keep existing tags/notes if any
+         // Keep existing tags/notes/phone if any
          tags: existing?.tags,
          notes: existing?.notes,
          phone: existing?.phone
@@ -174,6 +209,41 @@ const App: React.FC = () => {
     
     const targetInvoice = invoices.find(i => i.id === id);
     if (!targetInvoice) return;
+
+    // QUOTE TO INVOICE CONVERSION LOGIC
+    if (targetInvoice.type === 'Quote' && newStatus === 'Aceptada' && targetInvoice.status !== 'Aceptada') {
+        if(window.confirm("¿Deseas convertir esta cotización en una factura ahora?")) {
+            // Generate new Invoice ID
+            const sequences = currentUser.documentSequences || { invoicePrefix: 'FAC', invoiceNextNumber: 1, quotePrefix: 'COT', quoteNextNumber: 1 };
+            const newInvoiceId = `${sequences.invoicePrefix}-${String(sequences.invoiceNextNumber).padStart(4, '0')}`;
+            
+            // Create Invoice Object
+            const newInvoice: Invoice = {
+                ...targetInvoice,
+                id: newInvoiceId,
+                type: 'Invoice',
+                status: 'Enviada', // Or 'Por Cobrar'
+                date: new Date().toISOString(), // Reset date to conversion date
+                timeline: [
+                    { id: Date.now().toString(), type: 'CREATED', title: `Convertida desde ${targetInvoice.id}`, timestamp: new Date().toISOString() }
+                ]
+            };
+
+            // Save Invoice
+            await handleSaveInvoice(newInvoice);
+            
+            // Update Quote Status to Accepted
+            const quoteEvent: TimelineEvent = {
+                id: Date.now().toString(), type: 'APPROVED', title: 'Cotización Aceptada', description: `Convertida a factura ${newInvoiceId}`, timestamp: new Date().toISOString()
+            };
+            const updatedQuote = { ...targetInvoice, status: newStatus, timeline: [...(targetInvoice.timeline || []), quoteEvent] };
+            
+            // Update Quote in State & DB
+            setInvoices(prev => prev.map(i => i.id === id ? updatedQuote : i));
+            await saveInvoiceToDb({ ...updatedQuote, userId: currentUser.id });
+            return;
+        }
+    }
 
     const event: TimelineEvent = {
         id: Date.now().toString(),
