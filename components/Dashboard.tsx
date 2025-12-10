@@ -46,14 +46,13 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
 
-    // UPDATED: Count ALL issued invoices for the month (Total Billed), excluding Drafts and Rejected
+    // UPDATED: Count ALL invoices for the month (Total Volume), regardless of status
+    // The user requested "sumado de los montos de todas las facturas".
     const thisMonthInvoices = recentInvoices.filter(inv => {
       const d = new Date(inv.date);
       return d.getMonth() === currentMonth && 
              d.getFullYear() === currentYear && 
-             inv.type === 'Invoice' && 
-             inv.status !== 'Borrador' && 
-             inv.status !== 'Rechazada';
+             inv.type === 'Invoice'; // Include ALL invoices (Drafts, Rejected, Paid, etc.)
     });
 
     const monthlyRevenue = thisMonthInvoices.reduce((acc, curr) => acc + curr.total, 0);
