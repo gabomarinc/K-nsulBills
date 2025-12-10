@@ -377,7 +377,8 @@ export const fetchInvoicesFromDb = async (userId: string): Promise<Invoice[] | n
         total: parseFloat(row.total),
         status: row.status,
         date: row.date,
-        type: row.type 
+        type: row.type,
+        amountPaid: row.data.amountPaid ? parseFloat(row.data.amountPaid) : 0 // Ensure mapped
       }));
       allDocs = [...allDocs, ...mappedInvoices];
     }

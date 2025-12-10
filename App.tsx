@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { AppView, Invoice, UserProfile, CatalogItem, InvoiceStatus, TimelineEvent, DbClient } from './types';
 import LoginScreen from './components/LoginScreen';
@@ -15,6 +16,7 @@ import CatalogDashboard from './components/CatalogDashboard';
 import ExpenseTracker from './components/ExpenseTracker';
 import ExpenseWizard from './components/ExpenseWizard';
 import ClientWizard from './components/ClientWizard'; 
+import { AlertProvider, useAlert } from './components/AlertSystem';
 import { 
   authenticateUser, 
   createUserInDb, 
@@ -27,17 +29,20 @@ import {
   fetchClientsFromDb 
 } from './services/neon';
 
-const App: React.FC = () => {
+// Wrapper Component to use Hooks
+const AppContent: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [activeView, setActiveView] = useState<AppView>(AppView.DASHBOARD);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [dbClients, setDbClients] = useState<DbClient[]>([]); // NEW: Store pure clients
+  const [dbClients, setDbClients] = useState<DbClient[]>([]); 
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [selectedClientName, setSelectedClientName] = useState<string | null>(null);
   const [documentToEdit, setDocumentToEdit] = useState<Invoice | null>(null);
   const [isOffline, setIsOffline] = useState(false);
   const [isSessionLoading, setIsSessionLoading] = useState(true);
   
+  const alert = useAlert(); // Hook for alerts
+
   // SESSION RESTORATION LOGIC
   useEffect(() => {
     const initSession = async () => {
@@ -101,6 +106,7 @@ const App: React.FC = () => {
     localStorage.setItem('konsul_session_id', user.id);
     localStorage.setItem('konsul_user_data', JSON.stringify(user)); 
     setCurrentUser(user);
+    alert.addToast('success', `Bienvenido, ${user.name}`, 'Tu sesión ha iniciado correctamente.');
   };
 
   const handleLogout = () => {
@@ -119,7 +125,7 @@ const App: React.FC = () => {
          const user = await authenticateUser(data.email, data.password);
          if (user) handleLoginSuccess(user);
        } else {
-         alert("Error al crear cuenta. El correo podría ya estar registrado.");
+         alert.addToast('error', 'Error de Registro', 'El correo podría ya estar registrado.');
        }
     } else if (currentUser) {
        const updated = { ...currentUser, ...data, isOnboardingComplete: true };
@@ -143,8 +149,6 @@ const App: React.FC = () => {
       // CREATE NEW
       newInvoices = [invoice, ...invoices];
 
-      // --- CRITICAL FIX: Increment Sequence ---
-      // We must update the user profile sequence so the NEXT document gets a new ID
       const currentSequences = currentUser.documentSequences || {
         invoicePrefix: 'FAC', invoiceNextNumber: 1,
         quotePrefix: 'COT', quoteNextNumber: 1
@@ -165,7 +169,6 @@ const App: React.FC = () => {
           const updatedUser = { ...currentUser, documentSequences: updatedSequences };
           setCurrentUser(updatedUser);
           localStorage.setItem('konsul_user_data', JSON.stringify(updatedUser));
-          // Persist to DB in background
           updateUserProfileInDb(updatedUser);
       }
     }
@@ -175,13 +178,11 @@ const App: React.FC = () => {
     await saveInvoiceToDb({ ...invoice, userId: currentUser.id });
     
     if (invoice.clientName) {
-       // Upsert client. If existing client, respect current status. If new, define based on doc type.
        const existing = dbClients.find(c => c.name === invoice.clientName);
-       // Logic: New Invoice = CLIENT. New Quote = PROSPECT (unless already CLIENT).
        let clientStatus: 'CLIENT' | 'PROSPECT' = invoice.type === 'Invoice' ? 'CLIENT' : 'PROSPECT';
        
        if (existing && existing.status === 'CLIENT') {
-           clientStatus = 'CLIENT'; // Once a client, always a client
+           clientStatus = 'CLIENT';
        }
 
        await saveClientToDb({ 
@@ -190,7 +191,6 @@ const App: React.FC = () => {
          taxId: invoice.clientTaxId, 
          email: invoice.clientEmail,
          address: invoice.clientAddress,
-         // Keep existing tags/notes/phone if any
          tags: existing?.tags,
          notes: existing?.notes,
          phone: existing?.phone
@@ -201,6 +201,7 @@ const App: React.FC = () => {
     }
 
     setDocumentToEdit(null);
+    alert.addToast('success', 'Documento Guardado', `El documento ${invoice.id} se ha guardado exitosamente.`);
   };
 
   const handleUpdateStatus = async (id: string, newStatus: InvoiceStatus) => {
@@ -209,37 +210,39 @@ const App: React.FC = () => {
     const targetInvoice = invoices.find(i => i.id === id);
     if (!targetInvoice) return;
 
-    // QUOTE TO INVOICE CONVERSION LOGIC
     if (targetInvoice.type === 'Quote' && newStatus === 'Aceptada' && targetInvoice.status !== 'Aceptada') {
-        if(window.confirm("¿Deseas convertir esta cotización en una factura ahora?")) {
-            // Generate new Invoice ID
+        const confirmed = await alert.confirm({
+            title: 'Convertir a Factura',
+            message: '¿Deseas convertir esta cotización aprobada en una nueva factura de venta?',
+            confirmText: 'Sí, Convertir',
+            type: 'info'
+        });
+
+        if(confirmed) {
             const sequences = currentUser.documentSequences || { invoicePrefix: 'FAC', invoiceNextNumber: 1, quotePrefix: 'COT', quoteNextNumber: 1 };
             const newInvoiceId = `${sequences.invoicePrefix}-${String(sequences.invoiceNextNumber).padStart(4, '0')}`;
             
-            // Create Invoice Object
             const newInvoice: Invoice = {
                 ...targetInvoice,
                 id: newInvoiceId,
                 type: 'Invoice',
-                status: 'Enviada', // Or 'Por Cobrar'
-                date: new Date().toISOString(), // Reset date to conversion date
+                status: 'Enviada', 
+                date: new Date().toISOString(),
                 timeline: [
                     { id: Date.now().toString(), type: 'CREATED', title: `Convertida desde ${targetInvoice.id}`, timestamp: new Date().toISOString() }
                 ]
             };
 
-            // Save Invoice
             await handleSaveInvoice(newInvoice);
             
-            // Update Quote Status to Accepted
             const quoteEvent: TimelineEvent = {
                 id: Date.now().toString(), type: 'APPROVED', title: 'Cotización Aceptada', description: `Convertida a factura ${newInvoiceId}`, timestamp: new Date().toISOString()
             };
             const updatedQuote = { ...targetInvoice, status: newStatus, timeline: [...(targetInvoice.timeline || []), quoteEvent] };
             
-            // Update Quote in State & DB
             setInvoices(prev => prev.map(i => i.id === id ? updatedQuote : i));
             await saveInvoiceToDb({ ...updatedQuote, userId: currentUser.id });
+            alert.addToast('success', 'Conversión Exitosa', `Se creó la factura ${newInvoiceId}`);
             return;
         }
     }
@@ -265,12 +268,12 @@ const App: React.FC = () => {
     }
 
     await saveInvoiceToDb({ ...updatedInvoice, userId: currentUser.id });
+    alert.addToast('success', 'Estado Actualizado', `El documento ahora está: ${newStatus}`);
   };
 
   const handleSaveNewClient = async (clientData: DbClient) => {
     if (!currentUser) return;
 
-    // 1. Save to DB with all fields, including status selected by user
     await saveClientToDb({
       name: clientData.name,
       taxId: clientData.taxId,
@@ -281,16 +284,25 @@ const App: React.FC = () => {
       notes: clientData.notes
     }, currentUser.id, clientData.status || 'PROSPECT');
 
-    // 2. Refresh local view explicitly so it shows up in ClientList
     const updatedClients = await fetchClientsFromDb(currentUser.id);
     setDbClients(updatedClients);
 
     setActiveView(AppView.CLIENTS);
+    alert.addToast('success', 'Cliente Guardado', `${clientData.name} ha sido añadido a tu directorio.`);
   };
 
   const handleDeleteInvoice = async (id: string) => {
     if (!currentUser) return;
-    if (window.confirm("¿Estás seguro de que quieres eliminar este documento? Esta acción no se puede deshacer.")) {
+    
+    const confirmed = await alert.confirm({
+        title: '¿Eliminar Documento?',
+        message: 'Esta acción es irreversible. El documento desaparecerá de tus registros y reportes.',
+        confirmText: 'Sí, Eliminar',
+        cancelText: 'Cancelar',
+        type: 'danger'
+    });
+
+    if (confirmed) {
       const newInvoices = invoices.filter(i => i.id !== id);
       setInvoices(newInvoices);
       
@@ -300,6 +312,7 @@ const App: React.FC = () => {
       }
       
       await deleteInvoiceFromDb(id, currentUser.id);
+      alert.addToast('info', 'Documento Eliminado', 'El registro ha sido borrado correctamente.');
     }
   };
 
@@ -308,10 +321,9 @@ const App: React.FC = () => {
     setActiveView(AppView.WIZARD);
   };
 
-  // NEW: Handle creation starting from a client profile or list card
   const handleCreateDocumentForClient = (client: DbClient, type: 'Invoice' | 'Quote') => {
     const templateDoc: Invoice = {
-      id: '', // Empty ID signals "New Document" to Wizard
+      id: '',
       clientName: client.name,
       clientTaxId: client.taxId,
       clientEmail: client.email,
@@ -331,6 +343,7 @@ const App: React.FC = () => {
     setCurrentUser(updated);
     localStorage.setItem('konsul_user_data', JSON.stringify(updated)); 
     await updateUserProfileInDb(updated);
+    alert.addToast('success', 'Perfil Actualizado', 'Tus cambios se han guardado.');
   };
 
   const handleUpdateCatalog = async (items: CatalogItem[]) => {
@@ -339,6 +352,7 @@ const App: React.FC = () => {
     setCurrentUser(updated);
     localStorage.setItem('konsul_user_data', JSON.stringify(updated)); 
     await updateUserProfileInDb(updated);
+    alert.addToast('success', 'Catálogo Actualizado');
   };
 
   // --- RENDER ---
@@ -420,7 +434,7 @@ const App: React.FC = () => {
           onCreateNew={() => { setDocumentToEdit(null); setActiveView(AppView.WIZARD); }}
           onDeleteInvoice={handleDeleteInvoice}
           onEditInvoice={handleEditInvoice} 
-          onUpdateStatus={handleUpdateStatus} // New Prop
+          onUpdateStatus={handleUpdateStatus} 
           currencySymbol={currentUser.defaultCurrency === 'EUR' ? '€' : '$'}
           currentUser={currentUser}
         />
@@ -436,7 +450,7 @@ const App: React.FC = () => {
              setSelectedInvoice(updated);
              saveInvoiceToDb({ ...updated, userId: currentUser.id });
           }}
-          onUpdateStatus={handleUpdateStatus} // New Prop
+          onUpdateStatus={handleUpdateStatus}
           onEdit={handleEditInvoice}
           onDelete={handleDeleteInvoice}
         />
@@ -446,11 +460,8 @@ const App: React.FC = () => {
         <ClientList 
           invoices={invoices}
           dbClients={dbClients} 
-          // Updated to handle both global create and context-aware create
           onCreateDocument={(client) => {
              if (client) {
-                // If a client is passed, assume Invoice by default or prompt? 
-                // For list view quick action, let's default to Invoice
                 handleCreateDocumentForClient(client, 'Invoice');
              } else {
                 setDocumentToEdit(null); 
@@ -475,22 +486,19 @@ const App: React.FC = () => {
          <ClientDetail 
            clientName={selectedClientName}
            invoices={invoices}
-           dbClientData={dbClients.find(c => c.name === selectedClientName)} // Pass rich data
+           dbClientData={dbClients.find(c => c.name === selectedClientName)}
            onBack={() => setActiveView(AppView.CLIENTS)}
            onSelectInvoice={(inv) => { setSelectedInvoice(inv); setActiveView(AppView.INVOICE_DETAIL); }}
            currencySymbol={currentUser.defaultCurrency === 'EUR' ? '€' : '$'}
            onUpdateClientContact={async (oldName, updatedClient) => {
-              // Note: updatedClient might lack 'status', so we use previous or default
               const existing = dbClients.find(c => c.name === oldName);
               const currentStatus = existing?.status || 'PROSPECT';
               
               await saveClientToDb(updatedClient, currentUser.id, currentStatus);
-              
-              // Refresh clients
               const updated = await fetchClientsFromDb(currentUser.id);
               setDbClients(updated);
+              alert.addToast('success', 'Cliente Actualizado');
            }}
-           // Pass the context-aware create handler
            onCreateDocument={(type) => {
               const client = dbClients.find(c => c.name === selectedClientName);
               if (client) {
@@ -545,6 +553,14 @@ const App: React.FC = () => {
       )}
 
     </Layout>
+  );
+};
+
+const App: React.FC = () => {
+  return (
+    <AlertProvider>
+      <AppContent />
+    </AlertProvider>
   );
 };
 

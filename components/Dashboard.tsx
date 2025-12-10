@@ -46,13 +46,14 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
 
-    // "Aceptada" OR "Pagada" counts as Revenue for Invoices
+    // UPDATED: Count ALL issued invoices for the month (Total Billed), excluding Drafts and Rejected
     const thisMonthInvoices = recentInvoices.filter(inv => {
       const d = new Date(inv.date);
       return d.getMonth() === currentMonth && 
              d.getFullYear() === currentYear && 
              inv.type === 'Invoice' && 
-             (inv.status === 'Aceptada' || inv.status === 'Pagada');
+             inv.status !== 'Borrador' && 
+             inv.status !== 'Rechazada';
     });
 
     const monthlyRevenue = thisMonthInvoices.reduce((acc, curr) => acc + curr.total, 0);
@@ -129,7 +130,7 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
        {/* Top: Income */}
        <div className="text-center space-y-2">
           <div className="flex items-center justify-center gap-1 text-slate-500 text-sm font-medium">
-             <span>Ingresos este mes</span>
+             <span>Facturado este mes</span>
              <ChevronRight className="w-4 h-4 rotate-90" />
           </div>
           <h1 className="text-6xl font-black text-[#1c2938] tracking-tight">
@@ -176,7 +177,7 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
              </div>
              <div className="relative z-10">
                 <p className="text-2xl font-black text-[#1c2938]">${stats.monthlyRevenue.toLocaleString()}</p>
-                <p className="text-xs font-bold text-slate-700 mt-1">Facturas pagadas</p>
+                <p className="text-xs font-bold text-slate-700 mt-1">Total Facturado</p>
              </div>
           </button>
 
