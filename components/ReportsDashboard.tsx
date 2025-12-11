@@ -1,5 +1,6 @@
 
 import React, { useState, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
   PieChart, Pie, Cell, AreaChart, Area, ScatterChart, Scatter
@@ -1029,9 +1030,9 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
         {activeTab === 'CLIENTS' && renderClientsView()}
       </div>
 
-      {/* MODAL: DEEP DIVE REPORT */}
-      {(deepDiveVisual || deepDiveReport) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1c2938]/60 backdrop-blur-md animate-in fade-in">
+      {/* MODAL: DEEP DIVE REPORT (PORTAL) */}
+      {(deepDiveVisual || deepDiveReport) && createPortal(
+        <div className="fixed inset-0 z-[99] flex items-center justify-center p-4 bg-[#1c2938]/60 backdrop-blur-md animate-in fade-in">
            <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col relative animate-in zoom-in-95 duration-300">
               
               {/* Header */}
@@ -1134,7 +1135,8 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                   </button>
               </div>
            </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>
