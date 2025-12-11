@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { ParsedInvoiceData, CatalogItem, FinancialAnalysisResult, PriceAnalysisResult, DeepDiveReport } from "../types";
 
@@ -277,15 +278,19 @@ export const generateFinancialAnalysis = async (financialSummary: string, keys?:
   const schema: Schema = {
      type: Type.OBJECT,
      properties: {
-       healthScore: { type: Type.INTEGER },
+       healthScore: { type: Type.INTEGER, description: "0-100 score based on margins and growth" },
        healthStatus: { type: Type.STRING, enum: ['Excellent', 'Good', 'Fair', 'Critical'] },
-       diagnosis: { type: Type.STRING },
-       actionableTips: { type: Type.ARRAY, items: { type: Type.STRING } },
-       projection: { type: Type.STRING }
+       diagnosis: { type: Type.STRING, description: "Breve resumen ejecutivo de la situación (2 frases)." },
+       actionableTips: { type: Type.ARRAY, items: { type: Type.STRING }, description: "3 acciones concretas y numéricas para mejorar." },
+       projection: { type: Type.STRING, description: "Predicción corta a 3 meses." }
      },
      required: ["healthScore", "healthStatus", "diagnosis", "actionableTips", "projection"]
   };
-  const systemPrompt = `Eres un CFO Virtual. Analiza el resumen financiero.`;
+  const systemPrompt = `Actúa como un CFO (Director Financiero) experto para PyMES y autónomos. 
+  Analiza los siguientes datos financieros reales del usuario. 
+  Sé crítico pero constructivo. No uses generalidades, basa tus consejos en los números proporcionados.
+  Si los gastos son altos, sugiere cortes. Si el margen es bajo, sugiere subir precios.`;
+  
   const result = await generateWithFallback(financialSummary, systemPrompt, schema, keys, true);
   if (result === AI_ERROR_BLOCKED) throw new Error(AI_ERROR_BLOCKED);
   if (!result) return null;
@@ -297,14 +302,31 @@ export const generateDeepDiveReport = async (chartTitle: string, dataContext: st
     type: Type.OBJECT,
     properties: {
       chartTitle: { type: Type.STRING },
-      executiveSummary: { type: Type.STRING },
-      keyMetrics: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { label: { type: Type.STRING }, value: { type: Type.STRING }, trend: { type: Type.STRING, enum: ['up', 'down', 'neutral'] } } } },
-      strategicInsight: { type: Type.STRING },
-      recommendation: { type: Type.STRING }
+      executiveSummary: { type: Type.STRING, description: "Explicación breve de qué muestra este gráfico realmente." },
+      keyMetrics: { 
+        type: Type.ARRAY, 
+        items: { 
+          type: Type.OBJECT, 
+          properties: { 
+            label: { type: Type.STRING }, 
+            value: { type: Type.STRING }, 
+            trend: { type: Type.STRING, enum: ['up', 'down', 'neutral'] } 
+          } 
+        } 
+      },
+      strategicInsight: { type: Type.STRING, description: "Análisis profundo de la causa raíz de estos números." },
+      recommendation: { type: Type.STRING, description: "Una acción táctica inmediata para mejorar estos resultados." }
     },
     required: ["executiveSummary", "keyMetrics", "strategicInsight", "recommendation"]
   };
-  const result = await generateWithFallback(`Gráfico: "${chartTitle}". Datos: "${dataContext}"`, "Actúa como Analista Financiero.", schema, keys, true);
+  
+  const systemPrompt = `Eres un Auditor Financiero Senior. 
+  Analiza el dataset proporcionado para el gráfico "${chartTitle}".
+  Identifica patrones ocultos, anomalías o éxitos.
+  Tu respuesta debe ser muy específica a los datos (menciona meses, clientes o montos si es relevante).
+  No inventes datos, usa solo lo provisto en el contexto.`;
+
+  const result = await generateWithFallback(`Contexto: "${dataContext}"`, systemPrompt, schema, keys, true);
   if (result === AI_ERROR_BLOCKED) throw new Error(AI_ERROR_BLOCKED);
   if (!result) return null;
   try { return { ...JSON.parse(result), chartTitle } as DeepDiveReport; } catch (e) { return null; }

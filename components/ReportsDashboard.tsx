@@ -9,7 +9,7 @@ import {
   BrainCircuit, Activity, Target, Lightbulb,
   X, TrendingDown, Wallet,
   LayoutDashboard, FileBarChart, Users, Filter, Calendar, Download, Mail, Smartphone, CheckCircle2,
-  Clock, AlertTriangle, Trophy, FileText, Lock, ArrowRight
+  Clock, AlertTriangle, Trophy, FileText, Lock, ArrowRight, Table
 } from 'lucide-react';
 import { Invoice, FinancialAnalysisResult, DeepDiveReport, UserProfile } from '../types';
 import { generateFinancialAnalysis, generateDeepDiveReport, AI_ERROR_BLOCKED } from '../services/geminiService';
@@ -256,7 +256,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
         { name: 'Cobradas', value: filteredInvoices.filter(i => i.status === 'Aceptada' || i.status === 'Pagada' || (i.status === 'Abonada' && (i.amountPaid || 0) > 0)).length, fill: '#27bea5' }, 
     ];
     
-    const scatterData = filteredInvoices.filter(i => i.type === 'Invoice' || i.type === 'Quote').map(i => ({ id: i.id, x: i.items.length, y: i.total, z: 1, status: i.status }));
+    const scatterData = filteredInvoices.filter(i => i.type === 'Invoice' || i.type === 'Quote').map(i => ({ id: i.id, client: i.clientName, x: i.items.length, y: i.total, z: 1, status: i.status }));
     
     const clientMap = new Map<string, { revenue: number, count: number, lastDate: Date }>();
     const now = new Date();
@@ -268,7 +268,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
         if (invDate > c.lastDate) c.lastDate = invDate; 
         if (inv.type === 'Invoice') { 
             c.count++; 
-            // Add collected revenue
+            // Add collected revenue logic from ClientList/Detail
             if (inv.amountPaid && inv.amountPaid > 0) {
                 c.revenue += inv.amountPaid;
             } else if (inv.status === 'Aceptada' || inv.status === 'Pagada') { 
@@ -300,6 +300,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
       - Tiempo Promedio Cobro (DSO): ${kpis.avgPaymentDays} días
       - Tasa Conversión Cotizaciones: ${kpis.conversionRate.toFixed(1)}%
       - Clientes en Riesgo (Inactivos >90d): ${kpis.churnRiskCount}
+      - Total Clientes Activos: ${kpis.activeClientsCount}
     `;
     try {
         const result = await generateFinancialAnalysis(summary, apiKey);
@@ -315,21 +316,134 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
   };
 
   const handleDeepDive = async (chartId: string, chartTitle: string, chartData: any) => {
-    if (!hasAiAccess) {
-        alert("Configura tu API Key en Ajustes para usar análisis detallado.");
-        return;
-    }
+    // Show Modal with Data immediately
     setIsDeepDiving(chartId);
     setDeepDiveReport(null);
     setDeepDiveVisual({ type: chartId, data: chartData }); // Set visual context
-    const context = `Periodo: ${timeRange}. Datos Reales: ${JSON.stringify(chartData)}. Contexto KPI: Margen ${data.kpis.marginPercent}%, Conversión ${data.kpis.conversionRate}%`;
-    try {
-        const report = await generateDeepDiveReport(chartTitle, context, apiKey);
-        setDeepDiveReport(report);
-    } catch (e) {
-        console.error("Deep Dive Error", e);
+    
+    if (hasAiAccess) {
+        // Generate AI Insight in background
+        const context = `Periodo: ${timeRange}. Datos Reales: ${JSON.stringify(chartData)}. Contexto KPI: Margen ${data.kpis.marginPercent}%, Conversión ${data.kpis.conversionRate}%. Analiza como experto contable.`;
+        try {
+            const report = await generateDeepDiveReport(chartTitle, context, apiKey);
+            setDeepDiveReport(report);
+        } catch (e) {
+            console.error("Deep Dive Error", e);
+        }
     }
     setIsDeepDiving(null);
+  };
+
+  // --- HELPER: RENDER TABLE IN DEEP DIVE ---
+  const renderDeepDiveTable = () => {
+      if (!deepDiveVisual) return null;
+
+      switch(deepDiveVisual.type) {
+          case 'cashflow':
+          case 'trends':
+              return (
+                  <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden mb-8 shadow-sm">
+                      <table className="w-full text-left text-sm">
+                          <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-xs">
+                              <tr>
+                                  <th className="p-4">Mes</th>
+                                  <th className="p-4 text-right">Ingresos</th>
+                                  {deepDiveVisual.type === 'cashflow' && <th className="p-4 text-right">Gastos</th>}
+                                  {deepDiveVisual.type === 'cashflow' && <th className="p-4 text-right">Neto</th>}
+                              </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-50">
+                              {deepDiveVisual.data.map((row: any, i: number) => (
+                                  <tr key={i} className="hover:bg-slate-50/50">
+                                      <td className="p-4 font-bold text-[#1c2938]">{row.name}</td>
+                                      <td className="p-4 text-right text-green-600 font-medium">{currencySymbol}{row.ingresos.toLocaleString()}</td>
+                                      {deepDiveVisual.type === 'cashflow' && <td className="p-4 text-right text-red-500 font-medium">-{currencySymbol}{row.gastos.toLocaleString()}</td>}
+                                      {deepDiveVisual.type === 'cashflow' && <td className="p-4 text-right font-bold">{currencySymbol}{(row.ingresos - row.gastos).toLocaleString()}</td>}
+                                  </tr>
+                              ))}
+                          </tbody>
+                      </table>
+                  </div>
+              );
+          case 'funnel':
+              return (
+                  <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden mb-8 shadow-sm">
+                      <table className="w-full text-left text-sm">
+                          <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-xs">
+                              <tr>
+                                  <th className="p-4">Etapa</th>
+                                  <th className="p-4 text-right">Cantidad</th>
+                                  <th className="p-4 text-right">% Relativo</th>
+                              </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-50">
+                              {deepDiveVisual.data.map((row: any, i: number) => {
+                                  const max = Math.max(...deepDiveVisual.data.map((d: any) => d.value));
+                                  return (
+                                      <tr key={i} className="hover:bg-slate-50/50">
+                                          <td className="p-4 font-bold text-[#1c2938]">{row.name}</td>
+                                          <td className="p-4 text-right font-medium">{row.value}</td>
+                                          <td className="p-4 text-right text-slate-400">{max > 0 ? ((row.value / max) * 100).toFixed(0) : 0}%</td>
+                                      </tr>
+                                  );
+                              })}
+                          </tbody>
+                      </table>
+                  </div>
+              );
+          case 'scatter':
+              return (
+                  <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden mb-8 shadow-sm max-h-60 overflow-y-auto custom-scrollbar">
+                      <table className="w-full text-left text-sm">
+                          <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-xs sticky top-0">
+                              <tr>
+                                  <th className="p-4">Cliente</th>
+                                  <th className="p-4">Ítems</th>
+                                  <th className="p-4 text-right">Monto</th>
+                                  <th className="p-4 text-right">Estado</th>
+                              </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-50">
+                              {deepDiveVisual.data.sort((a: any, b: any) => b.y - a.y).map((row: any, i: number) => (
+                                  <tr key={i} className="hover:bg-slate-50/50">
+                                      <td className="p-4 font-bold text-[#1c2938]">{row.client}</td>
+                                      <td className="p-4 text-slate-500">{row.x}</td>
+                                      <td className="p-4 text-right font-medium">{currencySymbol}{row.y.toLocaleString()}</td>
+                                      <td className="p-4 text-right"><span className="text-[10px] bg-slate-100 px-2 py-1 rounded-full uppercase font-bold">{row.status}</span></td>
+                                  </tr>
+                              ))}
+                          </tbody>
+                      </table>
+                  </div>
+              );
+          case 'ltv':
+              return (
+                  <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden mb-8 shadow-sm">
+                      <table className="w-full text-left text-sm">
+                          <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-xs">
+                              <tr>
+                                  <th className="p-4">Cliente</th>
+                                  <th className="p-4 text-right">Facturación Histórica</th>
+                                  <th className="p-4 text-right">Docs</th>
+                                  <th className="p-4 text-right">Inactividad</th>
+                              </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-50">
+                              {deepDiveVisual.data.map((row: any, i: number) => (
+                                  <tr key={i} className="hover:bg-slate-50/50">
+                                      <td className="p-4 font-bold text-[#1c2938]">{row.name}</td>
+                                      <td className="p-4 text-right font-medium text-emerald-600">{currencySymbol}{row.revenue.toLocaleString()}</td>
+                                      <td className="p-4 text-right text-slate-500">{row.count}</td>
+                                      <td className="p-4 text-right text-slate-400">{row.daysSinceLast} días</td>
+                                  </tr>
+                              ))}
+                          </tbody>
+                      </table>
+                  </div>
+              );
+          default:
+              return null;
+      }
   };
 
   // --- RENDERERS ---
@@ -375,8 +489,8 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                       Flujo de Caja Real
                     </h3>
                   </div>
-                  <button id="no-print" onClick={() => handleDeepDive('cashflow', 'Flujo de Caja', data.monthlyData)} disabled={isDeepDiving === 'cashflow'} className="p-3 rounded-xl bg-slate-50 hover:text-[#27bea5] transition-all">
-                    {isDeepDiving === 'cashflow' ? <Loader2 className="w-5 h-5 animate-spin" /> : (hasAiAccess ? <FileText className="w-5 h-5" /> : <Lock className="w-4 h-4 text-slate-300" />)}
+                  <button id="no-print" onClick={() => handleDeepDive('cashflow', 'Flujo de Caja', data.monthlyData)} className="p-3 rounded-xl bg-slate-50 hover:text-[#27bea5] transition-all">
+                    {isDeepDiving === 'cashflow' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
                   </button>
               </div>
               <div className="h-72 w-full">
@@ -423,8 +537,8 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                       Evolución de Ingresos
                     </h3>
                   </div>
-                  <button id="no-print" onClick={() => handleDeepDive('trends', 'Tendencia de Ingresos', data.monthlyData)} disabled={isDeepDiving === 'trends'} className="p-3 rounded-xl bg-slate-50 hover:text-blue-500 transition-all">
-                    {isDeepDiving === 'trends' ? <Loader2 className="w-5 h-5 animate-spin" /> : (hasAiAccess ? <FileText className="w-5 h-5" /> : <Lock className="w-4 h-4 text-slate-300" />)}
+                  <button id="no-print" onClick={() => handleDeepDive('trends', 'Tendencia de Ingresos', data.monthlyData)} className="p-3 rounded-xl bg-slate-50 hover:text-blue-500 transition-all">
+                    {isDeepDiving === 'trends' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
                   </button>
               </div>
               <div className="h-72 w-full">
@@ -505,8 +619,8 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                     </h3>
                     <p className="text-slate-400 text-sm mt-1 ml-11">Conversión de Documentos</p>
                   </div>
-                  <button id="no-print" onClick={() => handleDeepDive('funnel', 'Embudo de Ventas', data.funnelData)} disabled={isDeepDiving === 'funnel'} className="p-3 rounded-xl bg-slate-50 hover:text-indigo-500 transition-all">
-                    {isDeepDiving === 'funnel' ? <Loader2 className="w-5 h-5 animate-spin" /> : (hasAiAccess ? <FileText className="w-5 h-5" /> : <Lock className="w-4 h-4 text-slate-300" />)}
+                  <button id="no-print" onClick={() => handleDeepDive('funnel', 'Embudo de Ventas', data.funnelData)} className="p-3 rounded-xl bg-slate-50 hover:text-indigo-500 transition-all">
+                    {isDeepDiving === 'funnel' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
                   </button>
               </div>
               <div className="h-72 w-full">
@@ -545,8 +659,8 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                     </h3>
                     <p className="text-slate-400 text-sm mt-1 ml-11">Relación Ítems vs Monto</p>
                   </div>
-                  <button id="no-print" onClick={() => handleDeepDive('scatter', 'Distribución de Valor', data.scatterData)} disabled={isDeepDiving === 'scatter'} className="p-3 rounded-xl bg-slate-50 hover:text-rose-500 transition-all">
-                    {isDeepDiving === 'scatter' ? <Loader2 className="w-5 h-5 animate-spin" /> : (hasAiAccess ? <FileText className="w-5 h-5" /> : <Lock className="w-4 h-4 text-slate-300" />)}
+                  <button id="no-print" onClick={() => handleDeepDive('scatter', 'Distribución de Valor', data.scatterData)} className="p-3 rounded-xl bg-slate-50 hover:text-rose-500 transition-all">
+                    {isDeepDiving === 'scatter' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
                   </button>
               </div>
               <div className="h-72 w-full">
@@ -617,8 +731,8 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                   </h3>
                   <p className="text-slate-400 text-sm mt-1 ml-11">Ingresos cobrados históricamente</p>
                 </div>
-                <button id="no-print" onClick={() => handleDeepDive('ltv', 'Valor de Clientes', data.ltvData.slice(0,10))} disabled={isDeepDiving === 'ltv'} className="p-3 rounded-xl bg-slate-50 hover:text-amber-500 transition-all">
-                    {isDeepDiving === 'ltv' ? <Loader2 className="w-5 h-5 animate-spin" /> : (hasAiAccess ? <FileText className="w-5 h-5" /> : <Lock className="w-4 h-4 text-slate-300" />)}
+                <button id="no-print" onClick={() => handleDeepDive('ltv', 'Valor de Clientes', data.ltvData.slice(0,10))} className="p-3 rounded-xl bg-slate-50 hover:text-amber-500 transition-all">
+                    {isDeepDiving === 'ltv' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
                 </button>
               </div>
               <div className="h-72 w-full">
@@ -656,8 +770,8 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                     Salud de Cartera
                   </h3>
                 </div>
-                <button id="no-print" onClick={() => handleDeepDive('retention', 'Salud de Cartera', data.clientActivityData)} disabled={isDeepDiving === 'retention'} className="p-3 rounded-xl bg-slate-50 hover:text-emerald-500 transition-all">
-                    {isDeepDiving === 'retention' ? <Loader2 className="w-5 h-5 animate-spin" /> : (hasAiAccess ? <FileText className="w-5 h-5" /> : <Lock className="w-4 h-4 text-slate-300" />)}
+                <button id="no-print" onClick={() => handleDeepDive('retention', 'Salud de Cartera', data.clientActivityData)} className="p-3 rounded-xl bg-slate-50 hover:text-emerald-500 transition-all">
+                    {isDeepDiving === 'retention' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
                 </button>
               </div>
               <div className="h-64 w-full relative">
@@ -916,7 +1030,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
       </div>
 
       {/* MODAL: DEEP DIVE REPORT */}
-      {deepDiveReport && (
+      {(deepDiveVisual || deepDiveReport) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1c2938]/60 backdrop-blur-md animate-in fade-in">
            <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col relative animate-in zoom-in-95 duration-300">
               
@@ -928,10 +1042,16 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                    </div>
                    <div>
                      <h3 className="font-bold text-[#1c2938] text-xl">Reporte Detallado</h3>
-                     <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">{deepDiveReport.chartTitle}</p>
+                     <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">{deepDiveReport?.chartTitle || 'Cargando Datos...'}</p>
                    </div>
                  </div>
-                 <button onClick={() => setDeepDiveReport(null)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-[#1c2938]">
+                 <button 
+                    onClick={() => {
+                        setDeepDiveReport(null);
+                        setDeepDiveVisual(null);
+                    }} 
+                    className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-[#1c2938]"
+                 >
                    <X className="w-6 h-6" />
                  </button>
               </div>
@@ -939,154 +1059,75 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
               {/* Scrollable Content */}
               <div ref={deepDiveRef} className="p-8 md:p-12 overflow-y-auto custom-scrollbar flex-1 bg-white rounded-b-[2.5rem]">
                  
-                 {/* VISUAL COMPONENT BASED ON REPORT TYPE */}
+                 {/* 1. VISUALIZATION (Chart Copy or Data) */}
                  {deepDiveVisual && (
                     <div className="mb-10 animate-in slide-in-from-bottom-4">
-                       
-                       {/* 1. Funnel Visual */}
-                       {deepDiveVisual.type === 'funnel' && (
-                          <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
-                             <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Conversión Visual</h4>
-                             <div className="flex flex-col gap-3">
-                                {deepDiveVisual.data.map((item: any, idx: number) => (
-                                   <div key={idx} className="flex items-center group">
-                                      <div className="w-24 text-xs font-bold text-slate-500">{item.name}</div>
-                                      <div className="flex-1 h-10 bg-white rounded-xl relative overflow-hidden border border-slate-200 shadow-sm">
-                                         <div 
-                                            className="h-full bg-[#27bea5] opacity-20 transition-all duration-1000 ease-out group-hover:opacity-30" 
-                                            style={{width: `${(item.value / Math.max(...deepDiveVisual.data.map((d:any)=>d.value))) * 100}%`}}
-                                         ></div>
-                                         <div className="absolute inset-0 flex items-center pl-4 font-bold text-[#1c2938] text-sm">
-                                            {item.value} <span className="text-[10px] font-normal text-slate-400 ml-2 uppercase">Documentos</span>
-                                         </div>
-                                      </div>
-                                   </div>
-                                ))}
-                             </div>
-                          </div>
-                       )}
-
-                       {/* 2. Scatter Visual (Matrix) */}
-                       {deepDiveVisual.type === 'scatter' && (
-                          <div className="grid grid-cols-2 gap-4">
-                             <div className="bg-emerald-50 p-6 rounded-3xl border border-emerald-100 text-center">
-                                <p className="text-xs font-bold text-emerald-600 uppercase mb-2">Alta Rentabilidad</p>
-                                <p className="text-3xl font-bold text-emerald-800">
-                                   {deepDiveVisual.data.filter((d:any) => d.y > 1000).length}
-                                </p>
-                                <p className="text-[10px] text-emerald-600 mt-1">Proyectos &gt; $1k</p>
-                             </div>
-                             <div className="bg-blue-50 p-6 rounded-3xl border border-blue-100 text-center">
-                                <p className="text-xs font-bold text-blue-600 uppercase mb-2">Volumen Rápido</p>
-                                <p className="text-3xl font-bold text-blue-800">
-                                   {deepDiveVisual.data.filter((d:any) => d.x < 3).length}
-                                </p>
-                                <p className="text-[10px] text-blue-600 mt-1">&lt; 3 Ítems</p>
-                             </div>
-                          </div>
-                       )}
-
-                       {/* 3. LTV Visual (Podium) */}
-                       {deepDiveVisual.type === 'ltv' && (
-                          <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
-                             <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                                <Trophy className="w-4 h-4 text-amber-500" /> Salón de la Fama
-                             </h4>
-                             <div className="space-y-3">
-                                {deepDiveVisual.data.slice(0,3).map((client: any, idx: number) => (
-                                   <div key={idx} className="flex items-center justify-between p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
-                                      <div className="flex items-center gap-3">
-                                         <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-white ${idx===0 ? 'bg-amber-400' : idx===1 ? 'bg-slate-400' : 'bg-orange-400'}`}>
-                                            {idx + 1}
-                                         </div>
-                                         <span className="font-bold text-[#1c2938]">{client.name}</span>
-                                      </div>
-                                      <span className="font-mono font-bold text-[#1c2938]">{currencySymbol}{compactNumber(client.revenue)}</span>
-                                   </div>
-                                ))}
-                             </div>
-                          </div>
-                       )}
-
-                       {/* 4. Trends Visual (Summary) */}
-                       {deepDiveVisual.type === 'trends' && (
-                          <div className="flex justify-between gap-4">
-                             <div className="flex-1 bg-[#1c2938] p-6 rounded-3xl text-white text-center">
-                                <p className="text-xs font-bold text-slate-400 uppercase mb-2">Mejor Mes</p>
-                                <p className="text-2xl font-bold text-[#27bea5]">
-                                   {deepDiveVisual.data.reduce((a:any, b:any) => a.ingresos > b.ingresos ? a : b).name}
-                                </p>
-                             </div>
-                             <div className="flex-1 bg-slate-100 p-6 rounded-3xl text-center">
-                                <p className="text-xs font-bold text-slate-400 uppercase mb-2">Promedio Mensual</p>
-                                <p className="text-2xl font-bold text-[#1c2938]">
-                                   {currencySymbol}{compactNumber(deepDiveVisual.data.reduce((acc:number, curr:any) => acc + curr.ingresos, 0) / deepDiveVisual.data.length)}
-                                </p>
-                             </div>
-                          </div>
-                       )}
-
-                       {/* 5. Retention Visual (Health Bar) */}
-                       {deepDiveVisual.type === 'retention' && (
-                          <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 flex items-center justify-around">
-                             {deepDiveVisual.data.map((item: any, idx: number) => (
-                                <div key={idx} className="text-center">
-                                   <div className="w-16 h-16 rounded-full flex items-center justify-center border-4 text-xl font-bold mb-2 bg-white" style={{borderColor: item.color, color: item.color}}>
-                                      {item.value}
-                                   </div>
-                                   <p className="text-xs font-bold text-slate-500 uppercase">{item.name}</p>
-                                </div>
-                             ))}
-                          </div>
-                       )}
-
+                       <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                          <Table className="w-4 h-4" /> Desglose de Datos Reales
+                       </h4>
+                       {renderDeepDiveTable()}
                     </div>
                  )}
 
-                 <div className="prose prose-slate max-w-none">
-                    <div className="bg-slate-50 p-6 rounded-2xl mb-8 border border-slate-100">
-                       <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">Resumen Ejecutivo</h4>
-                       <p className="text-[#1c2938] font-medium leading-relaxed">{deepDiveReport.executiveSummary}</p>
-                    </div>
+                 {/* 2. AI ANALYSIS CONTENT (If Available) */}
+                 {deepDiveReport ? (
+                    <div className="prose prose-slate max-w-none animate-in slide-in-from-bottom-4">
+                        <div className="bg-slate-50 p-6 rounded-2xl mb-8 border border-slate-100">
+                           <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                              <BrainCircuit className="w-4 h-4" /> Análisis Ejecutivo (IA)
+                           </h4>
+                           <p className="text-[#1c2938] font-medium leading-relaxed">{deepDiveReport.executiveSummary}</p>
+                        </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                       {deepDiveReport.keyMetrics.map((metric, idx) => (
-                          <div key={idx} className="p-4 border border-slate-100 rounded-2xl hover:border-[#27bea5] transition-colors group">
-                             <p className="text-xs text-slate-400 mb-1">{metric.label}</p>
-                             <div className="flex items-center gap-2">
-                                <span className="text-2xl font-bold text-[#1c2938]">{metric.value}</span>
-                                {metric.trend === 'up' && <TrendingUp className="w-4 h-4 text-green-500" />}
-                                {metric.trend === 'down' && <TrendingDown className="w-4 h-4 text-red-500" />}
-                             </div>
-                          </div>
-                       ))}
-                    </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                           {deepDiveReport.keyMetrics.map((metric, idx) => (
+                              <div key={idx} className="p-4 border border-slate-100 rounded-2xl hover:border-[#27bea5] transition-colors group bg-white shadow-sm">
+                                 <p className="text-xs text-slate-400 mb-1">{metric.label}</p>
+                                 <div className="flex items-center gap-2">
+                                    <span className="text-2xl font-bold text-[#1c2938]">{metric.value}</span>
+                                    {metric.trend === 'up' && <TrendingUp className="w-4 h-4 text-green-500" />}
+                                    {metric.trend === 'down' && <TrendingDown className="w-4 h-4 text-red-500" />}
+                                 </div>
+                              </div>
+                           ))}
+                        </div>
 
-                    <h4 className="text-xl font-bold text-[#1c2938] mb-4">Análisis Estratégico</h4>
-                    <p className="text-slate-600 leading-relaxed mb-8">{deepDiveReport.strategicInsight}</p>
+                        <h4 className="text-xl font-bold text-[#1c2938] mb-4">Hallazgos Clave</h4>
+                        <p className="text-slate-600 leading-relaxed mb-8 whitespace-pre-wrap">{deepDiveReport.strategicInsight}</p>
 
-                    <div className="bg-[#1c2938] text-white p-8 rounded-[2rem] relative overflow-hidden">
-                       <div className="absolute top-0 right-0 w-32 h-32 bg-[#27bea5] rounded-full blur-[50px] opacity-20 -translate-y-1/2 translate-x-1/2"></div>
-                       <div className="relative z-10">
-                          <h4 className="font-bold text-[#27bea5] mb-2 flex items-center gap-2">
-                             <Lightbulb className="w-5 h-5" /> Nota Estratégica (IA)
-                          </h4>
-                          <p className="text-lg font-light leading-relaxed">{deepDiveReport.recommendation}</p>
-                       </div>
+                        <div className="bg-[#1c2938] text-white p-8 rounded-[2rem] relative overflow-hidden shadow-lg">
+                           <div className="absolute top-0 right-0 w-32 h-32 bg-[#27bea5] rounded-full blur-[50px] opacity-20 -translate-y-1/2 translate-x-1/2"></div>
+                           <div className="relative z-10">
+                              <h4 className="font-bold text-[#27bea5] mb-3 flex items-center gap-2">
+                                 <Lightbulb className="w-5 h-5" /> Recomendación Táctica
+                              </h4>
+                              <p className="text-lg font-light leading-relaxed">{deepDiveReport.recommendation}</p>
+                           </div>
+                        </div>
                     </div>
-                 </div>
+                 ) : (
+                    hasAiAccess && (
+                        <div className="flex flex-col items-center justify-center py-12 text-center text-slate-400">
+                            <Loader2 className="w-8 h-8 animate-spin mb-4 text-[#27bea5]" />
+                            <p className="font-medium">El Analista Virtual está revisando los datos...</p>
+                        </div>
+                    )
+                 )}
               </div>
 
               {/* Footer Actions */}
               <div className="p-6 border-t border-slate-100 flex justify-end gap-3 bg-white rounded-b-[2.5rem]">
                   <button 
-                    onClick={() => handleExportPdf(deepDiveRef, `Reporte_${deepDiveReport.chartTitle}`)}
+                    onClick={() => handleExportPdf(deepDiveRef, `Reporte_${deepDiveReport?.chartTitle || 'Detalle'}`)}
                     className="px-6 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 flex items-center gap-2"
                   >
                     <Download className="w-4 h-4" /> Exportar PDF
                   </button>
                   <button 
-                    onClick={() => setDeepDiveReport(null)}
+                    onClick={() => {
+                        setDeepDiveReport(null);
+                        setDeepDiveVisual(null);
+                    }}
                     className="px-6 py-3 rounded-xl bg-[#1c2938] text-white font-bold hover:bg-[#27bea5] transition-colors"
                   >
                     Cerrar
