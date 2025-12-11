@@ -87,6 +87,17 @@ export interface HourlyRateConfig {
   calculatedRate: number;
 }
 
+// NEW: Advanced Fiscal Configuration for Panama
+export interface FiscalConfig {
+  entityType: 'NATURAL' | 'JURIDICA';
+  companyForm?: 'SA' | 'SRL' | 'SAS' | 'EMI' | 'OTHER'; 
+  specialRegime: 'NONE' | 'MICRO' | 'ZONA_FRANCA' | 'CIUDAD_SABER';
+  annualRevenue: number; // Projected or Real
+  declaredCapital: number; // For Aviso Operación
+  hasEmployees: boolean; // For CSS
+  itbmsRegistered: boolean; // Manual override
+}
+
 export interface UserProfile {
   id: string;
   name: string;
@@ -96,8 +107,11 @@ export interface UserProfile {
   taxId: string; // NIF, RFC, CUIT
   address?: string;
   country?: string;
-  fiscalRegime?: string; // e.g. "Regimen Simplificado"
+  fiscalRegime?: string; // Legacy string, kept for backward compat
   
+  // NEW: Structured Fiscal Profile
+  fiscalConfig?: FiscalConfig;
+
   // Branding
   branding?: BrandingConfig;
   

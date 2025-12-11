@@ -1,13 +1,13 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Building2, MapPin, CreditCard, Palette, UploadCloud, 
   Save, Crown, Calendar, Globe,
   Coins, Sparkles, Key, Eye, EyeOff, ShieldCheck,
   Check, Zap, Loader2, CheckCircle2, XCircle, AlertTriangle, Lock, ArrowRight,
-  ChevronRight, FileText
+  ChevronRight, FileText, Scale, TrendingUp, HelpCircle, Calculator
 } from 'lucide-react';
-import { UserProfile, PaymentIntegration, ProfileType } from '../types';
+import { UserProfile, PaymentIntegration, ProfileType, FiscalConfig } from '../types';
 import { testAiConnection } from '../services/geminiService';
 
 interface UserProfileSettingsProps {
@@ -23,10 +23,40 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
   const [testStatus, setTestStatus] = useState<{ [key: string]: 'IDLE' | 'LOADING' | 'SUCCESS' | 'ERROR' }>({});
   const [activePaymentTab, setActivePaymentTab] = useState<'PAGUELOFACIL' | 'YAPPY'>('PAGUELOFACIL');
 
+  // Initialize fiscal config if missing
+  useEffect(() => {
+    if (!profile.fiscalConfig) {
+      setProfile(prev => ({
+        ...prev,
+        fiscalConfig: {
+          entityType: prev.type === 'Empresa (SAS/SL)' ? 'JURIDICA' : 'NATURAL',
+          specialRegime: 'NONE',
+          annualRevenue: 0,
+          declaredCapital: 0,
+          hasEmployees: false,
+          itbmsRegistered: false,
+          companyForm: 'SA'
+        }
+      }));
+    }
+  }, []);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // --- HANDLERS ---
 
   const handleInputChange = (field: keyof UserProfile, value: any) => {
     setProfile(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleFiscalChange = (field: keyof FiscalConfig, value: any) => {
+    setProfile(prev => ({
+      ...prev,
+      fiscalConfig: {
+        ...(prev.fiscalConfig as FiscalConfig),
+        [field]: value
+      }
+    }));
   };
 
   const handleBrandingChange = (field: keyof any, value: any) => {
@@ -65,61 +95,36 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
     });
   };
 
-  // Smart Logic for Coexistence
   const handlePaymentConfigChange = (field: keyof PaymentIntegration, value: string) => {
     setProfile(prev => {
       const currentInt = prev.paymentIntegration || { provider: 'PAGUELOFACIL', enabled: true };
-      
-      // Update specific field
       const updatedInt = { ...currentInt, [field]: value };
-      
-      // Check which services are fully configured
       const hasPaguelo = !!updatedInt.cclw && !!updatedInt.token;
       const hasYappy = !!updatedInt.yappyMerchantId && !!updatedInt.yappySecretKey;
       
-      // Determine provider mode: If both present -> BOTH
       let newProvider: 'PAGUELOFACIL' | 'YAPPY' | 'BOTH' = updatedInt.provider;
-      
-      if (hasPaguelo && hasYappy) {
-        newProvider = 'BOTH';
-      } else if (hasYappy) {
-        newProvider = 'YAPPY';
-      } else if (hasPaguelo) {
-        newProvider = 'PAGUELOFACIL';
-      }
+      if (hasPaguelo && hasYappy) newProvider = 'BOTH';
+      else if (hasYappy) newProvider = 'YAPPY';
+      else if (hasPaguelo) newProvider = 'PAGUELOFACIL';
 
-      return {
-        ...prev,
-        paymentIntegration: {
-          ...updatedInt,
-          provider: newProvider
-        }
-      };
+      return { ...prev, paymentIntegration: { ...updatedInt, provider: newProvider } };
     });
   };
 
   const runConnectionTest = async (provider: 'gemini' | 'openai') => {
     const key = profile.apiKeys?.[provider];
     if (!key) return;
-
     setTestStatus(prev => ({ ...prev, [provider]: 'LOADING' }));
     const success = await testAiConnection(provider, key);
     setTestStatus(prev => ({ ...prev, [provider]: success ? 'SUCCESS' : 'ERROR' }));
-    
-    if (success) {
-      setTimeout(() => {
-        setTestStatus(prev => ({ ...prev, [provider]: 'IDLE' }));
-      }, 3000);
-    }
+    if (success) setTimeout(() => setTestStatus(prev => ({ ...prev, [provider]: 'IDLE' })), 3000);
   };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        handleBrandingChange('logoUrl', reader.result as string);
-      };
+      reader.onloadend = () => handleBrandingChange('logoUrl', reader.result as string);
       reader.readAsDataURL(file);
     }
   };
@@ -127,10 +132,8 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
   const saveChanges = async () => {
     setIsSaving(true);
     setSaveStatus('IDLE');
-    
     try {
       await onUpdate(profile);
-      
       setSaveStatus('SUCCESS');
       setTimeout(() => setSaveStatus('IDLE'), 3000);
     } catch (error) {
@@ -141,7 +144,68 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
     }
   };
 
-  // Helper statuses for UI
+  // --- FISCAL CALCULATIONS (PANAMA LOGIC) ---
+  const fiscalPreview = useMemo(() => {
+    const config = profile.fiscalConfig || {} as FiscalConfig;
+    const isNatural = config.entityType === 'NATURAL';
+    const revenue = config.annualRevenue || 0;
+    const capital = config.declaredCapital || 0;
+
+    // 1. ISR Logic
+    let isrRate = "25% (Tasa Fija)";
+    let isrDescription = "Impuesto sobre la Renta Corporativo estándar.";
+    
+    if (isNatural) {
+        if (revenue <= 11000) {
+            isrRate = "0% (Exento)";
+            isrDescription = "Renta neta gravable hasta B/.11,000.";
+        } else if (revenue <= 50000) {
+            isrRate = "15% (Escalonado)";
+            isrDescription = "15% sobre el excedente de B/.11,000.";
+        } else {
+            isrRate = "25% (Escalonado)";
+            isrDescription = "25% sobre excedente de 50k (Primeros 50k pagan aprox $5,850).";
+        }
+    }
+
+    // 2. Aviso de Operación
+    let avisoOp = 0;
+    if (isNatural) {
+        // Personas naturales solo pagan si capital > 10k usualmente, pero simplificado:
+        avisoOp = 0; // Often exempt unless substantial
+    } else {
+        if (config.specialRegime === 'MICRO' && capital < 10000) {
+            avisoOp = 0;
+        } else {
+            avisoOp = capital * 0.02;
+            if (avisoOp < 100) avisoOp = 100;
+            if (avisoOp > 60000) avisoOp = 60000;
+        }
+    }
+    
+    // Zona Franca Exemption
+    if (config.specialRegime === 'ZONA_FRANCA' || config.specialRegime === 'CIUDAD_SABER') {
+        avisoOp = 0;
+        isrDescription = "Exenciones especiales aplican según ley de Zona Franca.";
+        isrRate = "Variable/Exento";
+    }
+
+    // 3. CAIR
+    const cairApplicable = !isNatural && revenue > 1500000;
+
+    // 4. ITBMS
+    // Threshold is 36,000 annual revenue usually
+    const itbmsRequired = revenue > 36000 || config.itbmsRegistered;
+
+    return {
+        isrRate,
+        isrDescription,
+        avisoOp,
+        cairApplicable,
+        itbmsRequired
+    };
+  }, [profile.fiscalConfig]);
+
   const isPagueloConfigured = !!profile.paymentIntegration?.cclw && !!profile.paymentIntegration?.token;
   const isYappyConfigured = !!profile.paymentIntegration?.yappyMerchantId && !!profile.paymentIntegration?.yappySecretKey;
 
@@ -225,36 +289,6 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                  </div>
                </div>
                
-               {/* ENTITY TYPE SELECTOR */}
-               <div className="space-y-2">
-                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tipo de Entidad Legal</label>
-                 <div className="relative group/input">
-                    <select 
-                      value={profile.fiscalRegime || 'Persona Natural'}
-                      onChange={(e) => {
-                        const regime = e.target.value;
-                        let newType = ProfileType.FREELANCE;
-                        // Determine type based on regime selection
-                        if (regime === 'Sociedad Anónima' || regime === 'Sociedad de Emprendimiento') {
-                           newType = ProfileType.COMPANY;
-                        }
-                        
-                        setProfile(prev => ({
-                           ...prev,
-                           fiscalRegime: regime,
-                           type: newType
-                        }));
-                      }}
-                      className="w-full p-4 bg-slate-50/50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-[#27bea5] focus:bg-white focus:border-transparent outline-none transition-all appearance-none cursor-pointer text-slate-600 font-medium"
-                    >
-                      <option value="Persona Natural">Persona Natural</option>
-                      <option value="Sociedad Anónima">Sociedad Anónima (S.A.)</option>
-                      <option value="Sociedad de Emprendimiento">Sociedad de Emprendimiento</option>
-                    </select>
-                    <ChevronRight className="absolute right-4 top-4 w-5 h-5 text-slate-300 rotate-90 pointer-events-none" />
-                 </div>
-               </div>
-
                <div className="space-y-2">
                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">ID Fiscal (RFC/NIF)</label>
                  <input 
@@ -263,6 +297,7 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                    className="w-full p-4 bg-slate-50/50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-[#27bea5] focus:bg-white focus:border-transparent outline-none transition-all font-mono text-slate-600"
                  />
                </div>
+               
                <div className="space-y-2">
                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">País de Operación</label>
                  <div className="relative group/input">
@@ -290,6 +325,146 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                     />
                  </div>
                </div>
+             </div>
+          </div>
+
+          {/* NEW: FISCAL PROFILE CARD (PANAMA SPECIFIC) */}
+          <div className="bg-white p-8 rounded-[2rem] shadow-sm hover:shadow-md transition-shadow duration-300 border border-slate-50 relative overflow-hidden">
+             <div className="flex items-center gap-3 mb-6">
+                <div className="p-2 bg-indigo-50 rounded-xl text-indigo-500">
+                   <Scale className="w-6 h-6" />
+                </div>
+                <div>
+                   <h3 className="text-xl font-bold text-[#1c2938]">Perfil Fiscal y Obligaciones</h3>
+                   <p className="text-xs text-slate-400">Configuración para reportes de impuestos (Panamá)</p>
+                </div>
+             </div>
+
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Configuration Column */}
+                <div className="space-y-5">
+                   <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tipo de Entidad</label>
+                      <div className="grid grid-cols-2 gap-2 bg-slate-50 p-1 rounded-xl">
+                         <button 
+                           onClick={() => handleFiscalChange('entityType', 'NATURAL')}
+                           className={`py-2 px-3 rounded-lg text-xs font-bold transition-all ${profile.fiscalConfig?.entityType === 'NATURAL' ? 'bg-white shadow-sm text-[#1c2938]' : 'text-slate-400 hover:text-slate-600'}`}
+                         >
+                           Persona Natural
+                         </button>
+                         <button 
+                           onClick={() => handleFiscalChange('entityType', 'JURIDICA')}
+                           className={`py-2 px-3 rounded-lg text-xs font-bold transition-all ${profile.fiscalConfig?.entityType === 'JURIDICA' ? 'bg-white shadow-sm text-[#1c2938]' : 'text-slate-400 hover:text-slate-600'}`}
+                         >
+                           Jurídica (Sociedad)
+                         </button>
+                      </div>
+                   </div>
+
+                   {profile.fiscalConfig?.entityType === 'JURIDICA' && (
+                      <div className="space-y-2 animate-in fade-in">
+                         <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tipo de Sociedad</label>
+                         <select 
+                           value={profile.fiscalConfig?.companyForm || 'SA'}
+                           onChange={(e) => handleFiscalChange('companyForm', e.target.value)}
+                           className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-medium text-slate-600 outline-none focus:border-indigo-500"
+                         >
+                            <option value="SA">Sociedad Anónima (S.A.)</option>
+                            <option value="SRL">S.R.L. (Responsabilidad Limitada)</option>
+                            <option value="EMI">Sociedad de Emprendimiento (S. de R.L.)</option>
+                            <option value="SAS">S.A.S.</option>
+                         </select>
+                      </div>
+                   )}
+
+                   <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Régimen Especial</label>
+                      <select 
+                        value={profile.fiscalConfig?.specialRegime || 'NONE'}
+                        onChange={(e) => handleFiscalChange('specialRegime', e.target.value)}
+                        className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-medium text-slate-600 outline-none focus:border-indigo-500"
+                      >
+                         <option value="NONE">Ninguno (Régimen General)</option>
+                         <option value="MICRO">Microempresa (Ampyme)</option>
+                         <option value="ZONA_FRANCA">Zona Franca / Panamá Pacífico</option>
+                         <option value="CIUDAD_SABER">Ciudad del Saber</option>
+                      </select>
+                   </div>
+
+                   <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                         <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Ingreso Anual Est.</label>
+                         <div className="relative">
+                            <span className="absolute left-3 top-3 text-slate-400">$</span>
+                            <input 
+                              type="number"
+                              value={profile.fiscalConfig?.annualRevenue || 0}
+                              onChange={(e) => handleFiscalChange('annualRevenue', parseFloat(e.target.value))}
+                              className="w-full pl-6 p-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-600 outline-none focus:border-indigo-500"
+                            />
+                         </div>
+                      </div>
+                      
+                      {/* Capital only relevant for Corporations mostly */}
+                      <div className={`space-y-2 ${profile.fiscalConfig?.entityType === 'NATURAL' ? 'opacity-50 pointer-events-none' : ''}`}>
+                         <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Capital Suscrito</label>
+                         <div className="relative">
+                            <span className="absolute left-3 top-3 text-slate-400">$</span>
+                            <input 
+                              type="number"
+                              value={profile.fiscalConfig?.declaredCapital || 0}
+                              onChange={(e) => handleFiscalChange('declaredCapital', parseFloat(e.target.value))}
+                              className="w-full pl-6 p-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-600 outline-none focus:border-indigo-500"
+                            />
+                         </div>
+                      </div>
+                   </div>
+                </div>
+
+                {/* Simulation / Results Column */}
+                <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100 flex flex-col justify-between">
+                   <div>
+                      <h4 className="text-sm font-bold text-[#1c2938] mb-4 flex items-center gap-2">
+                         <Calculator className="w-4 h-4 text-indigo-500" /> Simulador de Cargas
+                      </h4>
+                      
+                      <div className="space-y-4">
+                         <div className="flex justify-between items-start pb-3 border-b border-slate-200">
+                            <div>
+                               <p className="text-xs font-bold text-slate-500 uppercase">ISR (Renta)</p>
+                               <p className="text-xs text-slate-400 mt-0.5">{fiscalPreview.isrDescription}</p>
+                            </div>
+                            <span className="text-sm font-bold text-[#1c2938]">{fiscalPreview.isrRate}</span>
+                         </div>
+
+                         <div className="flex justify-between items-center pb-3 border-b border-slate-200">
+                            <div>
+                               <p className="text-xs font-bold text-slate-500 uppercase">Aviso de Operación</p>
+                               <p className="text-xs text-slate-400 mt-0.5">Impuesto de licencia comercial (anual)</p>
+                            </div>
+                            <span className="text-sm font-bold text-[#1c2938]">
+                               {fiscalPreview.avisoOp > 0 ? `$${fiscalPreview.avisoOp.toLocaleString()}` : 'Exento'}
+                            </span>
+                         </div>
+
+                         <div className="flex justify-between items-center">
+                            <p className="text-xs font-bold text-slate-500 uppercase">Registro ITBMS (7%)</p>
+                            <span className={`text-xs font-bold px-2 py-1 rounded ${fiscalPreview.itbmsRequired ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
+                               {fiscalPreview.itbmsRequired ? 'Obligatorio' : 'Opcional'}
+                            </span>
+                         </div>
+                      </div>
+                   </div>
+
+                   {fiscalPreview.cairApplicable && (
+                      <div className="mt-4 bg-amber-50 p-3 rounded-xl border border-amber-100 flex items-start gap-2">
+                         <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                         <p className="text-xs text-amber-800 leading-tight">
+                            <strong>Atención CAIR:</strong> Tus ingresos superan $1.5M. Podrías estar sujeto al Cálculo Alternativo del Impuesto sobre la Renta.
+                         </p>
+                      </div>
+                   )}
+                </div>
              </div>
           </div>
 
