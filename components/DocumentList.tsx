@@ -116,27 +116,13 @@ const DocumentList: React.FC<DocumentListProps> = ({
     let isrRateDisplay = '';
 
     if (isJuridica) {
-        // Simple 25% for Corporations (simplified, ignoring expenses deduction for this view to show "Provision")
-        // NOTE: In reality ISR is on Net Income (Revenue - Expenses). 
-        // Here we show a "Provision on Revenue" assuming a healthy margin or just alerting the user.
-        // A safer provision for cash flow is often 5-10% of Gross if expenses are unknown, 
-        // but let's stick to the statutory 25% of Net Income to be strict, or 0 if we assume margins eat it.
-        // Better approach: Show it as a liability on the *profit*? 
-        // Let's assume a standard 20% profit margin for estimation if no expenses tracked, 
-        // OR better: Just calculate 25% of the Net Income here as a "Max Liability" visual if they had 0 expenses.
-        // To be helpful: "Reserva ISR (Est. 25% de utilidad)". 
-        // Let's use a flat 5% of Gross as a 'Safe Withholding' heuristic for businesses, or calculate strictly if expenses exist.
-        
-        // Let's use the strict calculation on Net Income (Revenue) for now, but label it "Base Imponible Max".
+        // Simple 25% for Corporations
         estimatedISR = netIncome * 0.25; 
         isrRateDisplay = '25% (Jurídica)';
     } else {
         // Persona Natural Progressive
-        // 0 - 11k: 0%
-        // 11k - 50k: 15%
-        // >50k: 25%
         if (netIncome > 50000) {
-            estimatedISR = ((netIncome - 50000) * 0.25) + 5850; // 5850 is the tax for the first 50k
+            estimatedISR = ((netIncome - 50000) * 0.25) + 5850; 
             isrRateDisplay = 'Escalonado 25%';
         } else if (netIncome > 11000) {
             estimatedISR = (netIncome - 11000) * 0.15;
@@ -493,10 +479,8 @@ const DocumentList: React.FC<DocumentListProps> = ({
         </div>
       )}
 
-      {/* KPI Section - Standard (Only show if no fiscal config or if minimized) */}
-      {!fiscalReality && (
-        <div className="hidden md:grid grid-cols-4 gap-6">
-          {/* ... Existing KPI Cards ... */}
+      {/* KPI Section - Standard (Always Visible) */}
+      <div className="hidden md:grid grid-cols-4 gap-6">
           <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 relative overflow-hidden group hover:shadow-md transition-all">
              <div className="absolute top-0 right-0 w-24 h-24 bg-green-50 rounded-full -translate-y-1/2 translate-x-1/2"></div>
              <div className="relative z-10">
@@ -555,8 +539,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
                 </div>
              </div>
           </div>
-        </div>
-      )}
+      </div>
 
       {/* SEARCH BAR */}
       <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-50 overflow-hidden flex flex-col md:flex-row p-2 gap-4">
