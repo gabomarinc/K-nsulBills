@@ -20,7 +20,8 @@ interface ClientListProps {
 interface AggregatedClient {
   name: string;
   taxId: string;
-  totalRevenue: number;
+  totalInvoiced: number; // Changed from totalRevenue (collected) to totalInvoiced
+  totalCollected: number; // Kept for status logic
   invoiceCount: number;
   quoteCount: number;
   quotesWon: number; 
@@ -51,7 +52,8 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
         clientMap.set(nameKey, {
             name: nameKey,
             taxId: dbClient.taxId || 'N/A',
-            totalRevenue: 0,
+            totalInvoiced: 0,
+            totalCollected: 0,
             invoiceCount: 0,
             quoteCount: 0,
             quotesWon: 0,
@@ -72,7 +74,8 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
         clientMap.set(nameKey, {
           name: nameKey,
           taxId: inv.clientTaxId || 'N/A',
-          totalRevenue: 0,
+          totalInvoiced: 0,
+          totalCollected: 0,
           invoiceCount: 0,
           quoteCount: 0,
           quotesWon: 0,
@@ -94,55 +97,62 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
       if (inv.clientTaxId) client.taxId = inv.clientTaxId;
 
       if (inv.type === 'Invoice') {
-        client.invoiceCount++;
+        // Only count valid invoices for "Invoiced" stats (exclude drafts/rejected for value, but maybe keep for activity?)
+        // Let's exclude Borrador and Rechazada from "Portfolio Value"
+        if (inv.status !== 'Borrador' && inv.status !== 'Rechazada') {
+            client.invoiceCount++;
+            client.totalInvoiced += inv.total; // SUM OF INVOICE TOTALS (Not just collected)
+        }
         
+        // Track Collection for Status Determination
         let collected = 0;
-        // Logic: Use amountPaid if available (Partial/Full via payment flow)
         if (inv.amountPaid && inv.amountPaid > 0) {
             collected = inv.amountPaid;
-        } 
-        // Fallback: If status is 'Pagada'/'Aceptada' but no amountPaid (Legacy/QuickAction), assume total
-        else if (inv.status === 'Pagada' || inv.status === 'Aceptada') {
+        } else if (inv.status === 'Pagada' || inv.status === 'Aceptada') {
             collected = inv.total;
         }
 
         if (collected > 0) {
-          client.totalRevenue += collected;
+          client.totalCollected += collected;
           client.status = 'CLIENT';
         }
       } else if (inv.type === 'Quote') {
         client.quoteCount++;
         if (inv.status === 'Aceptada') {
-             client.status = 'CLIENT';
+             client.status = 'CLIENT'; // Becomes client if quote accepted
              client.quotesWon++;
         }
       }
     });
 
     const allClients = Array.from(clientMap.values());
-    const sortedByRevenue = [...allClients].sort((a, b) => b.totalRevenue - a.totalRevenue);
+    const sortedByRevenue = [...allClients].sort((a, b) => b.totalInvoiced - a.totalInvoiced);
     const vipCount = Math.ceil(allClients.length * 0.2); 
-    const vipThreshold = sortedByRevenue[vipCount - 1]?.totalRevenue || 0;
+    const vipThreshold = sortedByRevenue[vipCount - 1]?.totalInvoiced || 0;
 
     const processedClients = allClients.map(c => {
-      const avgTicket = c.invoiceCount > 0 ? c.totalRevenue / c.invoiceCount : 0;
+      // Avg Ticket = Total Invoiced / Count
+      const avgTicket = c.invoiceCount > 0 ? c.totalInvoiced / c.invoiceCount : 0;
       const winRate = c.quoteCount > 0 ? (c.quotesWon / c.quoteCount) * 100 : 0;
-      // VIP logic: Must be active client AND (have top revenue OR be manually set as VIP via rules)
-      const isVip = c.status === 'CLIENT' && c.totalRevenue > 0 && c.totalRevenue >= vipThreshold;
+      // VIP logic: Top Invoiced clients
+      const isVip = c.status === 'CLIENT' && c.totalInvoiced > 0 && c.totalInvoiced >= vipThreshold;
       return { ...c, avgTicket, winRate, isVip };
     });
 
-    const totalPortfolioValue = processedClients.reduce((acc, c) => acc + c.totalRevenue, 0);
+    // Global Stats
+    const totalPortfolioValue = processedClients.reduce((acc, c) => acc + c.totalInvoiced, 0); // Based on Invoices
     const totalActiveClients = processedClients.filter(c => c.status === 'CLIENT').length;
-    const avgGlobalTicket = totalActiveClients > 0 ? totalPortfolioValue / totalActiveClients : 0;
     
-    const totalQuotes = processedClients.reduce((acc, c) => acc + c.quoteCount, 0);
-    const totalWon = processedClients.reduce((acc, c) => acc + c.quotesWon, 0);
-    const globalWinRate = totalQuotes > 0 ? (totalWon / totalQuotes) * 100 : 0;
+    // Global Avg Ticket (Weighted by total invoice count)
+    const totalInvoicesCount = processedClients.reduce((acc, c) => acc + c.invoiceCount, 0);
+    const avgGlobalTicket = totalInvoicesCount > 0 ? totalPortfolioValue / totalInvoicesCount : 0;
+    
+    // Radar Logic: High Potential Clients (Win Rate > 50%)
+    const highPotentialClients = processedClients.filter(c => c.winRate > 50).length;
 
     return { 
       clients: processedClients, 
-      stats: { totalPortfolioValue, totalActiveClients, avgGlobalTicket, globalWinRate } 
+      stats: { totalPortfolioValue, totalActiveClients, avgGlobalTicket, highPotentialClients } 
     };
 
   }, [invoices, dbClients]);
@@ -158,9 +168,8 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
   }).sort((a, b) => {
     if (a.isVip && !b.isVip) return -1;
     if (!a.isVip && b.isVip) return 1;
-    // Newest interaction first if revenue matches
-    if (b.totalRevenue === a.totalRevenue) return b.lastInteraction.getTime() - a.lastInteraction.getTime();
-    return b.totalRevenue - a.totalRevenue;
+    if (b.totalInvoiced === a.totalInvoiced) return b.lastInteraction.getTime() - a.lastInteraction.getTime();
+    return b.totalInvoiced - a.totalInvoiced;
   });
 
   const getInitials = (name: string) => name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
@@ -203,19 +212,19 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
              </div>
           </div>
 
-          {/* Card 2: Portfolio Value */}
+          {/* Card 2: Portfolio Value (INVOICED BASED) */}
           <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 relative overflow-hidden group hover:shadow-md transition-all">
              <div className="absolute top-0 right-0 w-24 h-24 bg-amber-50 rounded-full -translate-y-1/2 translate-x-1/2"></div>
              <div className="relative z-10">
                 <div className="flex items-center gap-3 mb-4">
                    <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl"><Wallet className="w-6 h-6" /></div>
                 </div>
-                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Valor Cartera</p>
+                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Valor Cartera (Fac.)</p>
                 <h3 className="text-2xl font-bold text-[#1c2938] mt-1 tracking-tight">{currencySymbol} {stats.totalPortfolioValue.toLocaleString()}</h3>
              </div>
           </div>
 
-          {/* Card 3: Avg Ticket */}
+          {/* Card 3: Avg Ticket (INVOICED BASED) */}
           <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 relative overflow-hidden group hover:shadow-md transition-all">
              <div className="absolute top-0 right-0 w-24 h-24 bg-purple-50 rounded-full -translate-y-1/2 translate-x-1/2"></div>
              <div className="relative z-10">
@@ -227,7 +236,7 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
              </div>
           </div>
 
-          {/* Card 4: AI Insight */}
+          {/* Card 4: Radar (REAL DATA) */}
           <div className="bg-[#1c2938] p-6 rounded-[2rem] shadow-lg relative overflow-hidden group text-white">
              <div className="absolute top-0 right-0 w-32 h-32 bg-[#27bea5] rounded-full blur-[40px] opacity-20 -translate-y-1/2 translate-x-1/2"></div>
              <div className="relative z-10 h-full flex flex-col justify-between">
@@ -237,20 +246,18 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
                 </div>
                 
                 <div>
-                   <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Radar de Crecimiento</p>
-                   {hasAiAccess ? (
+                   <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Radar de Oportunidad</p>
+                   {stats.highPotentialClients > 0 ? (
                       <>
-                         <h3 className="text-lg font-bold leading-tight mb-1">Oportunidades</h3>
+                         <h3 className="text-lg font-bold leading-tight mb-1">Alta Probabilidad</h3>
                          <p className="text-xs text-[#27bea5] font-medium flex items-center gap-1">
-                            <Target className="w-3 h-3" /> 3 Clientes con potencial
+                            <Target className="w-3 h-3" /> {stats.highPotentialClients} Clientes con {'>'}50% Conv.
                          </p>
                       </>
                    ) : (
                       <>
-                         <h3 className="text-lg font-bold leading-tight mb-2 text-slate-300">Análisis Bloqueado</h3>
-                         <p className="text-[10px] text-rose-400 font-bold bg-rose-500/10 px-2 py-1 rounded border border-rose-500/20 inline-block">
-                            Configura tu API Key
-                         </p>
+                         <h3 className="text-lg font-bold leading-tight mb-2 text-slate-300">Sin Datos Suficientes</h3>
+                         <p className="text-[10px] text-slate-400 font-medium">Genera cotizaciones para activar el radar.</p>
                       </>
                    )}
                 </div>
@@ -302,7 +309,7 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
                         <div className="space-y-3">
                           <div className="flex justify-between items-center text-sm">
                               <span className="text-slate-400 font-medium">Facturado Total</span>
-                              <span className="font-bold text-[#1c2938]">{currencySymbol} {client.totalRevenue.toLocaleString()}</span>
+                              <span className="font-bold text-[#1c2938]">{currencySymbol} {client.totalInvoiced.toLocaleString()}</span>
                           </div>
                         </div>
                       </div>
