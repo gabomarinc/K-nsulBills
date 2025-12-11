@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+
+import React, { useState, useMemo } from 'react';
 import { 
   Search, Plus, FileText, CheckCircle2, 
   Clock, TrendingUp, ChevronRight,
   ArrowUpRight, PieChart, Filter, CalendarDays, Wallet,
   FileBadge, LayoutList, LayoutGrid, MoreHorizontal,
   Send, AlertCircle, Sparkles, DollarSign, Repeat, Eye,
-  Activity, MessageCircle, Archive, Trash2, Lock, Edit2, XCircle
+  Activity, MessageCircle, Archive, Trash2, Lock, Edit2, XCircle,
+  Landmark, Calculator, ShieldCheck
 } from 'lucide-react';
 import { Invoice, InvoiceStatus, UserProfile } from '../types';
 
@@ -72,6 +74,93 @@ const DocumentList: React.FC<DocumentListProps> = ({
   const totalPipeline = invoices
     .filter(i => i.type === 'Quote' && i.status !== 'Rechazada')
     .reduce((acc, curr) => acc + curr.total, 0);
+
+  // --- FISCAL REALITY ENGINE (PANAMA) ---
+  const fiscalReality = useMemo(() => {
+    if (!currentUser?.fiscalConfig) return null;
+
+    const config = currentUser.fiscalConfig;
+    const isJuridica = config.entityType === 'JURIDICA';
+    
+    // 1. Calculate Collected Bases from Paid Invoices
+    let grossCollected = 0;
+    let collectedITBMS = 0;
+    
+    invoices.forEach(inv => {
+        if (inv.type !== 'Invoice') return;
+        
+        // Determine amount actually collected for this invoice
+        let collectedAmount = 0;
+        if (inv.amountPaid && inv.amountPaid > 0) collectedAmount = inv.amountPaid;
+        else if (inv.status === 'Pagada' || inv.status === 'Aceptada') collectedAmount = inv.total;
+        
+        if (collectedAmount > 0) {
+            grossCollected += collectedAmount;
+            
+            // Reverse engineer ITBMS from the collected amount based on invoice items tax average
+            // If items have mixed tax, this is an approximation based on weighted average
+            const totalTax = inv.items.reduce((sum, item) => sum + (item.price * item.quantity * (item.tax / 100)), 0);
+            const totalBase = inv.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            const effectiveTaxRate = totalBase > 0 ? totalTax / totalBase : 0;
+            
+            // collectedAmount = base * (1 + rate)  =>  base = collected / (1 + rate)
+            const base = collectedAmount / (1 + effectiveTaxRate);
+            collectedITBMS += (collectedAmount - base);
+        }
+    });
+
+    const netIncome = grossCollected - collectedITBMS;
+
+    // 2. Estimate ISR (Impuesto Sobre la Renta)
+    let estimatedISR = 0;
+    let isrRateDisplay = '';
+
+    if (isJuridica) {
+        // Simple 25% for Corporations (simplified, ignoring expenses deduction for this view to show "Provision")
+        // NOTE: In reality ISR is on Net Income (Revenue - Expenses). 
+        // Here we show a "Provision on Revenue" assuming a healthy margin or just alerting the user.
+        // A safer provision for cash flow is often 5-10% of Gross if expenses are unknown, 
+        // but let's stick to the statutory 25% of Net Income to be strict, or 0 if we assume margins eat it.
+        // Better approach: Show it as a liability on the *profit*? 
+        // Let's assume a standard 20% profit margin for estimation if no expenses tracked, 
+        // OR better: Just calculate 25% of the Net Income here as a "Max Liability" visual if they had 0 expenses.
+        // To be helpful: "Reserva ISR (Est. 25% de utilidad)". 
+        // Let's use a flat 5% of Gross as a 'Safe Withholding' heuristic for businesses, or calculate strictly if expenses exist.
+        
+        // Let's use the strict calculation on Net Income (Revenue) for now, but label it "Base Imponible Max".
+        estimatedISR = netIncome * 0.25; 
+        isrRateDisplay = '25% (Jurídica)';
+    } else {
+        // Persona Natural Progressive
+        // 0 - 11k: 0%
+        // 11k - 50k: 15%
+        // >50k: 25%
+        if (netIncome > 50000) {
+            estimatedISR = ((netIncome - 50000) * 0.25) + 5850; // 5850 is the tax for the first 50k
+            isrRateDisplay = 'Escalonado 25%';
+        } else if (netIncome > 11000) {
+            estimatedISR = (netIncome - 11000) * 0.15;
+            isrRateDisplay = 'Escalonado 15%';
+        } else {
+            estimatedISR = 0;
+            isrRateDisplay = 'Exento (<11k)';
+        }
+    }
+
+    // 3. Final Numbers
+    const governmentShare = collectedITBMS + estimatedISR;
+    const yourMoney = grossCollected - governmentShare;
+
+    return {
+        grossCollected,
+        collectedITBMS,
+        estimatedISR,
+        yourMoney,
+        isrRateDisplay,
+        governmentShare
+    };
+  }, [invoices, currentUser?.fiscalConfig]);
+
 
   const filteredDocs = invoices.filter(doc => {
     const matchesSearch = doc.clientName.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -336,71 +425,138 @@ const DocumentList: React.FC<DocumentListProps> = ({
         </div>
       </div>
 
-      {/* KPI Section */}
-      <div className="hidden md:grid grid-cols-4 gap-6">
-        {/* Card 1 */}
-        <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 relative overflow-hidden group hover:shadow-md transition-all">
-           <div className="absolute top-0 right-0 w-24 h-24 bg-green-50 rounded-full -translate-y-1/2 translate-x-1/2"></div>
-           <div className="relative z-10">
-              <div className="flex items-center gap-3 mb-4">
-                 <div className="p-2.5 bg-green-50 text-green-600 rounded-xl"><Wallet className="w-6 h-6" /></div>
-                 <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full flex items-center"><ArrowUpRight className="w-3 h-3 mr-1" /> Real</span>
-              </div>
-              <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Impacto Real</p>
-              <h3 className="text-2xl font-bold text-[#1c2938] mt-1 tracking-tight">{currencySymbol} {totalPaid.toLocaleString()}</h3>
-           </div>
-        </div>
-        {/* Card 2 */}
-        <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 relative overflow-hidden group hover:shadow-md transition-all">
-           <div className="absolute top-0 right-0 w-24 h-24 bg-amber-50 rounded-full -translate-y-1/2 translate-x-1/2"></div>
-           <div className="relative z-10">
-              <div className="flex items-center gap-3 mb-4">
-                 <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl"><Clock className="w-6 h-6" /></div>
-              </div>
-              <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Por Cobrar</p>
-              <h3 className="text-2xl font-bold text-[#1c2938] mt-1 tracking-tight">{currencySymbol} {totalPending.toLocaleString()}</h3>
-           </div>
-        </div>
-        {/* Card 3 */}
-        <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 relative overflow-hidden group hover:shadow-md transition-all">
-           <div className="absolute top-0 right-0 w-24 h-24 bg-purple-50 rounded-full -translate-y-1/2 translate-x-1/2"></div>
-           <div className="relative z-10">
-              <div className="flex items-center gap-3 mb-4">
-                 <div className="p-2.5 bg-purple-50 text-purple-600 rounded-xl"><FileBadge className="w-6 h-6" /></div>
-              </div>
-              <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">En Tubería</p>
-              <h3 className="text-2xl font-bold text-[#1c2938] mt-1 tracking-tight">{currencySymbol} {totalPipeline.toLocaleString()}</h3>
-           </div>
-        </div>
-        {/* Card 4 */}
-        <div className="bg-[#1c2938] p-6 rounded-[2rem] shadow-lg relative overflow-hidden group text-white">
-           <div className="absolute top-0 right-0 w-32 h-32 bg-[#27bea5] rounded-full blur-[40px] opacity-20 -translate-y-1/2 translate-x-1/2"></div>
-           <div className="relative z-10 h-full flex flex-col justify-between">
-              <div className="flex items-center justify-between mb-4">
-                 <div className="p-2.5 bg-white/10 text-[#27bea5] rounded-xl"><Sparkles className="w-6 h-6" /></div>
-                 {!hasAiAccess && <Lock className="w-4 h-4 text-slate-400" />}
-              </div>
-              <div>
-                 <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Predicción Inteligente</p>
-                 {hasAiAccess ? (
-                    <>
-                       <h3 className="text-lg font-bold leading-tight mb-1">Tendencia Positiva</h3>
-                       <p className="text-xs text-[#27bea5] font-medium flex items-center gap-1">
-                          <TrendingUp className="w-3 h-3" /> Se estima +15% vs mes anterior
+      {/* NEW: FISCAL REALITY CARD (Only shows if config exists) */}
+      {fiscalReality && fiscalReality.grossCollected > 0 && (
+        <div className="bg-gradient-to-r from-slate-900 to-[#1c2938] p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden text-white animate-in slide-in-from-bottom-4">
+           {/* Decor */}
+           <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500 rounded-full blur-[100px] opacity-10 -translate-y-1/2 translate-x-1/2"></div>
+           
+           <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
+              {/* Left: Reality Check */}
+              <div className="flex-1">
+                 <div className="flex items-center gap-3 mb-4">
+                    <div className="p-2 bg-amber-500/20 text-amber-400 rounded-xl border border-amber-500/20">
+                       <Landmark className="w-6 h-6" />
+                    </div>
+                    <div>
+                       <h3 className="text-xl font-bold">Realidad Fiscal</h3>
+                       <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Desglose de Recaudo Actual</p>
+                    </div>
+                 </div>
+                 
+                 <div className="grid grid-cols-3 gap-4 mt-6">
+                    <div>
+                       <p className="text-xs text-slate-400 mb-1">Recaudado (Bruto)</p>
+                       <p className="text-2xl font-bold">{currencySymbol}{fiscalReality.grossCollected.toLocaleString()}</p>
+                    </div>
+                    <div>
+                       <p className="text-xs text-slate-400 mb-1">Apartado Impuestos</p>
+                       <p className="text-2xl font-bold text-amber-400">
+                          {currencySymbol}{fiscalReality.governmentShare.toLocaleString(undefined, {maximumFractionDigits: 0})}
                        </p>
-                    </>
-                 ) : (
-                    <>
-                       <h3 className="text-lg font-bold leading-tight mb-2 text-slate-300">Función Bloqueada</h3>
-                       <p className="text-[10px] text-rose-400 font-bold bg-rose-500/10 px-2 py-1 rounded border border-rose-500/20 inline-block">
-                          Requiere API Key
-                       </p>
-                    </>
-                 )}
+                       <p className="text-[10px] text-amber-400/70">ITBMS + ISR Est.</p>
+                    </div>
+                    <div>
+                       <p className="text-xs text-slate-400 mb-1">Neto Disponible</p>
+                       <p className="text-2xl font-bold text-[#27bea5]">{currencySymbol}{fiscalReality.yourMoney.toLocaleString()}</p>
+                    </div>
+                 </div>
+              </div>
+
+              {/* Right: Tax Breakdown Visualization */}
+              <div className="w-full md:w-80 bg-white/5 rounded-2xl p-5 border border-white/10">
+                 <div className="space-y-3 text-sm">
+                    <div className="flex justify-between items-center">
+                       <span className="text-slate-300">ITBMS (7%)</span>
+                       <span className="font-mono text-white">{currencySymbol}{fiscalReality.collectedITBMS.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                       <span className="text-slate-300">ISR ({fiscalReality.isrRateDisplay})</span>
+                       <span className="font-mono text-white">{currencySymbol}{fiscalReality.estimatedISR.toLocaleString()}</span>
+                    </div>
+                    <div className="pt-3 border-t border-white/10 flex justify-between items-center">
+                       <span className="font-bold text-[#27bea5]">Dinero Tuyo</span>
+                       <span className="font-bold text-2xl text-[#27bea5]">{currencySymbol}{fiscalReality.yourMoney.toLocaleString()}</span>
+                    </div>
+                 </div>
+                 {/* Visual Bar */}
+                 <div className="mt-4 flex h-2 rounded-full overflow-hidden w-full bg-slate-800">
+                    <div className="h-full bg-amber-500" style={{ width: `${(fiscalReality.governmentShare / fiscalReality.grossCollected) * 100}%` }} title="Impuestos"></div>
+                    <div className="h-full bg-[#27bea5]" style={{ width: `${(fiscalReality.yourMoney / fiscalReality.grossCollected) * 100}%` }} title="Tu Dinero"></div>
+                 </div>
+                 <div className="flex justify-between mt-1 text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                    <span>Estado</span>
+                    <span>Empresa</span>
+                 </div>
               </div>
            </div>
         </div>
-      </div>
+      )}
+
+      {/* KPI Section - Standard (Only show if no fiscal config or if minimized) */}
+      {!fiscalReality && (
+        <div className="hidden md:grid grid-cols-4 gap-6">
+          {/* ... Existing KPI Cards ... */}
+          <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 relative overflow-hidden group hover:shadow-md transition-all">
+             <div className="absolute top-0 right-0 w-24 h-24 bg-green-50 rounded-full -translate-y-1/2 translate-x-1/2"></div>
+             <div className="relative z-10">
+                <div className="flex items-center gap-3 mb-4">
+                   <div className="p-2.5 bg-green-50 text-green-600 rounded-xl"><Wallet className="w-6 h-6" /></div>
+                   <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full flex items-center"><ArrowUpRight className="w-3 h-3 mr-1" /> Real</span>
+                </div>
+                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Impacto Real</p>
+                <h3 className="text-2xl font-bold text-[#1c2938] mt-1 tracking-tight">{currencySymbol} {totalPaid.toLocaleString()}</h3>
+             </div>
+          </div>
+          <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 relative overflow-hidden group hover:shadow-md transition-all">
+             <div className="absolute top-0 right-0 w-24 h-24 bg-amber-50 rounded-full -translate-y-1/2 translate-x-1/2"></div>
+             <div className="relative z-10">
+                <div className="flex items-center gap-3 mb-4">
+                   <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl"><Clock className="w-6 h-6" /></div>
+                </div>
+                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Por Cobrar</p>
+                <h3 className="text-2xl font-bold text-[#1c2938] mt-1 tracking-tight">{currencySymbol} {totalPending.toLocaleString()}</h3>
+             </div>
+          </div>
+          <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 relative overflow-hidden group hover:shadow-md transition-all">
+             <div className="absolute top-0 right-0 w-24 h-24 bg-purple-50 rounded-full -translate-y-1/2 translate-x-1/2"></div>
+             <div className="relative z-10">
+                <div className="flex items-center gap-3 mb-4">
+                   <div className="p-2.5 bg-purple-50 text-purple-600 rounded-xl"><FileBadge className="w-6 h-6" /></div>
+                </div>
+                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">En Tubería</p>
+                <h3 className="text-2xl font-bold text-[#1c2938] mt-1 tracking-tight">{currencySymbol} {totalPipeline.toLocaleString()}</h3>
+             </div>
+          </div>
+          <div className="bg-[#1c2938] p-6 rounded-[2rem] shadow-lg relative overflow-hidden group text-white">
+             <div className="absolute top-0 right-0 w-32 h-32 bg-[#27bea5] rounded-full blur-[40px] opacity-20 -translate-y-1/2 translate-x-1/2"></div>
+             <div className="relative z-10 h-full flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-4">
+                   <div className="p-2.5 bg-white/10 text-[#27bea5] rounded-xl"><Sparkles className="w-6 h-6" /></div>
+                   {!hasAiAccess && <Lock className="w-4 h-4 text-slate-400" />}
+                </div>
+                <div>
+                   <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Predicción Inteligente</p>
+                   {hasAiAccess ? (
+                      <>
+                         <h3 className="text-lg font-bold leading-tight mb-1">Tendencia Positiva</h3>
+                         <p className="text-xs text-[#27bea5] font-medium flex items-center gap-1">
+                            <TrendingUp className="w-3 h-3" /> Se estima +15% vs mes anterior
+                         </p>
+                      </>
+                   ) : (
+                      <>
+                         <h3 className="text-lg font-bold leading-tight mb-2 text-slate-300">Función Bloqueada</h3>
+                         <p className="text-[10px] text-rose-400 font-bold bg-rose-500/10 px-2 py-1 rounded border border-rose-500/20 inline-block">
+                            Requiere API Key
+                         </p>
+                      </>
+                   )}
+                </div>
+             </div>
+          </div>
+        </div>
+      )}
 
       {/* SEARCH BAR */}
       <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-50 overflow-hidden flex flex-col md:flex-row p-2 gap-4">
