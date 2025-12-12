@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { ParsedInvoiceData, CatalogItem, FinancialAnalysisResult, PriceAnalysisResult, DeepDiveReport } from "../types";
+import { ParsedInvoiceData, CatalogItem, FinancialAnalysisResult, PriceAnalysisResult, DeepDiveReport, DeductibilityResult } from "../types";
 
 const GEMINI_MODEL_ID = "gemini-2.5-flash";
 const OPENAI_MODEL_ID = "gpt-3.5-turbo";
@@ -229,6 +229,50 @@ export const parseExpenseImage = async (
 
   } catch (error) {
     console.error("Gemini Vision Error:", error);
+    return null;
+  }
+};
+
+export const analyzeExpenseDeductibility = async (
+  concept: string, 
+  amount: number, 
+  entityType: 'NATURAL' | 'JURIDICA',
+  keys?: AiKeys
+): Promise<DeductibilityResult | null> => {
+  
+  const schema: Schema = {
+    type: Type.OBJECT,
+    properties: {
+      isDeductible: { type: Type.BOOLEAN },
+      likelihood: { type: Type.STRING, enum: ['HIGH', 'MEDIUM', 'LOW'] },
+      explanation: { type: Type.STRING, description: "Razón breve en Español, citando reglas generales." },
+      categorySuggestion: { type: Type.STRING, description: "Categoría contable sugerida (ej. Viáticos, Oficina)." },
+      warning: { type: Type.STRING, description: "Advertencia opcional (ej. requiere factura fiscal)." }
+    },
+    required: ["isDeductible", "likelihood", "explanation", "categorySuggestion"]
+  };
+
+  const systemPrompt = `Actúa como un Auditor Fiscal Experto (con enfoque en leyes de Panamá/Latam).
+  Tu tarea es evaluar si un gasto es DEDUCIBLE DE IMPUESTOS (ISR).
+  
+  Contexto del Contribuyente:
+  - Tipo: ${entityType === 'NATURAL' ? 'Persona Natural (Independiente/Freelance)' : 'Persona Jurídica (Empresa/Sociedad)'}.
+  
+  Reglas Generales:
+  1. Gastos personales (supermercado doméstico, ropa, cine) NO son deducibles.
+  2. Gastos necesarios para producir renta (software, alquiler oficina, internet, servicios profesionales) SÍ son deducibles.
+  3. Comidas/Entretenimiento son delicados (solo deducibles si son con clientes y limitados).
+  4. Sé conservador. Si es dudoso, marca likelihood: MEDIUM o LOW.
+  
+  Analiza el gasto: "${concept}" por monto ${amount}.`;
+
+  const result = await generateWithFallback(concept, systemPrompt, schema, keys, true);
+  if (result === AI_ERROR_BLOCKED) throw new Error(AI_ERROR_BLOCKED);
+  if (!result) return null;
+
+  try {
+    return JSON.parse(result) as DeductibilityResult;
+  } catch (e) {
     return null;
   }
 };

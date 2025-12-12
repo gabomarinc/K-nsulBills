@@ -1,12 +1,13 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Camera, Mic, Image as ImageIcon, ArrowRight, Loader2, 
   Check, X, DollarSign, Calendar, Tag, Building2, UploadCloud,
-  ArrowLeft, Receipt, ScanLine, StopCircle, FileText, Lock
+  ArrowLeft, Receipt, ScanLine, StopCircle, FileText, Lock,
+  ShieldCheck, AlertTriangle, HelpCircle, Scale
 } from 'lucide-react';
-import { Invoice, ParsedInvoiceData, UserProfile } from '../types';
-import { parseInvoiceRequest, parseExpenseImage, AI_ERROR_BLOCKED } from '../services/geminiService';
+import { Invoice, ParsedInvoiceData, UserProfile, DeductibilityResult } from '../types';
+import { parseInvoiceRequest, parseExpenseImage, analyzeExpenseDeductibility, AI_ERROR_BLOCKED } from '../services/geminiService';
 
 interface ExpenseWizardProps {
   currentUser: UserProfile;
@@ -40,7 +41,35 @@ const ExpenseWizard: React.FC<ExpenseWizardProps> = ({ currentUser, onSave, onCa
     date: new Date().toISOString().split('T')[0]
   });
 
+  // Fiscal Analysis State
+  const [fiscalAnalysis, setFiscalAnalysis] = useState<DeductibilityResult | null>(null);
+  const [isAnalyzingFiscal, setIsAnalyzingFiscal] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // --- EFFECT: TRIGGER FISCAL ANALYSIS ON REVIEW ---
+  useEffect(() => {
+    const runFiscalCheck = async () => {
+        if (step === 'REVIEW' && expenseData.concept && hasAiAccess && !fiscalAnalysis && !isAnalyzingFiscal) {
+            setIsAnalyzingFiscal(true);
+            try {
+                const entityType = currentUser.fiscalConfig?.entityType || 'NATURAL';
+                const result = await analyzeExpenseDeductibility(
+                    expenseData.concept, 
+                    expenseData.amount || 0, 
+                    entityType, 
+                    currentUser.apiKeys
+                );
+                setFiscalAnalysis(result);
+            } catch (e) {
+                console.error("Fiscal analysis failed", e);
+            } finally {
+                setIsAnalyzingFiscal(false);
+            }
+        }
+    };
+    runFiscalCheck();
+  }, [step, expenseData.concept, hasAiAccess]);
 
   // --- VOICE DICTATION ---
   const toggleListening = () => {
@@ -364,11 +393,57 @@ const ExpenseWizard: React.FC<ExpenseWizardProps> = ({ currentUser, onSave, onCa
                          <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Concepto</label>
                          <textarea 
                            value={expenseData.concept}
-                           onChange={(e) => setExpenseData({...expenseData, concept: e.target.value})}
+                           onChange={(e) => {
+                               setExpenseData({...expenseData, concept: e.target.value});
+                               setFiscalAnalysis(null); // Reset analysis if concept changes manually
+                           }}
                            className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none focus:ring-2 focus:ring-rose-500 font-medium text-slate-600 h-24 resize-none"
                          />
                       </div>
                    </div>
+
+                   {/* FISCAL AUDITOR CARD (AI) */}
+                   {hasAiAccess && (
+                       <div className="relative overflow-hidden rounded-[2rem] border transition-all duration-500 animate-in fade-in slide-in-from-bottom-2">
+                           {isAnalyzingFiscal ? (
+                               <div className="p-6 bg-slate-50 flex items-center gap-3 text-slate-400">
+                                   <Loader2 className="w-5 h-5 animate-spin text-[#27bea5]" />
+                                   <span className="text-sm font-medium">Auditando deducibilidad fiscal...</span>
+                               </div>
+                           ) : fiscalAnalysis ? (
+                               <div className={`p-6 border-l-8 ${
+                                   fiscalAnalysis.isDeductible 
+                                       ? (fiscalAnalysis.likelihood === 'HIGH' ? 'bg-green-50 border-green-500' : 'bg-amber-50 border-amber-400')
+                                       : 'bg-red-50 border-red-500'
+                               }`}>
+                                   <div className="flex justify-between items-start mb-2">
+                                       <h4 className={`font-bold text-lg flex items-center gap-2 ${
+                                           fiscalAnalysis.isDeductible ? 'text-green-800' : 'text-red-800'
+                                       }`}>
+                                           {fiscalAnalysis.isDeductible ? <ShieldCheck className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
+                                           {fiscalAnalysis.isDeductible ? 'Gasto Deducible' : 'No Deducible'}
+                                       </h4>
+                                       <span className="text-[10px] uppercase font-bold tracking-wider bg-white/50 px-2 py-1 rounded">
+                                           IA Fiscal
+                                       </span>
+                                   </div>
+                                   <p className="text-sm text-slate-700 leading-relaxed mb-3">
+                                       {fiscalAnalysis.explanation}
+                                   </p>
+                                   <div className="flex gap-2">
+                                       <span className="text-xs font-bold bg-white px-3 py-1 rounded-full border border-slate-100 text-slate-500 flex items-center gap-1">
+                                           <Scale className="w-3 h-3" /> {fiscalAnalysis.categorySuggestion}
+                                       </span>
+                                       {fiscalAnalysis.warning && (
+                                           <span className="text-xs font-bold bg-amber-100 text-amber-700 px-3 py-1 rounded-full border border-amber-200">
+                                               ⚠️ {fiscalAnalysis.warning}
+                                           </span>
+                                       )}
+                                   </div>
+                               </div>
+                           ) : null}
+                       </div>
+                   )}
 
                    <button 
                      onClick={handleSave}

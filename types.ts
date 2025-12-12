@@ -245,3 +245,12 @@ export interface PriceAnalysisResult {
   currency: string;
   reasoning: string;
 }
+
+// NEW: Deductibility Analysis for Expenses
+export interface DeductibilityResult {
+  isDeductible: boolean;
+  likelihood: 'HIGH' | 'MEDIUM' | 'LOW';
+  explanation: string;
+  categorySuggestion: string;
+  warning?: string;
+}
