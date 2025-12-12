@@ -459,7 +459,8 @@ export const saveClientToDb = async (clientData: DbClient, userId: string, statu
         // 1. Check if they are ALREADY a client. If so, update client, don't downgrade to prospect.
         const checkClient = await clientDb.query('SELECT id FROM clients WHERE id = $1', [id]);
         
-        if (checkClient.rowCount > 0) {
+        // TS Fix: rowCount might be null, so we coalesce to 0
+        if ((checkClient.rowCount || 0) > 0) {
              // Already a client, update client table instead
              const updateClient = `
                 UPDATE clients SET 
@@ -578,7 +579,11 @@ export const deleteInvoiceFromDb = async (id: string, userId: string): Promise<b
   try {
     await client.connect();
     const resInv = await client.query('DELETE FROM invoices WHERE id = $1', [id]);
-    if (resInv.rowCount === 0) await client.query('DELETE FROM expenses WHERE id = $1', [id]);
+    
+    // TS Fix: rowCount might be null
+    if ((resInv.rowCount || 0) === 0) {
+        await client.query('DELETE FROM expenses WHERE id = $1', [id]);
+    }
     await client.end();
     return true;
   } catch (error) {
