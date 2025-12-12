@@ -289,7 +289,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
   };
 
   const renderModern = () => (
-    <div className="bg-white shadow-xl rounded-none md:rounded-lg overflow-hidden min-h-[800px] flex flex-col relative print:shadow-none h-full">
+    <div className="bg-white shadow-xl rounded-none md:rounded-lg overflow-hidden min-h-[800px] flex flex-col relative print:shadow-none">
       <div className="h-4 w-full" style={{ backgroundColor: color }}></div>
       <div className="p-8 md:p-12 flex-1">
         <div className="flex justify-between items-start mb-12">
@@ -441,7 +441,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
   );
 
   const renderClassic = () => (
-    <div className="bg-white shadow-xl min-h-[800px] flex flex-col relative print:shadow-none p-12 md:p-16 border-t-[12px] h-full" style={{ borderColor: color }}>
+    <div className="bg-white shadow-xl min-h-[800px] flex flex-col relative print:shadow-none p-12 md:p-16 border-t-[12px]" style={{ borderColor: color }}>
        <div className="text-center border-b-4 border-slate-100 pb-8 mb-8">
           <h1 className="text-3xl font-serif font-bold text-slate-800 uppercase tracking-widest mb-2">{issuer.name}</h1>
           <p className="text-slate-500 font-serif italic text-sm">{issuer.address} • {issuer.country}</p>
@@ -512,7 +512,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
   );
 
   const renderMinimal = () => (
-    <div className="bg-white shadow-xl min-h-[800px] flex flex-col relative print:shadow-none p-12 h-full font-sans">
+    <div className="bg-white shadow-xl min-h-[800px] flex flex-col relative print:shadow-none p-12 font-sans">
        <div className="flex justify-between items-center mb-16">
           <div className="flex items-center gap-3">
              <div className="w-4 h-4 rounded-full" style={{ backgroundColor: color }}></div>
@@ -580,7 +580,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
 
          {/* INCREASED PADDING BOTTOM TO pb-32 FOR BETTER SCROLLING */}
          <div className="flex-1 bg-slate-100 rounded-3xl p-4 md:p-8 overflow-y-auto custom-scrollbar shadow-inner border border-slate-200/50 pb-32">
-            <div ref={documentRef} className="max-w-[800px] mx-auto transition-all duration-500 h-full">
+            <div ref={documentRef} className="max-w-[800px] mx-auto transition-all duration-500 min-h-full">
                {branding.templateStyle === 'Classic' ? renderClassic() : 
                 branding.templateStyle === 'Minimal' ? renderMinimal() : 
                 renderModern()}

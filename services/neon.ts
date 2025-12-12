@@ -433,11 +433,11 @@ export const fetchClientsFromDb = async (userId: string): Promise<DbClient[]> =>
       );
     `);
 
-    // AUTO-MIGRATION: Ensure 'status' column exists if table was created previously without it
+    // AUTO-MIGRATION: Ensure 'status' column exists
     try {
       await client.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'PROSPECT';`);
     } catch (e) {
-      // Ignore if column exists
+      console.warn("Migration warning (status column):", e);
     }
 
     const result = await client.query('SELECT * FROM clients WHERE user_id = $1', [userId]);
@@ -487,16 +487,19 @@ export const saveClientToDb = async (client: DbClient, userId: string, status: '
       );
     `);
     
-    // Ensure column exists
+    // Ensure column exists - critical for the "status" feature
     try {
       await clientDb.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'PROSPECT';`);
-    } catch (e) {}
+    } catch (e) {
+        // Ignore if exists, but log if error
+        console.warn("Column migration check:", e);
+    }
 
     // 2. Perform Upsert
-    // IMPORTANT: Logic to prevent downgrading 'CLIENT' to 'PROSPECT'
     const safeName = client.name.toLowerCase().replace(/[^a-z0-9]/g, '');
     const clientId = client.id || `cli_${userId.substring(0,8)}_${safeName}`;
 
+    // Define query
     const query = `
       INSERT INTO clients (id, user_id, name, tax_id, email, address, phone, tags, notes, status, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
@@ -526,7 +529,7 @@ export const saveClientToDb = async (client: DbClient, userId: string, status: '
       client.phone || null,
       client.tags || null,
       client.notes || null,
-      status
+      status // Ensuring status is passed
     ]);
 
     await clientDb.end();
