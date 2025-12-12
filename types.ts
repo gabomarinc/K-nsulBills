@@ -193,6 +193,7 @@ export interface Invoice {
   date: string;
   items: InvoiceItem[];
   total: number;
+  discountRate?: number; // New: Persisted Discount Rate
   amountPaid?: number; // New: Track partial payments
   status: InvoiceStatus;
   currency: string;
