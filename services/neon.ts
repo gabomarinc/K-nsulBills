@@ -37,7 +37,6 @@ export const logAuditAction = async (userId: string, action: string, details: an
 
   try {
     await client.connect();
-    // Ensure audit table exists
     await client.query(`
       CREATE TABLE IF NOT EXISTS audit_log (
         id SERIAL PRIMARY KEY,
@@ -208,7 +207,6 @@ export const createUserInDb = async (profile: Partial<UserProfile>, password: st
     const userId = `user_${Date.now()}_${Math.floor(Math.random()*1000)}`;
     
     const profileData = { ...profile };
-    // Remove direct columns from JSON blob
     delete (profileData as any).id;
     delete (profileData as any).name;
     delete (profileData as any).email;
@@ -272,7 +270,6 @@ export const fetchInvoicesFromDb = async (userId: string): Promise<Invoice[] | n
   try {
     await client.connect();
     
-    // Ensure tables exist
     await client.query(`
       CREATE TABLE IF NOT EXISTS invoices (
         id TEXT PRIMARY KEY,
@@ -392,6 +389,7 @@ export const fetchClientsFromDb = async (userId: string): Promise<DbClient[]> =>
     `);
 
     // Fetch from both and combine with status indicator
+    // Using UNION ALL to see everything
     const query = `
       SELECT id, name, tax_id, email, address, phone, tags, notes, 'CLIENT' as status FROM clients WHERE user_id = $1
       UNION ALL
@@ -426,6 +424,7 @@ export const saveClientToDb = async (clientData: DbClient, userId: string, statu
   const clientDb = getDbClient();
   if (!clientDb) return { success: false, error: 'Database connection failed' };
 
+  // Create consistent ID based on name to match records between tables
   const safeName = clientData.name.toLowerCase().replace(/[^a-z0-9]/g, '');
   const id = clientData.id || `cli_${userId.substring(0,8)}_${safeName}`;
 
@@ -433,7 +432,8 @@ export const saveClientToDb = async (clientData: DbClient, userId: string, statu
     await clientDb.connect();
 
     if (status === 'CLIENT') {
-        // 1. Insert/Update into CLIENTS
+        // --- CASE 1: IT IS A CLIENT (Invoice Created) ---
+        // 1. Insert/Update into CLIENTS table
         const upsertClient = `
             INSERT INTO clients (id, user_id, name, tax_id, email, address, phone, tags, notes, updated_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
@@ -451,31 +451,45 @@ export const saveClientToDb = async (clientData: DbClient, userId: string, statu
             id, userId, clientData.name, clientData.taxId, clientData.email, clientData.address, clientData.phone, clientData.tags, clientData.notes
         ]);
 
-        // 2. Remove from PROSPECTS if it existed there (Promotion)
+        // 2. Remove from PROSPECTS if it existed there (Promotion Logic)
         await clientDb.query('DELETE FROM prospects WHERE id = $1', [id]);
 
     } else {
-        // STATUS === PROSPECT
-        // 1. Insert/Update into PROSPECTS
-        const upsertProspect = `
-            INSERT INTO prospects (id, user_id, name, tax_id, email, address, phone, tags, notes, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
-            ON CONFLICT (id) DO UPDATE SET 
-              name = EXCLUDED.name,
-              tax_id = COALESCE(EXCLUDED.tax_id, prospects.tax_id),
-              email = COALESCE(EXCLUDED.email, prospects.email),
-              address = COALESCE(EXCLUDED.address, prospects.address),
-              phone = COALESCE(EXCLUDED.phone, prospects.phone),
-              tags = COALESCE(EXCLUDED.tags, prospects.tags),
-              notes = COALESCE(EXCLUDED.notes, prospects.notes),
-              updated_at = NOW();
-        `;
-        await clientDb.query(upsertProspect, [
-            id, userId, clientData.name, clientData.taxId, clientData.email, clientData.address, clientData.phone, clientData.tags, clientData.notes
-        ]);
+        // --- CASE 2: IT IS A PROSPECT (Only Quote) ---
+        // 1. Check if they are ALREADY a client. If so, update client, don't downgrade to prospect.
+        const checkClient = await clientDb.query('SELECT id FROM clients WHERE id = $1', [id]);
         
-        // Note: We don't delete from clients here. Once a client, always a client usually.
-        // But if you want to downgrade, you could add a DELETE FROM clients here.
+        if (checkClient.rowCount > 0) {
+             // Already a client, update client table instead
+             const updateClient = `
+                UPDATE clients SET 
+                  tax_id = COALESCE($1, tax_id),
+                  email = COALESCE($2, email),
+                  address = COALESCE($3, address),
+                  phone = COALESCE($4, phone),
+                  updated_at = NOW()
+                WHERE id = $5
+             `;
+             await clientDb.query(updateClient, [clientData.taxId, clientData.email, clientData.address, clientData.phone, id]);
+        } else {
+             // 2. Not a client, Insert/Update into PROSPECTS table
+             const upsertProspect = `
+                INSERT INTO prospects (id, user_id, name, tax_id, email, address, phone, tags, notes, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+                ON CONFLICT (id) DO UPDATE SET 
+                  name = EXCLUDED.name,
+                  tax_id = COALESCE(EXCLUDED.tax_id, prospects.tax_id),
+                  email = COALESCE(EXCLUDED.email, prospects.email),
+                  address = COALESCE(EXCLUDED.address, prospects.address),
+                  phone = COALESCE(EXCLUDED.phone, prospects.phone),
+                  tags = COALESCE(EXCLUDED.tags, prospects.tags),
+                  notes = COALESCE(EXCLUDED.notes, prospects.notes),
+                  updated_at = NOW();
+            `;
+            await clientDb.query(upsertProspect, [
+                id, userId, clientData.name, clientData.taxId, clientData.email, clientData.address, clientData.phone, clientData.tags, clientData.notes
+            ]);
+        }
     }
 
     await clientDb.end();
@@ -484,7 +498,7 @@ export const saveClientToDb = async (clientData: DbClient, userId: string, statu
 
   } catch (error: any) {
     console.error("Save Client/Prospect Error:", error);
-    // Attempt Auto-Fix for UUID vs TEXT mismatch if it occurs during migration
+    // Attempt Auto-Fix for UUID vs TEXT mismatch if schema drifted
     if (error.code === '42804') { 
         try {
             const retryDb = getDbClient();
@@ -511,7 +525,6 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
   try {
     await client.connect();
     
-    // Ensure tables exist (Repeated for safety in serverless)
     await client.query(`
       CREATE TABLE IF NOT EXISTS invoices (
         id TEXT PRIMARY KEY,
@@ -528,7 +541,6 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
     `);
 
     if (invoice.type === 'Expense') {
-       // ... Expense logic (same as before) ...
        const query = `
         INSERT INTO expenses (id, provider_name, date, total, currency, category, receipt_url, status, data)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -539,7 +551,6 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
       const category = invoice.items[0]?.description || 'General';
       await client.query(query, [invoice.id, invoice.clientName, invoice.date, invoice.total, invoice.currency, category, invoice.receiptUrl, invoice.status, JSON.stringify(invoice)]);
     } else {
-      // Invoice Logic
       const query = `
         INSERT INTO invoices (id, user_id, client_name, client_tax_id, total, status, date, type, data)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)

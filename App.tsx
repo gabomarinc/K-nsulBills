@@ -199,13 +199,18 @@ const AppContent: React.FC = () => {
        const cleanName = invoice.clientName.trim();
        const existingClient = dbClients.find(c => c.name.toLowerCase() === cleanName.toLowerCase());
        
-       // Determine status: 
-       // If type is Invoice -> CLIENT. 
-       // If type is Quote -> PROSPECT (unless they were already a CLIENT).
-       let clientStatus: 'CLIENT' | 'PROSPECT' = invoice.type === 'Invoice' ? 'CLIENT' : 'PROSPECT';
-       
-       if (existingClient && existingClient.status === 'CLIENT') {
-           clientStatus = 'CLIENT'; // Never downgrade existing client status
+       // CRITICAL LOGIC FOR CLIENT VS PROSPECT
+       let clientStatus: 'CLIENT' | 'PROSPECT' = 'PROSPECT';
+
+       if (invoice.type === 'Invoice') {
+           // If it's a real invoice, they are definitely a client now
+           clientStatus = 'CLIENT';
+       } else if (existingClient && existingClient.status === 'CLIENT') {
+           // If they were already a client, keep them as client
+           clientStatus = 'CLIENT';
+       } else {
+           // Otherwise (Quote for new person), they are a prospect
+           clientStatus = 'PROSPECT';
        }
 
        const saveResult = await saveClientToDb({ 
@@ -310,7 +315,9 @@ const AppContent: React.FC = () => {
     if (updatedInvoice.type === 'Invoice' && (newStatus === 'Pagada' || newStatus === 'Aceptada')) {
         const clientName = updatedInvoice.clientName.trim();
         const existing = dbClients.find(c => c.name.toLowerCase() === clientName.toLowerCase());
-        if (existing && existing.status !== 'CLIENT') {
+        
+        // Ensure they are moved to CLIENT table if not already there
+        if (existing) {
              await saveClientToDb({ ...existing, name: clientName }, currentUser.id, 'CLIENT');
              const updated = await fetchClientsFromDb(currentUser.id);
              setDbClients(updated);
