@@ -29,6 +29,28 @@ const getDbClient = () => {
 };
 
 /**
+ * SCHEMA REPAIR HELPER
+ * Attempts to fix common schema drifts (UUID vs TEXT id, missing columns)
+ */
+const repairClientTableSchema = async (client: Client) => {
+    try {
+        // 1. Ensure 'id' is TEXT. 
+        // The 'USING id::text' clause allows converting existing UUIDs to strings without error.
+        await client.query(`ALTER TABLE clients ALTER COLUMN id TYPE TEXT USING id::text;`);
+    } catch (e) {
+        // Ignore if table doesn't exist yet or column issues
+        console.warn("Schema repair (ID type) notice:", e);
+    }
+
+    try {
+        // 2. Ensure 'status' column exists
+        await client.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'PROSPECT';`);
+    } catch (e) {
+        console.warn("Schema repair (Status col) notice:", e);
+    }
+};
+
+/**
  * AUDIT LOGGING SYSTEM
  */
 export const logAuditAction = async (userId: string, action: string, details: any) => {
@@ -415,6 +437,7 @@ export const fetchClientsFromDb = async (userId: string): Promise<DbClient[]> =>
   try {
     await client.connect();
     
+    // Ensure table exists
     await client.query(`
       CREATE TABLE IF NOT EXISTS clients (
         id TEXT PRIMARY KEY,
@@ -431,12 +454,9 @@ export const fetchClientsFromDb = async (userId: string): Promise<DbClient[]> =>
       );
     `);
 
-    // Ensure status column exists (Auto-migration)
-    try {
-      await client.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'PROSPECT';`);
-    } catch (e) {
-      // Ignore if column already exists
-    }
+    // AGGRESSIVE AUTO-MIGRATION ON FETCH
+    // This ensures that simply loading the app will try to fix the DB schema
+    await repairClientTableSchema(client);
 
     const result = await client.query('SELECT * FROM clients WHERE user_id = $1', [userId]);
     await client.end();
@@ -523,52 +543,33 @@ export const saveClientToDb = async (client: DbClient, userId: string, status: '
     `);
 
     // 2. Execute Insert
-    await clientDb.query(query, values);
+    try {
+        await clientDb.query(query, values);
+    } catch (insertError: any) {
+        // AUTO-HEALING
+        // 42804 = Datatype Mismatch (UUID vs TEXT)
+        // 42703 = Undefined Column (Missing status)
+        if (insertError.code === '42804' || insertError.code === '42703' || insertError.message.includes('type')) {
+             console.log("⚠️ DB Error detected. Attempting Auto-Repair...", insertError.code);
+             
+             // Run repair commands explicitly
+             await repairClientTableSchema(clientDb);
+             
+             // Retry the insert
+             await clientDb.query(query, values);
+        } else {
+            // Re-throw if it's a different error
+            throw insertError;
+        }
+    }
+
     await clientDb.end();
-    
     logAuditAction(userId, 'SAVE_CLIENT', { clientName: client.name, status });
     return { success: true };
 
   } catch (error: any) {
     console.error("Neon DB Client Save Error:", error);
-
-    // AUTO-HEALING: ID Type Mismatch (UUID vs TEXT)
-    if (error.code === '42804') { // datatype mismatch
-        try {
-            console.log("⚠️ Attempting Auto-Fix: Converting 'id' column to TEXT...");
-            // Re-connect since previous query failed
-            const retryDb = getDbClient();
-            if (retryDb) {
-                await retryDb.connect();
-                await retryDb.query(`ALTER TABLE clients ALTER COLUMN id TYPE TEXT;`);
-                await retryDb.query(query, values); // Retry insert
-                await retryDb.end();
-                return { success: true };
-            }
-        } catch (retryError) {
-            console.error("Auto-Fix Failed:", retryError);
-            return { success: false, error: 'Database schema mismatch. Run migration.' };
-        }
-    }
-
-    // AUTO-HEALING: Missing Column
-    if (error.code === '42703') { // undefined column
-        try {
-            console.log("⚠️ Attempting Auto-Fix: Adding missing column...");
-            const retryDb = getDbClient();
-            if (retryDb) {
-                await retryDb.connect();
-                await retryDb.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'PROSPECT';`);
-                await retryDb.query(query, values); // Retry insert
-                await retryDb.end();
-                return { success: true };
-            }
-        } catch (retryError) {
-            console.error("Auto-Fix Failed:", retryError);
-        }
-    }
-
-    return { success: false, error: error.message };
+    return { success: false, error: error.message || 'Database error' };
   }
 };
 
