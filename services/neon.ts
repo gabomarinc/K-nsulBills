@@ -428,10 +428,17 @@ export const fetchClientsFromDb = async (userId: string): Promise<DbClient[]> =>
         phone TEXT,
         tags TEXT,
         notes TEXT,
-        status TEXT,
+        status TEXT DEFAULT 'PROSPECT',
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
+
+    // AUTO-MIGRATION: Ensure 'status' column exists if table was created previously without it
+    try {
+      await client.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'PROSPECT';`);
+    } catch (e) {
+      // Ignore if column exists
+    }
 
     const result = await client.query('SELECT * FROM clients WHERE user_id = $1', [userId]);
     await client.end();
@@ -445,7 +452,7 @@ export const fetchClientsFromDb = async (userId: string): Promise<DbClient[]> =>
       phone: row.phone,
       tags: row.tags,
       notes: row.notes,
-      status: row.status
+      status: row.status || 'PROSPECT'
     }));
   } catch (error) {
     console.error("Error fetching clients:", error);
@@ -463,7 +470,7 @@ export const saveClientToDb = async (client: DbClient, userId: string, status: '
   try {
     await clientDb.connect();
 
-    // 1. Ensure Table Exists (Self-Healing with new columns)
+    // 1. Ensure Table Exists
     await clientDb.query(`
       CREATE TABLE IF NOT EXISTS clients (
         id TEXT PRIMARY KEY,
@@ -475,12 +482,18 @@ export const saveClientToDb = async (client: DbClient, userId: string, status: '
         phone TEXT,
         tags TEXT,
         notes TEXT,
-        status TEXT,
+        status TEXT DEFAULT 'PROSPECT',
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
+    
+    // Ensure column exists
+    try {
+      await clientDb.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'PROSPECT';`);
+    } catch (e) {}
 
     // 2. Perform Upsert
+    // IMPORTANT: Logic to prevent downgrading 'CLIENT' to 'PROSPECT'
     const safeName = client.name.toLowerCase().replace(/[^a-z0-9]/g, '');
     const clientId = client.id || `cli_${userId.substring(0,8)}_${safeName}`;
 
@@ -535,9 +548,6 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
 
   try {
     await client.connect();
-    
-    // Self-healing table creation for invoices is handled in fetchInvoicesFromDb for efficiency, 
-    // but typically safe to rely on it being there if the app loaded.
     
     const invoiceData = { ...invoice };
     

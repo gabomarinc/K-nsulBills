@@ -62,7 +62,7 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
     clientEmail: initialData?.clientEmail || '',
     items: initialData?.items || [],
     currency: initialData?.currency || currentUser.defaultCurrency || 'USD',
-    notes: '', 
+    notes: initialData?.notes || '', 
     validityDate: initialData ? new Date(initialData.date).toISOString().split('T')[0] : new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   });
 
@@ -278,6 +278,7 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
       items: draft.items,
       total: totals.total,
       discountRate: totals.effectiveRate, // Persist the effective percentage
+      notes: draft.notes, // Persist notes
       status: isOffline ? 'PendingSync' : targetStatus,
       currency: draft.currency,
       type: docType,
@@ -558,8 +559,8 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
                  </div>
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">Notas</label>
-                <textarea value={draft.notes} onChange={(e) => setDraft({...draft, notes: e.target.value})} placeholder="Notas visibles..." className="w-full p-3 rounded-xl border border-slate-200 bg-slate-50 outline-none text-sm h-20 resize-none" />
+                <label className="block text-xs font-bold text-slate-500 mb-1">Notas / Comentarios</label>
+                <textarea value={draft.notes} onChange={(e) => setDraft({...draft, notes: e.target.value})} placeholder="Notas visibles en la factura..." className="w-full p-3 rounded-xl border border-slate-200 bg-slate-50 outline-none text-sm h-20 resize-none" />
               </div>
             </section>
           </div>

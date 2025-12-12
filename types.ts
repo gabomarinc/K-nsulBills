@@ -194,6 +194,7 @@ export interface Invoice {
   items: InvoiceItem[];
   total: number;
   discountRate?: number; // New: Persisted Discount Rate
+  notes?: string; // NEW: Notes visible on invoice
   amountPaid?: number; // New: Track partial payments
   status: InvoiceStatus;
   currency: string;

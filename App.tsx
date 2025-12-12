@@ -191,14 +191,18 @@ const AppContent: React.FC = () => {
     
     setInvoices(newInvoices);
     
+    // Save Document
     await saveInvoiceToDb({ ...invoice, userId: currentUser.id });
     
+    // Save Client (Implicitly Create Prospect or Update Client)
     if (invoice.clientName) {
-       const existing = dbClients.find(c => c.name === invoice.clientName);
+       const existing = dbClients.find(c => c.name.toLowerCase() === invoice.clientName.toLowerCase());
+       
+       // Determine status: If Invoice -> CLIENT. If Quote -> PROSPECT (unless already CLIENT)
        let clientStatus: 'CLIENT' | 'PROSPECT' = invoice.type === 'Invoice' ? 'CLIENT' : 'PROSPECT';
        
        if (existing && existing.status === 'CLIENT') {
-           clientStatus = 'CLIENT';
+           clientStatus = 'CLIENT'; // Never downgrade existing client
        }
 
        await saveClientToDb({ 

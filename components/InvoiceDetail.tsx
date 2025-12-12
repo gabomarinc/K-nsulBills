@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   ArrowLeft, Printer, Share2, Download, Building2, 
   CheckCircle2, Loader2, Send, MessageCircle, Smartphone, Mail, Check, AlertTriangle, Edit2, 
-  ChevronDown, XCircle, Wallet, ArrowRight, X, Trash2, CreditCard, Clock
+  ChevronDown, XCircle, Wallet, ArrowRight, X, Trash2, CreditCard, Clock, StickyNote
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -374,6 +374,16 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
 
         <div className="flex flex-col md:flex-row gap-12">
             <div className="flex-1 space-y-6">
+              {/* NOTES SECTION */}
+              {invoice.notes && (
+                  <div className="p-6 rounded-xl text-sm bg-slate-50 border border-slate-100">
+                      <p className="font-bold mb-2 flex items-center gap-2 text-slate-700 uppercase tracking-wider text-xs">
+                          <StickyNote className="w-4 h-4"/> Notas
+                      </p>
+                      <p className="text-slate-600 whitespace-pre-wrap leading-relaxed">{invoice.notes}</p>
+                  </div>
+              )}
+
               {isQuote ? (
                 <div style={{ backgroundColor: color + '15', color: color }} className="p-6 rounded-xl text-sm border border-transparent">
                   <p className="font-bold mb-2 flex items-center gap-2 text-lg"><CheckCircle2 className="w-5 h-5"/> Condiciones</p>
@@ -488,6 +498,13 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
           </div>
        </div>
 
+       {invoice.notes && (
+           <div className="mb-8 p-4 border-t border-slate-200">
+               <p className="font-serif font-bold text-sm text-slate-800 mb-1">Notas:</p>
+               <p className="font-serif text-sm text-slate-600 italic">{invoice.notes}</p>
+           </div>
+       )}
+
        <div className="mt-auto text-center text-slate-400 text-xs font-serif italic border-t border-slate-100 pt-8">
           Gracias por su confianza. {issuer.name}
        </div>
@@ -534,6 +551,12 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
              <p className="text-xs text-slate-400 mt-4">Impuestos incluidos</p>
           </div>
        </div>
+
+       {invoice.notes && (
+           <div className="mt-16 text-slate-500 text-sm">
+               {invoice.notes}
+           </div>
+       )}
     </div>
   );
 
@@ -555,7 +578,8 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
             </div>
          </div>
 
-         <div className="flex-1 bg-slate-100 rounded-3xl p-4 md:p-8 overflow-y-auto custom-scrollbar shadow-inner border border-slate-200/50">
+         {/* INCREASED PADDING BOTTOM TO pb-32 FOR BETTER SCROLLING */}
+         <div className="flex-1 bg-slate-100 rounded-3xl p-4 md:p-8 overflow-y-auto custom-scrollbar shadow-inner border border-slate-200/50 pb-32">
             <div ref={documentRef} className="max-w-[800px] mx-auto transition-all duration-500 h-full">
                {branding.templateStyle === 'Classic' ? renderClassic() : 
                 branding.templateStyle === 'Minimal' ? renderMinimal() : 
