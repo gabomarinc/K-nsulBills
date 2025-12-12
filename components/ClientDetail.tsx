@@ -48,18 +48,11 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
     // Extract latest contact info from most recent doc or DB
     const latestDoc: Partial<Invoice> = clientDocs[0] || {};
     
-    // Stats: Total Revenue Logic with Partial Payments
+    // Stats: Total Invoiced Value (LTV based on Issued Invoices)
+    // Changing from "Collected" to "Total Invoiced" as per user request
     const totalRevenue = clientDocs
-      .filter(i => i.type === 'Invoice')
-      .reduce((acc, curr) => {
-          let collected = 0;
-          if (curr.amountPaid && curr.amountPaid > 0) {
-              collected = curr.amountPaid;
-          } else if (curr.status === 'Pagada' || curr.status === 'Aceptada') {
-              collected = curr.total;
-          }
-          return acc + collected;
-      }, 0);
+      .filter(i => i.type === 'Invoice' && i.status !== 'Borrador' && i.status !== 'Rechazada')
+      .reduce((acc, curr) => acc + curr.total, 0);
 
     // Stats: Total Quoted (For Prospects/Pipeline)
     const totalQuoted = clientDocs
