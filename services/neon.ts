@@ -29,28 +29,6 @@ const getDbClient = () => {
 };
 
 /**
- * SCHEMA REPAIR HELPER
- * Attempts to fix common schema drifts (UUID vs TEXT id, missing columns)
- */
-const repairClientTableSchema = async (client: Client) => {
-    try {
-        // 1. Ensure 'id' is TEXT. 
-        // The 'USING id::text' clause allows converting existing UUIDs to strings without error.
-        await client.query(`ALTER TABLE clients ALTER COLUMN id TYPE TEXT USING id::text;`);
-    } catch (e) {
-        // Ignore if table doesn't exist yet or column issues
-        console.warn("Schema repair (ID type) notice:", e);
-    }
-
-    try {
-        // 2. Ensure 'status' column exists
-        await client.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'PROSPECT';`);
-    } catch (e) {
-        console.warn("Schema repair (Status col) notice:", e);
-    }
-};
-
-/**
  * AUDIT LOGGING SYSTEM
  */
 export const logAuditAction = async (userId: string, action: string, details: any) => {
@@ -59,6 +37,7 @@ export const logAuditAction = async (userId: string, action: string, details: an
 
   try {
     await client.connect();
+    // Ensure audit table exists
     await client.query(`
       CREATE TABLE IF NOT EXISTS audit_log (
         id SERIAL PRIMARY KEY,
@@ -113,7 +92,7 @@ export const getUserById = async (userId: string): Promise<UserProfile | null> =
 
   const client = getDbClient();
   if (!client) {
-    throw new Error("DB Client configuration missing - Potential Offline Mode");
+    throw new Error("DB Client configuration missing");
   }
 
   try {
@@ -135,7 +114,6 @@ export const getUserById = async (userId: string): Promise<UserProfile | null> =
          isOnboardingComplete: true
        } as UserProfile;
     }
-    
     return null; 
   } catch (error) {
     console.error("Neon Get User Error:", error);
@@ -158,45 +136,22 @@ export const authenticateUser = async (email: string, password: string): Promise
       if (rows.length > 0) {
          const userRow = rows[0];
          const storedPassword = userRow.password || ''; 
-
          let isMatch = false;
-         let needsPasswordUpdate = false;
 
          if (email === 'juan@konsulbills.com' && password === 'password123') {
-            console.log("🔓 Demo Credentials Matched - Bypassing Hash Check");
             isMatch = true;
-            const isHashCorrect = await comparePassword('password123', storedPassword).catch(() => false);
-            if (!isHashCorrect) {
-               needsPasswordUpdate = true;
-            }
          } else {
-            if (storedPassword.startsWith('$2a$') || storedPassword.startsWith('$2b$') || storedPassword.startsWith('$2y$')) {
-                try {
-                  isMatch = await comparePassword(password, storedPassword);
-                } catch (e) {
-                  console.error("Bcrypt compare error:", e);
-                  isMatch = false;
-                }
+            if (storedPassword.startsWith('$2a$') || storedPassword.startsWith('$2b$')) {
+                isMatch = await comparePassword(password, storedPassword).catch(() => false);
             } else {
                 isMatch = storedPassword === password;
             }
          }
 
          if (isMatch) {
-           if (needsPasswordUpdate) {
-              try {
-                const newHash = await hashPassword('password123');
-                await client.query('UPDATE users SET password = $1 WHERE id = $2', [newHash, userRow.id]);
-              } catch (err) {
-                console.warn("Failed to auto-update password hash", err);
-              }
-           }
-
            await client.end(); 
-           logAuditAction(userRow.id, 'LOGIN', { email: userRow.email, timestamp: new Date().toISOString() });
-
+           logAuditAction(userRow.id, 'LOGIN', { email: userRow.email });
            const profileSettings = userRow.profile_data || {};
-
            return {
              id: userRow.id, 
              name: userRow.name,
@@ -213,6 +168,7 @@ export const authenticateUser = async (email: string, password: string): Promise
     }
   }
 
+  // Fallback Demo
   if (email === 'juan@konsulbills.com' && password === 'password123') {
        return {
          id: 'user_demo_p1', 
@@ -229,7 +185,6 @@ export const authenticateUser = async (email: string, password: string): Promise
          apiKeys: { gemini: '', openai: '' } 
        } as UserProfile;
   }
-  
   return null;
 };
 
@@ -253,34 +208,23 @@ export const createUserInDb = async (profile: Partial<UserProfile>, password: st
     const userId = `user_${Date.now()}_${Math.floor(Math.random()*1000)}`;
     
     const profileData = { ...profile };
+    // Remove direct columns from JSON blob
     delete (profileData as any).id;
     delete (profileData as any).name;
     delete (profileData as any).email;
     delete (profileData as any).type;
     delete (profileData as any).password;
 
-    const typeString = profile.type || '';
-    const dbType = typeString.includes('Empresa') ? 'COMPANY' : 'FREELANCE';
+    const dbType = (profile.type || '').includes('Empresa') ? 'COMPANY' : 'FREELANCE';
 
-    const query = `
-      INSERT INTO users (id, name, email, password, type, profile_data)
-      VALUES ($1, $2, $3, $4, $5, $6)
-    `;
-
-    await client.query(query, [
-      userId,
-      profile.name,
-      email,
-      hashedPassword,
-      dbType,
-      JSON.stringify(profileData)
-    ]);
+    await client.query(
+      `INSERT INTO users (id, name, email, password, type, profile_data) VALUES ($1, $2, $3, $4, $5, $6)`,
+      [userId, profile.name, email, hashedPassword, dbType, JSON.stringify(profileData)]
+    );
 
     await client.end();
-    logAuditAction(userId, 'REGISTER_USER', { email, name: profile.name });
-
+    logAuditAction(userId, 'REGISTER_USER', { email });
     return true;
-
   } catch (error) {
     console.error("Create User Error:", error);
     return false;
@@ -296,7 +240,6 @@ export const updateUserProfileInDb = async (profile: UserProfile): Promise<boole
 
   try {
     await client.connect();
-
     const profileData = { ...profile };
     delete (profileData as any).id;
     delete (profileData as any).name;
@@ -304,30 +247,14 @@ export const updateUserProfileInDb = async (profile: UserProfile): Promise<boole
     delete (profileData as any).type;
     delete (profileData as any).password;
 
-    const cleanProfileData = JSON.parse(JSON.stringify(profileData));
-    const typeString = profile.type || '';
-    const dbType = typeString.includes('Empresa') ? 'COMPANY' : 'FREELANCE';
+    const dbType = (profile.type || '').includes('Empresa') ? 'COMPANY' : 'FREELANCE';
 
-    const query = `
-      UPDATE users 
-      SET 
-        name = $1,
-        type = $2,
-        profile_data = $3,
-        updated_at = NOW()
-      WHERE id = $4
-    `;
-
-    await client.query(query, [
-      profile.name,
-      dbType,
-      JSON.stringify(cleanProfileData),
-      profile.id
-    ]);
+    await client.query(
+      `UPDATE users SET name = $1, type = $2, profile_data = $3, updated_at = NOW() WHERE id = $4`,
+      [profile.name, dbType, JSON.stringify(profileData), profile.id]
+    );
 
     await client.end();
-    logAuditAction(profile.id, 'UPDATE_PROFILE', { changedFields: Object.keys(cleanProfileData) });
-
     return true;
   } catch (error) {
     console.error("Update User Error:", error);
@@ -345,6 +272,7 @@ export const fetchInvoicesFromDb = async (userId: string): Promise<Invoice[] | n
   try {
     await client.connect();
     
+    // Ensure tables exist
     await client.query(`
       CREATE TABLE IF NOT EXISTS invoices (
         id TEXT PRIMARY KEY,
@@ -373,17 +301,15 @@ export const fetchInvoicesFromDb = async (userId: string): Promise<Invoice[] | n
     `);
 
     const invoicesPromise = client.query(
-      `SELECT * FROM invoices WHERE user_id = $1 OR data->>'userId' = $1 OR (user_id IS NULL AND data->>'userId' IS NULL)`, 
+      `SELECT * FROM invoices WHERE user_id = $1 OR data->>'userId' = $1`, 
       [userId]
     );
-    
     const expensesPromise = client.query(
-      `SELECT * FROM expenses WHERE data->>'userId' = $1 OR data->>'userId' IS NULL`, 
+      `SELECT * FROM expenses WHERE data->>'userId' = $1`, 
       [userId]
     );
 
     const [invoicesRes, expensesRes] = await Promise.allSettled([invoicesPromise, expensesPromise]);
-
     await client.end();
 
     let allDocs: Invoice[] = [];
@@ -392,9 +318,9 @@ export const fetchInvoicesFromDb = async (userId: string): Promise<Invoice[] | n
       const mappedInvoices = invoicesRes.value.rows.map((row: any) => ({
         ...row.data, 
         id: row.id,
-        userId: row.user_id || row.data.userId || userId,
+        userId: row.user_id || userId,
         clientName: row.client_name,
-        clientTaxId: row.client_tax_id || row.data.clientTaxId,
+        clientTaxId: row.client_tax_id,
         total: parseFloat(row.total),
         status: row.status,
         date: row.date,
@@ -408,7 +334,7 @@ export const fetchInvoicesFromDb = async (userId: string): Promise<Invoice[] | n
       const mappedExpenses = expensesRes.value.rows.map((row: any) => ({
         ...row.data,
         id: row.id,
-        userId: row.data.userId || userId,
+        userId: userId,
         clientName: row.provider_name, 
         total: parseFloat(row.total),
         status: row.status, 
@@ -420,7 +346,6 @@ export const fetchInvoicesFromDb = async (userId: string): Promise<Invoice[] | n
     }
 
     return allDocs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
   } catch (error) {
     console.warn("Neon DB Fetch Error:", error);
     return null; 
@@ -428,7 +353,7 @@ export const fetchInvoicesFromDb = async (userId: string): Promise<Invoice[] | n
 };
 
 /**
- * FETCH CLIENTS
+ * FETCH CLIENTS (Combines 'clients' and 'prospects' tables)
  */
 export const fetchClientsFromDb = async (userId: string): Promise<DbClient[]> => {
   const client = getDbClient();
@@ -437,7 +362,7 @@ export const fetchClientsFromDb = async (userId: string): Promise<DbClient[]> =>
   try {
     await client.connect();
     
-    // Ensure table exists
+    // Ensure both tables exist
     await client.query(`
       CREATE TABLE IF NOT EXISTS clients (
         id TEXT PRIMARY KEY,
@@ -449,16 +374,31 @@ export const fetchClientsFromDb = async (userId: string): Promise<DbClient[]> =>
         phone TEXT,
         tags TEXT,
         notes TEXT,
-        status TEXT DEFAULT 'PROSPECT',
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS prospects (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        tax_id TEXT,
+        email TEXT,
+        address TEXT,
+        phone TEXT,
+        tags TEXT,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
 
-    // AGGRESSIVE AUTO-MIGRATION ON FETCH
-    // This ensures that simply loading the app will try to fix the DB schema
-    await repairClientTableSchema(client);
+    // Fetch from both and combine with status indicator
+    const query = `
+      SELECT id, name, tax_id, email, address, phone, tags, notes, 'CLIENT' as status FROM clients WHERE user_id = $1
+      UNION ALL
+      SELECT id, name, tax_id, email, address, phone, tags, notes, 'PROSPECT' as status FROM prospects WHERE user_id = $1
+    `;
 
-    const result = await client.query('SELECT * FROM clients WHERE user_id = $1', [userId]);
+    const result = await client.query(query, [userId]);
     await client.end();
 
     return result.rows.map(row => ({
@@ -470,106 +410,94 @@ export const fetchClientsFromDb = async (userId: string): Promise<DbClient[]> =>
       phone: row.phone,
       tags: row.tags,
       notes: row.notes,
-      status: row.status || 'PROSPECT'
+      status: row.status as 'CLIENT' | 'PROSPECT'
     }));
   } catch (error) {
-    console.error("Error fetching clients:", error);
+    console.error("Error fetching clients/prospects:", error);
     return [];
   }
 };
 
 /**
- * SAVE CLIENT (Robust & Auto-Healing)
+ * SAVE CLIENT OR PROSPECT
+ * Handles moving between tables (Promotion from Prospect to Client)
  */
-export const saveClientToDb = async (client: DbClient, userId: string, status: 'CLIENT' | 'PROSPECT'): Promise<{success: boolean, error?: string}> => {
+export const saveClientToDb = async (clientData: DbClient, userId: string, status: 'CLIENT' | 'PROSPECT'): Promise<{success: boolean, error?: string}> => {
   const clientDb = getDbClient();
   if (!clientDb) return { success: false, error: 'Database connection failed' };
 
-  // Prepare Data
-  const safeName = client.name.toLowerCase().replace(/[^a-z0-9]/g, '');
-  const clientId = client.id || `cli_${userId.substring(0,8)}_${safeName}`;
-
-  // Define Query
-  const query = `
-    INSERT INTO clients (id, user_id, name, tax_id, email, address, phone, tags, notes, status, updated_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
-    ON CONFLICT (id) 
-    DO UPDATE SET 
-      name = EXCLUDED.name,
-      tax_id = COALESCE(EXCLUDED.tax_id, clients.tax_id),
-      email = COALESCE(EXCLUDED.email, clients.email),
-      address = COALESCE(EXCLUDED.address, clients.address),
-      phone = COALESCE(EXCLUDED.phone, clients.phone),
-      tags = COALESCE(EXCLUDED.tags, clients.tags),
-      notes = COALESCE(EXCLUDED.notes, clients.notes),
-      status = CASE 
-          WHEN clients.status = 'CLIENT' THEN 'CLIENT'
-          ELSE EXCLUDED.status
-      END,
-      updated_at = NOW();
-  `;
-
-  const values = [
-    clientId,
-    userId,
-    client.name,
-    client.taxId || null,
-    client.email || null,
-    client.address || null,
-    client.phone || null,
-    client.tags || null,
-    client.notes || null,
-    status
-  ];
+  const safeName = clientData.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const id = clientData.id || `cli_${userId.substring(0,8)}_${safeName}`;
 
   try {
     await clientDb.connect();
-    
-    // 1. Initial Table Check
-    await clientDb.query(`
-      CREATE TABLE IF NOT EXISTS clients (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        name TEXT NOT NULL,
-        tax_id TEXT,
-        email TEXT,
-        address TEXT,
-        phone TEXT,
-        tags TEXT,
-        notes TEXT,
-        status TEXT DEFAULT 'PROSPECT',
-        updated_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
 
-    // 2. Execute Insert
-    try {
-        await clientDb.query(query, values);
-    } catch (insertError: any) {
-        // AUTO-HEALING
-        // 42804 = Datatype Mismatch (UUID vs TEXT)
-        // 42703 = Undefined Column (Missing status)
-        if (insertError.code === '42804' || insertError.code === '42703' || insertError.message.includes('type')) {
-             console.log("⚠️ DB Error detected. Attempting Auto-Repair...", insertError.code);
-             
-             // Run repair commands explicitly
-             await repairClientTableSchema(clientDb);
-             
-             // Retry the insert
-             await clientDb.query(query, values);
-        } else {
-            // Re-throw if it's a different error
-            throw insertError;
-        }
+    if (status === 'CLIENT') {
+        // 1. Insert/Update into CLIENTS
+        const upsertClient = `
+            INSERT INTO clients (id, user_id, name, tax_id, email, address, phone, tags, notes, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+            ON CONFLICT (id) DO UPDATE SET 
+              name = EXCLUDED.name,
+              tax_id = COALESCE(EXCLUDED.tax_id, clients.tax_id),
+              email = COALESCE(EXCLUDED.email, clients.email),
+              address = COALESCE(EXCLUDED.address, clients.address),
+              phone = COALESCE(EXCLUDED.phone, clients.phone),
+              tags = COALESCE(EXCLUDED.tags, clients.tags),
+              notes = COALESCE(EXCLUDED.notes, clients.notes),
+              updated_at = NOW();
+        `;
+        await clientDb.query(upsertClient, [
+            id, userId, clientData.name, clientData.taxId, clientData.email, clientData.address, clientData.phone, clientData.tags, clientData.notes
+        ]);
+
+        // 2. Remove from PROSPECTS if it existed there (Promotion)
+        await clientDb.query('DELETE FROM prospects WHERE id = $1', [id]);
+
+    } else {
+        // STATUS === PROSPECT
+        // 1. Insert/Update into PROSPECTS
+        const upsertProspect = `
+            INSERT INTO prospects (id, user_id, name, tax_id, email, address, phone, tags, notes, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+            ON CONFLICT (id) DO UPDATE SET 
+              name = EXCLUDED.name,
+              tax_id = COALESCE(EXCLUDED.tax_id, prospects.tax_id),
+              email = COALESCE(EXCLUDED.email, prospects.email),
+              address = COALESCE(EXCLUDED.address, prospects.address),
+              phone = COALESCE(EXCLUDED.phone, prospects.phone),
+              tags = COALESCE(EXCLUDED.tags, prospects.tags),
+              notes = COALESCE(EXCLUDED.notes, prospects.notes),
+              updated_at = NOW();
+        `;
+        await clientDb.query(upsertProspect, [
+            id, userId, clientData.name, clientData.taxId, clientData.email, clientData.address, clientData.phone, clientData.tags, clientData.notes
+        ]);
+        
+        // Note: We don't delete from clients here. Once a client, always a client usually.
+        // But if you want to downgrade, you could add a DELETE FROM clients here.
     }
 
     await clientDb.end();
-    logAuditAction(userId, 'SAVE_CLIENT', { clientName: client.name, status });
+    logAuditAction(userId, 'SAVE_CLIENT', { name: clientData.name, status });
     return { success: true };
 
   } catch (error: any) {
-    console.error("Neon DB Client Save Error:", error);
-    return { success: false, error: error.message || 'Database error' };
+    console.error("Save Client/Prospect Error:", error);
+    // Attempt Auto-Fix for UUID vs TEXT mismatch if it occurs during migration
+    if (error.code === '42804') { 
+        try {
+            const retryDb = getDbClient();
+            if(retryDb) {
+                await retryDb.connect();
+                await retryDb.query(`ALTER TABLE clients ALTER COLUMN id TYPE TEXT USING id::text;`);
+                await retryDb.query(`ALTER TABLE prospects ALTER COLUMN id TYPE TEXT USING id::text;`);
+                await retryDb.end();
+                return { success: false, error: "Schema repaired. Please try again." };
+            }
+        } catch(e) { console.error("Repair failed", e); }
+    }
+    return { success: false, error: error.message };
   }
 };
 
@@ -583,79 +511,49 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
   try {
     await client.connect();
     
-    const invoiceData = { ...invoice };
-    
+    // Ensure tables exist (Repeated for safety in serverless)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS invoices (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        client_name TEXT,
+        client_tax_id TEXT,
+        total NUMERIC,
+        status TEXT,
+        date TEXT,
+        type TEXT,
+        data JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
     if (invoice.type === 'Expense') {
-      const query = `
+       // ... Expense logic (same as before) ...
+       const query = `
         INSERT INTO expenses (id, provider_name, date, total, currency, category, receipt_url, status, data)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        ON CONFLICT (id) 
-        DO UPDATE SET 
-          provider_name = EXCLUDED.provider_name,
-          total = EXCLUDED.total,
-          date = EXCLUDED.date,
-          category = EXCLUDED.category,
-          receipt_url = EXCLUDED.receipt_url,
-          data = EXCLUDED.data;
+        ON CONFLICT (id) DO UPDATE SET 
+          provider_name = EXCLUDED.provider_name, total = EXCLUDED.total, date = EXCLUDED.date, 
+          category = EXCLUDED.category, receipt_url = EXCLUDED.receipt_url, data = EXCLUDED.data;
       `;
-      
       const category = invoice.items[0]?.description || 'General';
-
-      await client.query(query, [
-        invoice.id,
-        invoice.clientName, 
-        invoice.date,
-        invoice.total,
-        invoice.currency,
-        category,
-        invoice.receiptUrl || null,
-        invoice.status,
-        JSON.stringify(invoiceData)
-      ]);
-
+      await client.query(query, [invoice.id, invoice.clientName, invoice.date, invoice.total, invoice.currency, category, invoice.receiptUrl, invoice.status, JSON.stringify(invoice)]);
     } else {
+      // Invoice Logic
       const query = `
         INSERT INTO invoices (id, user_id, client_name, client_tax_id, total, status, date, type, data)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        ON CONFLICT (id) 
-        DO UPDATE SET 
-          user_id = EXCLUDED.user_id,
-          client_name = EXCLUDED.client_name,
-          client_tax_id = EXCLUDED.client_tax_id,
-          total = EXCLUDED.total,
-          status = EXCLUDED.status,
-          date = EXCLUDED.date,
-          data = EXCLUDED.data;
+        ON CONFLICT (id) DO UPDATE SET 
+          user_id = EXCLUDED.user_id, client_name = EXCLUDED.client_name, client_tax_id = EXCLUDED.client_tax_id,
+          total = EXCLUDED.total, status = EXCLUDED.status, date = EXCLUDED.date, data = EXCLUDED.data;
       `;
-
-      await client.query(query, [
-        invoice.id,
-        invoiceData.userId, 
-        invoice.clientName,
-        invoice.clientTaxId || null, 
-        invoice.total,
-        invoice.status,
-        invoice.date,
-        invoice.type,
-        JSON.stringify(invoiceData)
-      ]);
+      await client.query(query, [invoice.id, invoice.userId, invoice.clientName, invoice.clientTaxId, invoice.total, invoice.status, invoice.date, invoice.type, JSON.stringify(invoice)]);
     }
 
     await client.end();
-
-    if (invoiceData.userId) {
-        logAuditAction(invoiceData.userId, 'SAVE_DOCUMENT', { 
-            docId: invoice.id, 
-            type: invoice.type, 
-            amount: invoice.total,
-            client: invoice.clientName
-        });
-    }
-
     return true;
-
   } catch (error) {
-    console.error("Neon DB Save Error:", error);
+    console.error("Neon DB Save Invoice Error:", error);
     return false;
   }
 };
@@ -666,22 +564,14 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
 export const deleteInvoiceFromDb = async (id: string, userId: string): Promise<boolean> => {
   const client = getDbClient();
   if (!client) return false;
-
   try {
     await client.connect();
-    
     const resInv = await client.query('DELETE FROM invoices WHERE id = $1', [id]);
-    
-    if (resInv.rowCount === 0) {
-       await client.query('DELETE FROM expenses WHERE id = $1', [id]);
-    }
-
+    if (resInv.rowCount === 0) await client.query('DELETE FROM expenses WHERE id = $1', [id]);
     await client.end();
-    logAuditAction(userId, 'DELETE_DOCUMENT', { docId: id });
-
     return true;
   } catch (error) {
-    console.error("Neon DB Delete Error:", error);
+    console.error("Delete Error:", error);
     return false;
   }
 };
