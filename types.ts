@@ -32,6 +32,18 @@ export interface DbClient {
   status?: 'CLIENT' | 'PROSPECT';
 }
 
+// NEW: Database Provider Structure
+export interface DbProvider {
+  id?: string;
+  name: string;
+  taxId?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  category?: string;
+  notes?: string;
+}
+
 export interface CatalogItem {
   id: string;
   name: string;

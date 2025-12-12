@@ -25,6 +25,7 @@ import {
   saveInvoiceToDb, 
   deleteInvoiceFromDb,
   saveClientToDb,
+  saveProviderToDb, // NEW IMPORT
   getUserById,
   fetchClientsFromDb 
 } from './services/neon';
@@ -194,43 +195,51 @@ const AppContent: React.FC = () => {
     // Save Document
     await saveInvoiceToDb({ ...invoice, userId: currentUser.id });
     
-    // Save Client (Implicitly Create Prospect or Update Client)
+    // Entity Management: Client vs Provider
     if (invoice.clientName) {
        const cleanName = invoice.clientName.trim();
-       const existingClient = dbClients.find(c => c.name.toLowerCase() === cleanName.toLowerCase());
        
-       // CRITICAL LOGIC FOR CLIENT VS PROSPECT
-       let clientStatus: 'CLIENT' | 'PROSPECT' = 'PROSPECT';
-
-       if (invoice.type === 'Invoice') {
-           // If it's a real invoice, they are definitely a client now
-           clientStatus = 'CLIENT';
-       } else if (existingClient && existingClient.status === 'CLIENT') {
-           // If they were already a client, keep them as client
-           clientStatus = 'CLIENT';
+       if (invoice.type === 'Expense') {
+           // --- SAVE AS PROVIDER ---
+           await saveProviderToDb({
+               name: cleanName,
+               // Expenses usually don't have taxId in basic form, but we pass if available later
+               category: invoice.items[0]?.description || 'General' 
+           }, currentUser.id);
+           
        } else {
-           // Otherwise (Quote for new person), they are a prospect
-           clientStatus = 'PROSPECT';
-       }
+           // --- SAVE AS CLIENT OR PROSPECT ---
+           const existingClient = dbClients.find(c => c.name.toLowerCase() === cleanName.toLowerCase());
+           
+           let clientStatus: 'CLIENT' | 'PROSPECT' = 'PROSPECT';
 
-       const saveResult = await saveClientToDb({ 
-         id: existingClient?.id,
-         name: cleanName, 
-         taxId: invoice.clientTaxId, 
-         email: invoice.clientEmail,
-         address: invoice.clientAddress,
-         tags: existingClient?.tags,
-         notes: existingClient?.notes,
-         phone: existingClient?.phone
-       }, currentUser.id, clientStatus);
-       
-       if (!saveResult.success) {
-           alert.addToast('error', 'Error Base de Datos', 'No se pudo guardar el cliente en el directorio.');
-       }
+           if (invoice.type === 'Invoice') {
+               clientStatus = 'CLIENT';
+           } else if (existingClient && existingClient.status === 'CLIENT') {
+               clientStatus = 'CLIENT';
+           } else {
+               clientStatus = 'PROSPECT';
+           }
 
-       // Refresh clients regardless to get updated list
-       const updatedClients = await fetchClientsFromDb(currentUser.id);
-       setDbClients(updatedClients);
+           const saveResult = await saveClientToDb({ 
+             id: existingClient?.id,
+             name: cleanName, 
+             taxId: invoice.clientTaxId, 
+             email: invoice.clientEmail,
+             address: invoice.clientAddress,
+             tags: existingClient?.tags,
+             notes: existingClient?.notes,
+             phone: existingClient?.phone
+           }, currentUser.id, clientStatus);
+           
+           if (!saveResult.success) {
+               alert.addToast('error', 'Error Base de Datos', 'No se pudo guardar el cliente en el directorio.');
+           }
+
+           // Refresh clients regardless to get updated list
+           const updatedClients = await fetchClientsFromDb(currentUser.id);
+           setDbClients(updatedClients);
+       }
     }
 
     setDocumentToEdit(null);

@@ -1,6 +1,6 @@
 
 import { Client } from '@neondatabase/serverless';
-import { Invoice, UserProfile, DbClient } from '../types';
+import { Invoice, UserProfile, DbClient, DbProvider } from '../types';
 import bcrypt from 'bcryptjs';
 
 /**
@@ -413,6 +413,110 @@ export const fetchClientsFromDb = async (userId: string): Promise<DbClient[]> =>
   } catch (error) {
     console.error("Error fetching clients/prospects:", error);
     return [];
+  }
+};
+
+/**
+ * FETCH PROVIDERS
+ */
+export const fetchProvidersFromDb = async (userId: string): Promise<DbProvider[]> => {
+  const client = getDbClient();
+  if (!client) return [];
+
+  try {
+    await client.connect();
+    
+    // Ensure providers table exists
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS providers (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        tax_id TEXT,
+        email TEXT,
+        address TEXT,
+        phone TEXT,
+        category TEXT,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    const result = await client.query('SELECT * FROM providers WHERE user_id = $1', [userId]);
+    await client.end();
+
+    return result.rows.map(row => ({
+      id: row.id,
+      name: row.name,
+      taxId: row.tax_id,
+      email: row.email,
+      address: row.address,
+      phone: row.phone,
+      category: row.category,
+      notes: row.notes
+    }));
+  } catch (error) {
+    console.error("Error fetching providers:", error);
+    return [];
+  }
+};
+
+/**
+ * SAVE PROVIDER (For Expenses)
+ */
+export const saveProviderToDb = async (providerData: DbProvider, userId: string): Promise<{success: boolean, error?: string}> => {
+  const clientDb = getDbClient();
+  if (!clientDb) return { success: false, error: 'Database connection failed' };
+
+  // Create consistent ID based on name to match records
+  const safeName = providerData.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const id = providerData.id || `prov_${userId.substring(0,8)}_${safeName}`;
+
+  try {
+    await clientDb.connect();
+    
+    // Ensure providers table exists
+    await clientDb.query(`
+      CREATE TABLE IF NOT EXISTS providers (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        tax_id TEXT,
+        email TEXT,
+        address TEXT,
+        phone TEXT,
+        category TEXT,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    const upsertProvider = `
+        INSERT INTO providers (id, user_id, name, tax_id, email, address, phone, category, notes, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+        ON CONFLICT (id) DO UPDATE SET 
+          name = EXCLUDED.name,
+          tax_id = COALESCE(EXCLUDED.tax_id, providers.tax_id),
+          email = COALESCE(EXCLUDED.email, providers.email),
+          address = COALESCE(EXCLUDED.address, providers.address),
+          phone = COALESCE(EXCLUDED.phone, providers.phone),
+          category = COALESCE(EXCLUDED.category, providers.category),
+          notes = COALESCE(EXCLUDED.notes, providers.notes),
+          updated_at = NOW();
+    `;
+    
+    await clientDb.query(upsertProvider, [
+        id, userId, providerData.name, providerData.taxId, providerData.email, providerData.address, providerData.phone, providerData.category, providerData.notes
+    ]);
+
+    await clientDb.end();
+    return { success: true };
+
+  } catch (error: any) {
+    console.error("Save Provider Error:", error);
+    return { success: false, error: error.message };
   }
 };
 

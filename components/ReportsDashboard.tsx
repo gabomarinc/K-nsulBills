@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { 
@@ -304,12 +305,25 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
     let itbmsCollected = 0;
     let itbmsPaid = 0;
 
-    // Approximate ITBMS collected
-    filteredInvoices.filter(i => i.type === 'Invoice' && (i.status === 'Pagada' || i.status === 'Aceptada')).forEach(inv => {
-        // Simplified: Assume 7% was on top of total if total > 0. 
-        // More accurate would be summing inv.items where tax > 0
-        const taxPart = inv.items.reduce((acc, item) => acc + (item.price * item.quantity * (item.tax/100)), 0);
-        itbmsCollected += taxPart;
+    // Approximate ITBMS collected - UPDATED LOGIC TO HANDLE ALL COLLECTED AMOUNTS
+    filteredInvoices.filter(i => i.type === 'Invoice').forEach(inv => {
+        let collected = 0;
+        if (inv.amountPaid && inv.amountPaid > 0) {
+            collected = inv.amountPaid;
+        } else if (inv.status === 'Pagada' || inv.status === 'Aceptada') {
+            collected = inv.total;
+        }
+
+        if (collected > 0) {
+            // Calculate effective tax ratio for this specific invoice
+            // Tax part = collected * (totalTax / totalInvoice)
+            const subtotal = inv.items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+            const totalTax = inv.items.reduce((acc, item) => acc + (item.price * item.quantity * (item.tax / 100)), 0);
+            const total = subtotal + totalTax;
+            
+            const taxRatio = total > 0 ? totalTax / total : 0;
+            itbmsCollected += collected * taxRatio;
+        }
     });
 
     // Approximate ITBMS paid (Expenses)

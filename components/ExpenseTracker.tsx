@@ -50,10 +50,18 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ invoices, currencySymbo
 
   // --- STATS & DATA AGGREGATION ---
   const { totalIncome, totalExpenses, netProfit, expensesList, providers } = useMemo(() => {
-    // 1. Income (Money In)
+    // 1. Income (Money In) - UPDATED LOGIC FOR PARTIAL PAYMENTS
     const income = invoices
-      .filter(i => i.type === 'Invoice' && i.status === 'Aceptada')
-      .reduce((acc, curr) => acc + curr.total, 0);
+      .filter(i => i.type === 'Invoice')
+      .reduce((acc, curr) => {
+          let collected = 0;
+          if (curr.amountPaid && curr.amountPaid > 0) {
+              collected = curr.amountPaid;
+          } else if (curr.status === 'Pagada' || curr.status === 'Aceptada') {
+              collected = curr.total;
+          }
+          return acc + collected;
+      }, 0);
 
     // 2. Expenses List (Raw)
     const expenses = invoices.filter(i => i.type === 'Expense');
