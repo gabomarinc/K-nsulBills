@@ -1,16 +1,15 @@
-
 import React, { useState, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
-  PieChart, Pie, Cell, AreaChart, Area, ScatterChart, Scatter
+  PieChart, Pie, Cell, AreaChart, Area, ScatterChart, Scatter, LineChart, Line
 } from 'recharts';
 import { 
   Sparkles, TrendingUp, Loader2, 
   BrainCircuit, Activity, Target, Lightbulb,
   X, TrendingDown, Wallet,
   LayoutDashboard, FileBarChart, Users, Filter, Calendar, Download, Mail, Smartphone, CheckCircle2,
-  Clock, AlertTriangle, Trophy, FileText, Lock, ArrowRight, Table
+  Clock, AlertTriangle, Trophy, FileText, Lock, ArrowRight, Table, Scale, Landmark, Calculator, PiggyBank, Briefcase, ShieldCheck
 } from 'lucide-react';
 import { Invoice, FinancialAnalysisResult, DeepDiveReport, UserProfile } from '../types';
 import { generateFinancialAnalysis, generateDeepDiveReport, AI_ERROR_BLOCKED } from '../services/geminiService';
@@ -26,7 +25,7 @@ interface ReportsDashboardProps {
 }
 
 type TimeRange = '30D' | '90D' | '12M' | 'CUSTOM';
-type ReportTab = 'OVERVIEW' | 'DOCUMENTS' | 'CLIENTS';
+type ReportTab = 'OVERVIEW' | 'DOCUMENTS' | 'CLIENTS' | 'FISCAL';
 
 const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: ReportsDashboardProps) => {
   // Navigation State
@@ -48,7 +47,8 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
   const overviewRef = useRef<HTMLDivElement>(null);
   const documentsRef = useRef<HTMLDivElement>(null);
   const clientsRef = useRef<HTMLDivElement>(null);
-  const deepDiveRef = useRef<HTMLDivElement>(null); // New Ref for Modal Content
+  const fiscalRef = useRef<HTMLDivElement>(null); // New Ref
+  const deepDiveRef = useRef<HTMLDivElement>(null); 
 
   // Filter State - Default to 12M
   const [timeRange, setTimeRange] = useState<TimeRange>('12M');
@@ -113,6 +113,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
         if (activeTab === 'DOCUMENTS') targetRef = documentsRef;
         if (activeTab === 'CLIENTS') targetRef = clientsRef;
         if (activeTab === 'OVERVIEW') targetRef = overviewRef;
+        if (activeTab === 'FISCAL') targetRef = fiscalRef;
     }
     const blob = await generatePdfBlob(targetRef);
     if (blob) {
@@ -146,6 +147,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
         if (activeTab === 'DOCUMENTS') targetRef = documentsRef;
         if (activeTab === 'CLIENTS') targetRef = clientsRef;
         if (activeTab === 'OVERVIEW') targetRef = overviewRef;
+        if (activeTab === 'FISCAL') targetRef = fiscalRef;
     }
     const blob = await generatePdfBlob(targetRef);
     if (!blob) { setEmailStatus('ERROR'); return; }
@@ -285,6 +287,94 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
     
     return { monthlyData, funnelData, scatterData, ltvData, clientActivityData, kpis: { totalRevenue, totalExpenses, netMargin, marginPercent, avgPaymentDays, conversionRate, churnRiskCount, activeClientsCount } };
   }, [filteredInvoices]);
+
+  // --- 3. FISCAL REPORT ENGINE ---
+  const fiscalData = useMemo(() => {
+    if (!currentUser?.fiscalConfig) return null;
+    const config = currentUser.fiscalConfig;
+    const isNatural = config.entityType === 'NATURAL';
+    const isJuridica = config.entityType === 'JURIDICA';
+
+    // 3.1 Base Calculations
+    const taxableIncome = data.kpis.netMargin; // Net Profit (Revenue - Expense)
+    
+    // ITBMS Logic: 
+    // We assume expense items with 'ITBMS' or 'Impuesto' in their name OR we estimate 7% of expenses if registered
+    // For invoices, we calculate 7% if items have tax.
+    let itbmsCollected = 0;
+    let itbmsPaid = 0;
+
+    // Approximate ITBMS collected
+    filteredInvoices.filter(i => i.type === 'Invoice' && (i.status === 'Pagada' || i.status === 'Aceptada')).forEach(inv => {
+        // Simplified: Assume 7% was on top of total if total > 0. 
+        // More accurate would be summing inv.items where tax > 0
+        const taxPart = inv.items.reduce((acc, item) => acc + (item.price * item.quantity * (item.tax/100)), 0);
+        itbmsCollected += taxPart;
+    });
+
+    // Approximate ITBMS paid (Expenses)
+    filteredInvoices.filter(i => i.type === 'Expense').forEach(exp => {
+        // If it's an expense, we assume 7% included if provider is formal. 
+        // This is an estimation for the report.
+        itbmsPaid += exp.total * 0.07; // Rough estimate of tax credit
+    });
+
+    const netItbmsPosition = itbmsCollected - itbmsPaid;
+
+    // 3.2 ISR Projection (Annualized)
+    // Project annual income based on current period average
+    const monthsInPeriod = timeRange === '30D' ? 1 : (timeRange === '90D' ? 3 : 12);
+    const projectedAnnualNet = (taxableIncome / monthsInPeriod) * 12;
+    
+    let projectedISR = 0;
+    let taxBracket = '';
+    let nextBracketThreshold = 0;
+
+    if (isNatural) {
+        if (projectedAnnualNet <= 11000) {
+            projectedISR = 0;
+            taxBracket = 'Exento (0%)';
+            nextBracketThreshold = 11000;
+        } else if (projectedAnnualNet <= 50000) {
+            projectedISR = (projectedAnnualNet - 11000) * 0.15;
+            taxBracket = 'Tramo 15%';
+            nextBracketThreshold = 50000;
+        } else {
+            projectedISR = ((projectedAnnualNet - 50000) * 0.25) + 5850;
+            taxBracket = 'Tramo 25%';
+            nextBracketThreshold = 0; // Top bracket
+        }
+    } else {
+        // Juridica (Simple 25% or CAIR)
+        const projectedAnnualRevenue = (data.kpis.totalRevenue / monthsInPeriod) * 12;
+        const isCair = projectedAnnualRevenue > 1500000;
+        
+        if (isCair) {
+            // CAIR: Greater of 25% on Net OR 4.67% on Gross (simplified)
+            const taxOnNet = projectedAnnualNet * 0.25;
+            const taxOnGross = projectedAnnualRevenue * 0.0467;
+            projectedISR = Math.max(taxOnNet, taxOnGross);
+            taxBracket = 'CAIR Aplicable';
+        } else {
+            projectedISR = projectedAnnualNet * 0.25;
+            taxBracket = 'Tasa Corporativa 25%';
+        }
+    }
+
+    // 3.3 Recommendations
+    const insights = [];
+    if (netItbmsPosition > 500) insights.push({ type: 'alert', text: `Tienes un saldo de ITBMS por pagar de ${currencySymbol}${netItbmsPosition.toFixed(0)}. Busca facturas de gastos para deducir.` });
+    if (isNatural && projectedAnnualNet > 45000 && projectedAnnualNet < 50000) insights.push({ type: 'warning', text: `Estás cerca del tramo del 25% (>$50k). Considera reinvertir beneficios.` });
+    if (data.kpis.marginPercent > 60) insights.push({ type: 'info', text: 'Tu margen es alto (>60%). Tienes espacio para aumentar gastos operativos deducibles.' });
+    if (itbmsPaid < (itbmsCollected * 0.1)) insights.push({ type: 'tip', text: 'Tus créditos de ITBMS son muy bajos. ¿Estás pidiendo factura fiscal en todas tus compras?' });
+
+    return {
+        itbms: { collected: itbmsCollected, paid: itbmsPaid, net: netItbmsPosition },
+        isr: { projectedAnnual: projectedISR, currentPeriodEstimated: projectedISR * (monthsInPeriod/12), bracket: taxBracket, nextThreshold: nextBracketThreshold },
+        projectedAnnualNet,
+        insights
+    };
+  }, [data, currentUser, timeRange, filteredInvoices]);
 
 
   // --- HANDLERS ---
@@ -806,6 +896,136 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
     </div>
   );
 
+  const renderFiscalView = () => {
+    if (!fiscalData) return (
+      <div className="p-12 text-center text-slate-400 bg-slate-50 rounded-[3rem] border border-slate-100">
+         <Landmark className="w-16 h-16 mx-auto mb-4 opacity-50" />
+         <p>Configura tu Perfil Fiscal en Ajustes para ver este reporte.</p>
+      </div>
+    );
+
+    return (
+      <div ref={fiscalRef} className="p-4 bg-slate-50/50 rounded-[3rem] -m-4">
+         <div className="p-4">
+            
+            {/* Top: Estimated Tax Liability */}
+            <div className="bg-[#1c2938] rounded-[2.5rem] p-8 text-white relative overflow-hidden shadow-xl mb-8">
+               <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500 rounded-full blur-[120px] opacity-20 -translate-y-1/2 translate-x-1/2"></div>
+               <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
+                  <div>
+                     <div className="flex items-center gap-2 text-amber-400 font-bold mb-2 uppercase tracking-widest text-xs">
+                        <Scale className="w-4 h-4" /> Previsión Fiscal
+                     </div>
+                     <h2 className="text-5xl font-bold mb-2">
+                        {currencySymbol}{fiscalData.isr.currentPeriodEstimated.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                     </h2>
+                     <p className="text-slate-400">Estimado de ISR a pagar (Periodo Actual)</p>
+                  </div>
+                  
+                  {/* Visual Gauge for Tax Bracket */}
+                  <div className="flex-1 w-full max-w-md bg-white/5 p-6 rounded-2xl border border-white/10">
+                     <div className="flex justify-between text-sm mb-2">
+                        <span className="text-slate-300">Tramo Actual</span>
+                        <span className="font-bold text-[#27bea5]">{fiscalData.isr.bracket}</span>
+                     </div>
+                     <div className="w-full h-3 bg-white/10 rounded-full overflow-hidden mb-2">
+                        <div 
+                           className="h-full bg-gradient-to-r from-[#27bea5] to-amber-400 rounded-full"
+                           style={{ width: fiscalData.isr.nextThreshold > 0 ? `${Math.min(100, (fiscalData.projectedAnnualNet / fiscalData.isr.nextThreshold) * 100)}%` : '100%' }}
+                        ></div>
+                     </div>
+                     {fiscalData.isr.nextThreshold > 0 && (
+                        <p className="text-xs text-slate-400 text-right">
+                           {currencySymbol}{fiscalData.projectedAnnualNet.toLocaleString()} / {currencySymbol}{fiscalData.isr.nextThreshold.toLocaleString()} (Proyectado Anual)
+                        </p>
+                     )}
+                  </div>
+               </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+               
+               {/* LEFT: TAX SHIELD (ITBMS) */}
+               <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-50 hover:shadow-md transition-shadow">
+                  <div className="flex items-center gap-3 mb-6">
+                     <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
+                        <ShieldCheck className="w-6 h-6" />
+                     </div>
+                     <div>
+                        <h3 className="text-xl font-bold text-[#1c2938]">Escudo Fiscal (ITBMS)</h3>
+                        <p className="text-xs text-slate-400">Crédito vs Débito</p>
+                     </div>
+                  </div>
+
+                  <div className="space-y-6">
+                     <div className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl">
+                        <div className="flex items-center gap-3">
+                           <ArrowRight className="w-5 h-5 text-green-500 rotate-45" />
+                           <span className="font-bold text-slate-600">Cobrado (Ventas)</span>
+                        </div>
+                        <span className="font-bold text-[#1c2938]">{currencySymbol}{fiscalData.itbms.collected.toLocaleString()}</span>
+                     </div>
+                     <div className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl">
+                        <div className="flex items-center gap-3">
+                           <ArrowRight className="w-5 h-5 text-red-500 -rotate-45" />
+                           <span className="font-bold text-slate-600">Pagado (Compras)</span>
+                        </div>
+                        <span className="font-bold text-[#1c2938]">{currencySymbol}{fiscalData.itbms.paid.toLocaleString()}</span>
+                     </div>
+                     
+                     <div className="pt-4 border-t border-slate-100">
+                        <div className="flex justify-between items-center">
+                           <span className="font-bold text-lg text-[#1c2938]">Posición Neta</span>
+                           <span className={`font-bold text-xl ${fiscalData.itbms.net > 0 ? 'text-amber-500' : 'text-green-500'}`}>
+                              {fiscalData.itbms.net > 0 ? 'A Pagar' : 'Crédito'} {currencySymbol}{Math.abs(fiscalData.itbms.net).toLocaleString()}
+                           </span>
+                        </div>
+                     </div>
+                  </div>
+               </div>
+
+               {/* RIGHT: TACTICAL ADVISOR */}
+               <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-50 hover:shadow-md transition-shadow">
+                  <div className="flex items-center gap-3 mb-6">
+                     <div className="p-2 bg-purple-50 text-purple-600 rounded-xl">
+                        <Lightbulb className="w-6 h-6" />
+                     </div>
+                     <div>
+                        <h3 className="text-xl font-bold text-[#1c2938]">Recomendaciones Tácticas</h3>
+                        <p className="text-xs text-slate-400">Acciones sugeridas por tu perfil</p>
+                     </div>
+                  </div>
+
+                  <div className="space-y-4">
+                     {fiscalData.insights.length > 0 ? (
+                        fiscalData.insights.map((insight, idx) => (
+                           <div key={idx} className={`p-4 rounded-2xl border flex gap-3 ${
+                              insight.type === 'alert' ? 'bg-amber-50 border-amber-100 text-amber-800' :
+                              insight.type === 'warning' ? 'bg-orange-50 border-orange-100 text-orange-800' :
+                              'bg-blue-50 border-blue-100 text-blue-800'
+                           }`}>
+                              {insight.type === 'alert' && <AlertTriangle className="w-5 h-5 flex-shrink-0" />}
+                              {insight.type === 'warning' && <Activity className="w-5 h-5 flex-shrink-0" />}
+                              {insight.type === 'tip' && <Sparkles className="w-5 h-5 flex-shrink-0" />}
+                              {insight.type === 'info' && <TrendingUp className="w-5 h-5 flex-shrink-0" />}
+                              <p className="text-sm font-medium">{insight.text}</p>
+                           </div>
+                        ))
+                     ) : (
+                        <div className="text-center py-8 text-slate-400">
+                           <CheckCircle2 className="w-12 h-12 mx-auto mb-2 text-green-200" />
+                           <p>Todo parece estar en orden.</p>
+                        </div>
+                     )}
+                  </div>
+               </div>
+
+            </div>
+         </div>
+      </div>
+    );
+  };
+
   return (
     <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in pb-12">
       
@@ -1006,7 +1226,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
       {/* TABS NAVIGATION */}
       <div id="no-print" className="flex justify-center w-full sticky top-4 z-30">
          <div className="bg-white/80 backdrop-blur-md p-1.5 rounded-2xl shadow-lg border border-slate-100 flex overflow-x-auto max-w-full custom-scrollbar">
-            {(['OVERVIEW', 'DOCUMENTS', 'CLIENTS'] as const).map(tab => (
+            {(['OVERVIEW', 'DOCUMENTS', 'CLIENTS', 'FISCAL'] as const).map(tab => (
                <button
                  key={tab}
                  onClick={() => setActiveTab(tab)}
@@ -1016,8 +1236,14 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                      : 'text-slate-500 hover:text-[#1c2938] hover:bg-slate-100'
                  }`}
                >
-                 {tab === 'OVERVIEW' ? <LayoutDashboard className="w-4 h-4" /> : tab === 'DOCUMENTS' ? <FileBarChart className="w-4 h-4" /> : <Users className="w-4 h-4" />}
-                 {tab === 'OVERVIEW' ? 'Finanzas' : tab === 'DOCUMENTS' ? 'Operatividad' : 'Clientes'}
+                 {tab === 'OVERVIEW' ? <LayoutDashboard className="w-4 h-4" /> : 
+                  tab === 'DOCUMENTS' ? <FileBarChart className="w-4 h-4" /> : 
+                  tab === 'CLIENTS' ? <Users className="w-4 h-4" /> : 
+                  <Landmark className="w-4 h-4" />}
+                 {tab === 'OVERVIEW' ? 'Finanzas' : 
+                  tab === 'DOCUMENTS' ? 'Operatividad' : 
+                  tab === 'CLIENTS' ? 'Clientes' : 
+                  'Reporte Fiscal'}
                </button>
             ))}
          </div>
@@ -1028,6 +1254,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
         {activeTab === 'OVERVIEW' && renderOverview()}
         {activeTab === 'DOCUMENTS' && renderDocumentsView()}
         {activeTab === 'CLIENTS' && renderClientsView()}
+        {activeTab === 'FISCAL' && renderFiscalView()}
       </div>
 
       {/* MODAL: DEEP DIVE REPORT (PORTAL) */}
