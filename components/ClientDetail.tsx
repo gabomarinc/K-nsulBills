@@ -4,7 +4,7 @@ import {
   ArrowLeft, Mail, MapPin, Building2, Crown, 
   Clock, CheckCircle2, FileText, FileBadge, 
   TrendingUp, Edit2, Calendar, Save, X, Phone,
-  ExternalLink, Send, Wallet, Trash2, Tag, StickyNote, Plus, Check
+  ExternalLink, Send, Wallet, Trash2, Tag, StickyNote, Plus, Check, Sparkles
 } from 'lucide-react';
 import { Invoice, InvoiceStatus, DbClient } from '../types';
 
@@ -60,12 +60,21 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
           }
           return acc + collected;
       }, 0);
+
+    // Stats: Total Quoted (For Prospects/Pipeline)
+    const totalQuoted = clientDocs
+      .filter(i => i.type === 'Quote' && i.status !== 'Rechazada')
+      .reduce((acc, curr) => acc + curr.total, 0);
       
     const openQuotes = clientDocs.filter(i => i.type === 'Quote' && (i.status === 'Enviada' || i.status === 'Negociacion'));
     const pendingInvoices = clientDocs.filter(i => i.type === 'Invoice' && (i.status === 'Enviada' || i.status === 'Seguimiento'));
     
     const active = [...openQuotes, ...pendingInvoices].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     const history = clientDocs.filter(d => !active.includes(d));
+
+    // Determine status
+    // If dbClientData.status exists, use it. Otherwise guess based on invoices.
+    const isProspect = dbClientData?.status === 'PROSPECT' || (!dbClientData && clientDocs.length > 0 && !clientDocs.some(i => i.type === 'Invoice'));
 
     // VIP Logic
     const isVip = totalRevenue > 5000 || clientDocs.length > 10;
@@ -85,8 +94,10 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
       historyDocs: history,
       stats: {
         totalRevenue,
+        totalQuoted,
         docCount: clientDocs.length,
         isVip,
+        isProspect,
         lastInteraction: latestDoc.date || new Date().toISOString()
       }
     };
@@ -197,6 +208,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                     <h1 className="text-3xl font-bold text-[#1c2938] flex items-center gap-3">
                        {clientName}
                        {stats.isVip && <span className="bg-amber-100 text-amber-700 text-xs px-2 py-1 rounded-lg border border-amber-200 uppercase tracking-widest font-bold flex items-center gap-1"><Crown className="w-3 h-3" /> VIP</span>}
+                       {stats.isProspect && <span className="bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded-lg border border-purple-200 uppercase tracking-widest font-bold flex items-center gap-1"><Sparkles className="w-3 h-3" /> Prospecto</span>}
                     </h1>
                     <div className="flex items-center gap-4 text-sm text-slate-500 mt-1">
                        <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> Última actividad: {new Date(stats.lastInteraction).toLocaleDateString()}</span>
@@ -208,8 +220,12 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
            </div>
 
            <div className="text-right relative z-10">
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Valor de Vida (LTV)</p>
-              <h2 className="text-4xl font-bold text-[#1c2938] tracking-tight">{currencySymbol}{stats.totalRevenue.toLocaleString()}</h2>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">
+                  {stats.isProspect ? 'Proyección (Pipeline)' : 'Valor de Vida (LTV)'}
+              </p>
+              <h2 className="text-4xl font-bold text-[#1c2938] tracking-tight">
+                  {currencySymbol}{stats.isProspect ? stats.totalQuoted.toLocaleString() : stats.totalRevenue.toLocaleString()}
+              </h2>
            </div>
         </div>
       </div>

@@ -20,17 +20,18 @@ interface ClientListProps {
 interface AggregatedClient {
   name: string;
   taxId: string;
-  totalInvoiced: number; // Changed from totalRevenue (collected) to totalInvoiced
-  totalCollected: number; // Kept for status logic
+  totalInvoiced: number; // For Clients (Invoices)
+  totalQuoted: number;   // For Prospects (Quotes)
+  totalCollected: number; 
   invoiceCount: number;
   quoteCount: number;
   quotesWon: number; 
   lastInteraction: Date;
   status: 'CLIENT' | 'PROSPECT';
   avgTicket: number;
+  displayValue: number; // Polymorphic value (Invoiced vs Projected)
   isVip: boolean; 
   winRate: number;
-  // Keep ref to full object
   fullData: any; 
 }
 
@@ -53,6 +54,7 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
             name: nameKey,
             taxId: dbClient.taxId || 'N/A',
             totalInvoiced: 0,
+            totalQuoted: 0,
             totalCollected: 0,
             invoiceCount: 0,
             quoteCount: 0,
@@ -60,6 +62,7 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
             lastInteraction: new Date(), // Created recently
             status: dbClient.status || 'PROSPECT',
             avgTicket: 0,
+            displayValue: 0,
             isVip: false,
             winRate: 0,
             fullData: dbClient
@@ -75,6 +78,7 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
           name: nameKey,
           taxId: inv.clientTaxId || 'N/A',
           totalInvoiced: 0,
+          totalQuoted: 0,
           totalCollected: 0,
           invoiceCount: 0,
           quoteCount: 0,
@@ -82,6 +86,7 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
           lastInteraction: new Date(0),
           status: 'PROSPECT',
           avgTicket: 0,
+          displayValue: 0,
           isVip: false,
           winRate: 0,
           fullData: { name: nameKey, taxId: inv.clientTaxId } // Fallback
@@ -97,11 +102,10 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
       if (inv.clientTaxId) client.taxId = inv.clientTaxId;
 
       if (inv.type === 'Invoice') {
-        // Only count valid invoices for "Invoiced" stats (exclude drafts/rejected for value, but maybe keep for activity?)
-        // Let's exclude Borrador and Rechazada from "Portfolio Value"
+        // Only count valid invoices for "Invoiced" stats
         if (inv.status !== 'Borrador' && inv.status !== 'Rechazada') {
             client.invoiceCount++;
-            client.totalInvoiced += inv.total; // SUM OF INVOICE TOTALS (Not just collected)
+            client.totalInvoiced += inv.total; 
         }
         
         // Track Collection for Status Determination
@@ -118,8 +122,9 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
         }
       } else if (inv.type === 'Quote') {
         client.quoteCount++;
+        client.totalQuoted += inv.total; // Accumulate Quotes for Prospects
         if (inv.status === 'Aceptada') {
-             client.status = 'CLIENT'; // Becomes client if quote accepted
+             client.status = 'CLIENT'; 
              client.quotesWon++;
         }
       }
@@ -131,16 +136,28 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
     const vipThreshold = sortedByRevenue[vipCount - 1]?.totalInvoiced || 0;
 
     const processedClients = allClients.map(c => {
-      // Avg Ticket = Total Invoiced / Count
-      const avgTicket = c.invoiceCount > 0 ? c.totalInvoiced / c.invoiceCount : 0;
+      let avgTicket = 0;
+      let displayValue = 0;
+
+      // Logic Split: Prospect vs Client
+      if (c.status === 'PROSPECT') {
+          // For Prospects: Avg Ticket based on Quotes, Display Value based on Quoted pipeline
+          avgTicket = c.quoteCount > 0 ? c.totalQuoted / c.quoteCount : 0;
+          displayValue = c.totalQuoted;
+      } else {
+          // For Clients: Avg Ticket based on Invoices, Display Value based on Invoiced
+          avgTicket = c.invoiceCount > 0 ? c.totalInvoiced / c.invoiceCount : 0;
+          displayValue = c.totalInvoiced;
+      }
+
       const winRate = c.quoteCount > 0 ? (c.quotesWon / c.quoteCount) * 100 : 0;
-      // VIP logic: Top Invoiced clients
       const isVip = c.status === 'CLIENT' && c.totalInvoiced > 0 && c.totalInvoiced >= vipThreshold;
-      return { ...c, avgTicket, winRate, isVip };
+      
+      return { ...c, avgTicket, displayValue, winRate, isVip };
     });
 
     // Global Stats
-    const totalPortfolioValue = processedClients.reduce((acc, c) => acc + c.totalInvoiced, 0); // Based on Invoices
+    const totalPortfolioValue = processedClients.filter(c => c.status === 'CLIENT').reduce((acc, c) => acc + c.totalInvoiced, 0); 
     const totalActiveClients = processedClients.filter(c => c.status === 'CLIENT').length;
     
     // Global Avg Ticket (Weighted by total invoice count)
@@ -168,8 +185,8 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
   }).sort((a, b) => {
     if (a.isVip && !b.isVip) return -1;
     if (!a.isVip && b.isVip) return 1;
-    if (b.totalInvoiced === a.totalInvoiced) return b.lastInteraction.getTime() - a.lastInteraction.getTime();
-    return b.totalInvoiced - a.totalInvoiced;
+    if (b.displayValue === a.displayValue) return b.lastInteraction.getTime() - a.lastInteraction.getTime();
+    return b.displayValue - a.displayValue;
   });
 
   const getInitials = (name: string) => name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
@@ -308,8 +325,8 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
                         <p className="text-xs text-slate-400 font-mono mb-4">{client.taxId}</p>
                         <div className="space-y-3">
                           <div className="flex justify-between items-center text-sm">
-                              <span className="text-slate-400 font-medium">Facturado Total</span>
-                              <span className="font-bold text-[#1c2938]">{currencySymbol} {client.totalInvoiced.toLocaleString()}</span>
+                              <span className="text-slate-400 font-medium">{client.status === 'PROSPECT' ? 'Valor Potencial' : 'Facturado Total'}</span>
+                              <span className="font-bold text-[#1c2938]">{currencySymbol} {client.displayValue.toLocaleString()}</span>
                           </div>
                         </div>
                       </div>
