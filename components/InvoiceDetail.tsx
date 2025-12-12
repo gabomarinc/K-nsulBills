@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   ArrowLeft, Printer, Share2, Download, Building2, 
   CheckCircle2, Loader2, Send, MessageCircle, Smartphone, Mail, Check, AlertTriangle, Edit2, 
-  ChevronDown, XCircle, Wallet, ArrowRight, X, Trash2, CreditCard
+  ChevronDown, XCircle, Wallet, ArrowRight, X, Trash2, CreditCard, Clock
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -196,7 +196,8 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
         const emailSubject = `${docTypeName} #${invoice.id} - ${issuer.name}`;
 
         const result = await sendEmail({
-            to: invoice.clientEmail, 
+            to: invoice.clientEmail,
+            cc: issuer.email, // Carbon Copy to the User
             subject: emailSubject, 
             html: htmlContent, 
             senderName: issuer.legalName || issuer.name, 
@@ -431,286 +432,279 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
 
   const renderClassic = () => (
     <div className="bg-white shadow-xl min-h-[800px] flex flex-col relative print:shadow-none p-12 md:p-16 border-t-[12px] h-full" style={{ borderColor: color }}>
-       <div className="text-center border-b-2 pb-8 mb-8" style={{ borderColor: color }}>
-          {logo ? <img src={logo} alt="Logo" className="h-32 mx-auto mb-6 object-contain" /> : <h1 className="font-serif text-5xl font-bold text-slate-900 mb-2">{issuer.legalName || issuer.name}</h1>}
-          <p className="font-serif text-slate-600 text-lg">{issuer.address} • {issuer.taxId}</p>
+       <div className="text-center border-b-4 border-slate-100 pb-8 mb-8">
+          <h1 className="text-3xl font-serif font-bold text-slate-800 uppercase tracking-widest mb-2">{issuer.name}</h1>
+          <p className="text-slate-500 font-serif italic text-sm">{issuer.address} • {issuer.country}</p>
        </div>
+
        <div className="flex justify-between items-start mb-12">
-          <div className="font-serif">
-             <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Cobrar a:</p>
-             <h3 className="text-2xl font-bold text-slate-900">{invoice.clientName}</h3>
-             <p className="text-slate-600 text-lg">{invoice.clientTaxId}</p>
+          <div className="border-l-4 pl-4" style={{ borderColor: color }}>
+             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Facturado A</p>
+             <h3 className="text-xl font-serif font-bold text-slate-800">{invoice.clientName}</h3>
+             <p className="text-slate-600 text-sm mt-1">{invoice.clientTaxId}</p>
           </div>
-          <div className="text-right font-serif">
-             <h2 className="text-3xl font-bold text-slate-900 uppercase">{isQuote ? 'Cotización' : 'Factura'}</h2>
-             <p className="text-slate-600 text-xl">No. {invoice.id}</p>
-             <p className="text-slate-600 mt-2">{new Date(invoice.date).toLocaleDateString()}</p>
+          <div className="text-right">
+             <h2 className="text-2xl font-serif font-bold text-slate-800">{isQuote ? 'COTIZACIÓN' : 'FACTURA'}</h2>
+             <p className="text-slate-500 text-lg">#{invoice.id}</p>
+             <p className="text-slate-400 text-sm mt-1">{new Date(invoice.date).toLocaleDateString()}</p>
           </div>
        </div>
-       <div className="mb-12">
-         <table className="w-full text-left font-serif">
-           <thead>
-             <tr className="border-b-2 border-slate-900">
-               <th className="py-3 text-base font-bold text-slate-900 uppercase">Concepto</th>
-               <th className="py-3 text-base font-bold text-slate-900 text-center">Cant</th>
-               <th className="py-3 text-base font-bold text-slate-900 text-right">Precio</th>
-               <th className="py-3 text-base font-bold text-slate-900 text-right">Importe</th>
+
+       <table className="w-full text-left mb-12">
+          <thead>
+             <tr className="border-b-2 border-slate-800">
+                <th className="py-3 font-serif font-bold text-slate-800 uppercase text-sm">Ítem</th>
+                <th className="py-3 font-serif font-bold text-slate-800 uppercase text-sm text-right">Cant</th>
+                <th className="py-3 font-serif font-bold text-slate-800 uppercase text-sm text-right">Precio</th>
+                <th className="py-3 font-serif font-bold text-slate-800 uppercase text-sm text-right">Total</th>
              </tr>
-           </thead>
-           <tbody className="divide-y divide-slate-200">
+          </thead>
+          <tbody className="divide-y divide-slate-200">
              {invoice.items.map((item, idx) => (
-               <tr key={idx}>
-                 <td className="py-5 text-lg text-slate-800">{item.description}</td>
-                 <td className="py-5 text-center text-lg text-slate-600">{item.quantity}</td>
-                 <td className="py-5 text-right text-lg text-slate-600">${item.price.toFixed(2)}</td>
-                 <td className="py-5 text-right text-lg text-slate-900 font-bold">${(item.quantity * item.price).toFixed(2)}</td>
-               </tr>
+                <tr key={idx}>
+                   <td className="py-4 font-serif text-slate-700">{item.description}</td>
+                   <td className="py-4 font-serif text-slate-700 text-right">{item.quantity}</td>
+                   <td className="py-4 font-serif text-slate-700 text-right">${item.price.toFixed(2)}</td>
+                   <td className="py-4 font-serif font-bold text-slate-800 text-right">${(item.quantity * item.price).toFixed(2)}</td>
+                </tr>
              ))}
-           </tbody>
-         </table>
-       </div>
-       <div className="flex justify-end font-serif">
-          <div className="w-80 space-y-3">
-            <div className="flex justify-between text-2xl font-bold text-slate-900 border-t-2 border-slate-900 pt-4 mt-2">
-               <span>Total</span>
-               <span>{invoice.currency} ${invoice.total.toFixed(2)}</span>
-            </div>
+          </tbody>
+       </table>
+
+       <div className="flex justify-end mb-16">
+          <div className="w-64 space-y-3">
+             <div className="flex justify-between text-slate-600 font-serif text-sm">
+                <span>Subtotal:</span>
+                <span>${subtotal.toFixed(2)}</span>
+             </div>
+             <div className="flex justify-between text-slate-600 font-serif text-sm border-b border-slate-300 pb-2">
+                <span>Impuesto:</span>
+                <span>${taxTotal.toFixed(2)}</span>
+             </div>
+             <div className="flex justify-between font-serif font-bold text-xl text-slate-900">
+                <span>Total:</span>
+                <span>{invoice.currency} ${invoice.total.toFixed(2)}</span>
+             </div>
           </div>
+       </div>
+
+       <div className="mt-auto text-center text-slate-400 text-xs font-serif italic border-t border-slate-100 pt-8">
+          Gracias por su confianza. {issuer.name}
        </div>
     </div>
   );
 
   const renderMinimal = () => (
-    <div className="bg-white shadow-xl min-h-[800px] flex flex-col relative print:shadow-none p-12 h-full">
-      <div className="flex justify-between items-start mb-20">
-         <div>
-            {logo ? <img src={logo} alt="Logo" className="h-20 object-contain mb-8" /> : <div style={{ backgroundColor: color }} className="w-16 h-16 rounded-full mb-8"></div>}
-            <h1 className="font-bold text-base tracking-tight text-slate-900 uppercase">{issuer.legalName || issuer.name}</h1>
-            <p className="text-sm text-slate-500 mt-1">{issuer.address}</p>
-         </div>
-         <div className="text-right">
-            <h2 className="text-8xl font-thin text-slate-900 tracking-tighter" style={{ color: color }}>{invoice.total.toFixed(0)}</h2>
-            <p className="text-slate-400 uppercase tracking-widest text-sm font-bold mt-2">{invoice.currency} Total</p>
-         </div>
-      </div>
-      <div className="grid grid-cols-2 gap-12 mb-16">
-         <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Facturado A</p>
-            <p className="text-2xl font-medium text-slate-900">{invoice.clientName}</p>
-         </div>
-         <div className="grid grid-cols-2 gap-6">
-            <div>
-               <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Fecha</p>
-               <p className="text-slate-900 font-medium text-lg">{new Date(invoice.date).toLocaleDateString()}</p>
-            </div>
-            <div>
-               <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Referencia</p>
-               <p className="text-slate-900 font-medium text-lg">#{invoice.id}</p>
-            </div>
-         </div>
-      </div>
-      <div className="mb-12">
-         {invoice.items.map((item, idx) => (
-            <div key={idx} className="flex justify-between items-center py-6 border-b border-slate-100 last:border-0">
-               <div>
-                  <p className="font-medium text-slate-900 text-xl">{item.description}</p>
-                  <p className="text-sm text-slate-400 mt-1">{item.quantity} x ${item.price}</p>
-               </div>
-               <p className="font-medium text-slate-900 text-xl">${(item.quantity * item.price).toFixed(2)}</p>
-            </div>
-         ))}
-      </div>
-      <div className="flex justify-end mt-auto">
-         <div className="text-right">
-            <p className="text-3xl font-bold text-slate-900 mt-6 border-t pt-6">Total: {invoice.currency} ${invoice.total.toFixed(2)}</p>
-         </div>
-      </div>
+    <div className="bg-white shadow-xl min-h-[800px] flex flex-col relative print:shadow-none p-12 h-full font-sans">
+       <div className="flex justify-between items-center mb-16">
+          <div className="flex items-center gap-3">
+             <div className="w-4 h-4 rounded-full" style={{ backgroundColor: color }}></div>
+             <h1 className="font-bold text-slate-900 text-xl tracking-tight">{issuer.name}</h1>
+          </div>
+          <div className="text-right">
+             <p className="text-sm font-bold text-slate-900">{isQuote ? 'Cotización' : 'Factura'} {invoice.id}</p>
+             <p className="text-xs text-slate-400">{new Date(invoice.date).toLocaleDateString()}</p>
+          </div>
+       </div>
+
+       <div className="mb-16">
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Para</p>
+          <h2 className="text-3xl font-light text-slate-900 mb-2">{invoice.clientName}</h2>
+          <p className="text-sm text-slate-500">{invoice.clientTaxId}</p>
+       </div>
+
+       <div className="space-y-4 mb-16">
+          {invoice.items.map((item, idx) => (
+             <div key={idx} className="flex justify-between items-center py-4 border-b border-slate-50">
+                <div>
+                   <p className="font-medium text-slate-900 text-lg">{item.description}</p>
+                   <p className="text-xs text-slate-400">{item.quantity} x ${item.price.toFixed(2)}</p>
+                </div>
+                <p className="font-bold text-slate-900 text-lg">${(item.quantity * item.price).toFixed(2)}</p>
+             </div>
+          ))}
+       </div>
+
+       <div className="flex justify-end">
+          <div className="text-right">
+             <p className="text-xs text-slate-400 uppercase tracking-widest mb-1">Total a Pagar</p>
+             <h2 className="text-5xl font-bold text-slate-900 tracking-tighter" style={{ color: color }}>
+                {invoice.currency} {invoice.total.toLocaleString()}
+             </h2>
+             <p className="text-xs text-slate-400 mt-4">Impuestos incluidos</p>
+          </div>
+       </div>
     </div>
   );
 
   return (
-    <div className="max-w-7xl mx-auto pb-12 animate-in slide-in-from-bottom-4 duration-500 relative">
+    <div className="max-w-7xl mx-auto h-[calc(100vh-100px)] flex flex-col md:flex-row gap-6 animate-in fade-in pb-10">
       
-      {/* QUOTE ACTION BANNER */}
-      {isQuote && (invoice.status === 'Enviada' || invoice.status === 'Negociacion') && onUpdateStatus && (
-        <div className="bg-[#1c2938] text-white p-4 rounded-2xl flex items-center justify-between mb-6 shadow-lg">
-            <div className="flex items-center gap-3">
-                <div className="p-2 bg-white/10 rounded-xl">
-                    <AlertTriangle className="w-6 h-6 text-yellow-400" />
-                </div>
-                <div>
-                    <p className="font-bold">Cotización Pendiente</p>
-                    <p className="text-xs text-slate-300">Esperando respuesta del cliente</p>
-                </div>
+      {/* LEFT: PREVIEW */}
+      <div className="flex-1 flex flex-col h-full">
+         <div className="flex justify-between items-center mb-4 px-2">
+            <button onClick={onBack} className="flex items-center text-slate-500 hover:text-[#1c2938] transition-colors gap-2 text-sm font-bold">
+               <ArrowLeft className="w-4 h-4" /> Volver
+            </button>
+            <div className="flex gap-2">
+               {invoice.timeline && invoice.timeline.length > 0 && (
+                  <span className="text-xs text-slate-400 flex items-center gap-1 bg-white px-3 py-1 rounded-full shadow-sm">
+                     <Clock className="w-3 h-3" /> Actualizado: {new Date(invoice.timeline[invoice.timeline.length - 1].timestamp).toLocaleTimeString()}
+                  </span>
+               )}
             </div>
-            <div className="flex gap-3">
-                <button 
-                    onClick={() => onUpdateStatus(invoice.id, 'Rechazada')}
-                    className="px-4 py-2 bg-white/10 hover:bg-red-500/20 text-red-300 hover:text-red-200 rounded-xl font-bold text-sm transition-colors flex items-center gap-2"
-                >
-                    <X className="w-4 h-4" /> Rechazar
-                </button>
-                <button 
-                    onClick={() => onUpdateStatus(invoice.id, 'Aceptada')}
-                    className="px-6 py-2 bg-[#27bea5] hover:bg-[#22a890] text-white rounded-xl font-bold text-sm transition-colors flex items-center gap-2 shadow-lg"
-                >
-                    <CheckCircle2 className="w-4 h-4" /> Aceptar Cotización
-                </button>
-            </div>
-        </div>
-      )}
+         </div>
 
-      {/* Success Modal */}
-      {showSuccessModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md animate-in fade-in">
-          <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full text-center relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-2 bg-[#27bea5]"></div>
+         <div className="flex-1 bg-slate-100 rounded-3xl p-4 md:p-8 overflow-y-auto custom-scrollbar shadow-inner border border-slate-200/50">
+            <div ref={documentRef} className="max-w-[800px] mx-auto transition-all duration-500 h-full">
+               {branding.templateStyle === 'Classic' ? renderClassic() : 
+                branding.templateStyle === 'Minimal' ? renderMinimal() : 
+                renderModern()}
+            </div>
+         </div>
+      </div>
+
+      {/* RIGHT: CONTROLS */}
+      <div className="w-full md:w-[350px] flex flex-col gap-6 h-full overflow-y-auto custom-scrollbar pr-2 pb-20">
+         
+         {/* STATUS CARD */}
+         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+            <div className="flex justify-between items-start mb-4">
+               <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border ${getStatusStyle(invoice.status)}`}>
+                  {invoice.status}
+               </span>
+               {invoice.type === 'Quote' && (
+                  <span className="text-xs font-bold text-purple-600 bg-purple-50 px-2 py-1 rounded-lg">
+                     {invoice.successProbability ? `${invoice.successProbability}% Éxito` : 'IA Pendiente'}
+                  </span>
+               )}
+            </div>
             
-            <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-green-200">
-              <Check className="w-10 h-10" />
-            </div>
-            
-            <h3 className="text-2xl font-bold text-[#1c2938] mb-2">¡Enviado con Éxito!</h3>
-            <p className="text-slate-500 mb-8">
-              El correo y el PDF han sido entregados a {invoice.clientName} vía Resend.
-            </p>
+            <h3 className="font-bold text-[#1c2938] text-2xl mb-1">{invoice.clientName}</h3>
+            <p className="text-sm text-slate-500 mb-6">{invoice.type === 'Quote' ? 'Cotización' : 'Factura'} #{invoice.id}</p>
 
-            <div className="space-y-3">
-              <button onClick={() => setShowSuccessModal(false)} className="w-full bg-[#25D366] text-white py-3 px-4 rounded-xl font-bold hover:bg-[#20bd5a] transition-colors flex items-center justify-center gap-2 shadow-lg shadow-green-100">
-                <MessageCircle className="w-5 h-5" /> Enviar por WhatsApp
-              </button>
-              
-              <button 
-                onClick={() => {
-                   setShowSuccessModal(false);
-                   onBack();
-                }}
-                className="block w-full text-sm text-slate-400 font-medium hover:text-slate-600 mt-4"
-              >
-                Cerrar y Volver
-              </button>
+            <div className="grid grid-cols-2 gap-3">
+               <button 
+                 onClick={handleSend}
+                 disabled={isSending || !invoice.clientEmail}
+                 className="col-span-2 bg-[#1c2938] text-white py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-[#27bea5] transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-70 disabled:cursor-not-allowed group"
+               >
+                  {isSending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5 group-hover:translate-x-1 transition-transform" />}
+                  {isSending ? 'Enviando...' : 'Enviar Email'}
+               </button>
+               
+               <button 
+                 onClick={handleDownloadPdf}
+                 className="bg-slate-100 text-slate-600 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-slate-200 transition-colors"
+               >
+                  <Download className="w-4 h-4" /> PDF
+               </button>
+               
+               {onEdit && (
+                  <button 
+                    onClick={() => onEdit(invoice)}
+                    className="bg-slate-100 text-slate-600 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-slate-200 transition-colors"
+                  >
+                      <Edit2 className="w-4 h-4" /> Editar
+                  </button>
+               )}
             </div>
-          </div>
-        </div>
-      )}
 
-      {/* Payment Modal */}
+            {/* ACTION FOR INVOICES: REGISTER PAYMENT */}
+            {!isQuote && (
+                <button 
+                    onClick={() => setIsPaymentModalOpen(true)}
+                    className="w-full mt-3 bg-green-50 text-green-700 border border-green-100 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-green-100 transition-colors"
+                >
+                    <CreditCard className="w-4 h-4" /> Registrar Cobro
+                </button>
+            )}
+
+            {/* DELETE BUTTON */}
+            {onDelete && (
+                <button 
+                    onClick={handleDelete}
+                    className="w-full mt-3 text-red-400 hover:text-red-600 py-2 text-xs font-bold flex items-center justify-center gap-1 transition-colors"
+                >
+                    <Trash2 className="w-3 h-3" /> Eliminar Documento
+                </button>
+            )}
+         </div>
+
+         {/* TIMELINE */}
+         <div className="flex-1 min-h-[300px]">
+            <DocumentTimeline 
+               events={invoice.timeline} 
+               type={invoice.type} 
+               successProbability={invoice.successProbability} 
+            />
+         </div>
+      </div>
+
+      {/* PAYMENT MODAL */}
       {isPaymentModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1c2938]/60 backdrop-blur-sm animate-in fade-in">
-            <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-sm relative shadow-2xl animate-in zoom-in-95">
-                <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-xl font-bold text-[#1c2938] flex items-center gap-2">
-                        <Wallet className="w-5 h-5 text-[#27bea5]" /> Registrar Abono
-                    </h3>
-                    <button onClick={() => setIsPaymentModalOpen(false)} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors">
-                        <X className="w-4 h-4" />
-                    </button>
-                </div>
+        <div className="fixed inset-0 bg-[#1c2938]/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+            <div className="bg-white rounded-[2rem] p-8 w-full max-w-sm shadow-2xl animate-in zoom-in-95 relative">
+                <button 
+                    onClick={() => setIsPaymentModalOpen(false)}
+                    className="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-100 text-slate-400 transition-colors"
+                >
+                    <X className="w-5 h-5" />
+                </button>
                 
-                <div className="mb-6 bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center">
-                    <p className="text-xs text-slate-400 font-bold uppercase mb-1">Pendiente de Pago</p>
-                    <p className="text-3xl font-bold text-[#1c2938]">{invoice.currency} {remainingBalance.toFixed(2)}</p>
+                <div className="text-center mb-6">
+                    <div className="w-16 h-16 bg-green-50 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Wallet className="w-8 h-8" />
+                    </div>
+                    <h3 className="text-xl font-bold text-[#1c2938]">Registrar Pago</h3>
+                    <p className="text-sm text-slate-500 mt-1">Saldo pendiente: {invoice.currency} {remainingBalance.toFixed(2)}</p>
                 </div>
 
                 <div className="space-y-4">
                     <div>
-                        <label className="text-xs font-bold text-slate-400 uppercase ml-1">Monto a Abonar</label>
-                        <input 
-                            type="number" 
-                            value={paymentAmount}
-                            onChange={(e) => setPaymentAmount(e.target.value)}
-                            className="w-full p-4 text-xl font-bold text-center border-2 border-slate-200 rounded-2xl focus:border-[#27bea5] focus:outline-none focus:ring-0 mt-1"
-                            placeholder="0.00"
-                            autoFocus
-                        />
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Monto Recibido</label>
+                        <div className="relative">
+                            <span className="absolute left-4 top-4 text-slate-400 font-bold">$</span>
+                            <input 
+                                type="number" 
+                                value={paymentAmount}
+                                onChange={(e) => setPaymentAmount(e.target.value)}
+                                className="w-full pl-10 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-2xl font-bold text-[#1c2938] outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-all"
+                                placeholder="0.00"
+                                autoFocus
+                            />
+                        </div>
                     </div>
                     
                     <button 
                         onClick={handleRegisterPayment}
-                        disabled={!paymentAmount || parseFloat(paymentAmount) <= 0}
-                        className="w-full bg-[#1c2938] text-white py-4 rounded-2xl font-bold hover:bg-[#27bea5] transition-all shadow-xl disabled:opacity-50 disabled:shadow-none"
+                        className="w-full py-4 bg-green-500 text-white rounded-2xl font-bold text-lg hover:bg-green-600 transition-all shadow-lg hover:shadow-xl hover:-translate-y-1 active:translate-y-0"
                     >
-                        Confirmar Pago
+                        Confirmar
                     </button>
                 </div>
             </div>
         </div>
       )}
 
-      {/* Navbar Actions */}
-      <div className="flex items-center justify-between mb-6 print:hidden">
-        <button 
-          onClick={onBack}
-          className="flex items-center gap-2 text-slate-500 hover:text-[#1c2938] font-medium transition-colors"
-        >
-          <ArrowLeft className="w-5 h-5" /> Volver
-        </button>
-        
-        <div className="flex items-center gap-2">
-           {onEdit && (
-             <button onClick={() => onEdit(invoice)} className="p-3 text-slate-500 hover:bg-white hover:text-[#27bea5] hover:shadow-sm rounded-xl transition-all mr-2" title="Editar Documento">
-               <Edit2 className="w-5 h-5" />
-             </button>
-           )}
-
-           {onDelete && (
-             <button 
-               onClick={handleDelete} 
-               className="p-3 text-slate-500 hover:bg-red-50 hover:text-red-500 hover:shadow-sm rounded-xl transition-all mr-2 group" 
-               title="Eliminar Documento"
-             >
-               <Trash2 className="w-5 h-5" />
-             </button>
-           )}
-
-           {!isQuote && remainingBalance > 0 && onUpdateInvoice && (
-             <button 
-               onClick={() => setIsPaymentModalOpen(true)}
-               className="p-3 bg-white text-slate-500 hover:text-green-600 hover:shadow-sm rounded-xl transition-all border border-transparent hover:border-green-100 mr-2"
-               title="Registrar Pago Parcial"
-             >
-                <Wallet className="w-5 h-5" />
-             </button>
-           )}
-
-           <button onClick={handleDownloadPdf} className="p-3 text-slate-500 hover:bg-white hover:shadow-sm rounded-xl transition-all" title="Descargar PDF">
-             <Download className="w-5 h-5" />
-           </button>
-           <button onClick={() => window.print()} className="p-3 text-slate-500 hover:bg-white hover:shadow-sm rounded-xl transition-all" title="Imprimir">
-             <Printer className="w-5 h-5" />
-           </button>
-           
-           <button 
-             onClick={handleSend}
-             disabled={isSending}
-             className="ml-4 flex items-center gap-2 bg-[#1c2938] text-white px-8 py-3 rounded-xl hover:bg-[#27bea5] hover:scale-105 active:scale-95 font-bold shadow-lg transition-all disabled:opacity-70 disabled:scale-100 disabled:cursor-not-allowed text-lg group"
-           >
-             {isSending ? (
-               <Loader2 className="w-5 h-5 animate-spin" />
-             ) : (
-               <Send className="w-5 h-5 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 transition-transform" />
-             )}
-             {isSending ? 'Enviando...' : (isQuote ? 'Enviar Cotización' : 'Enviar Factura')}
-           </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2">
-           <div ref={documentRef} className="h-full">
-              {branding.templateStyle === 'Classic' && renderClassic()}
-              {branding.templateStyle === 'Minimal' && renderMinimal()}
-              {(branding.templateStyle === 'Modern' || !branding.templateStyle) && renderModern()}
+      {/* SUCCESS MODAL */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 bg-[#1c2938]/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+           <div className="bg-white rounded-[2rem] p-8 w-full max-w-sm text-center shadow-2xl animate-in zoom-in-95">
+              <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                 <CheckCircle2 className="w-10 h-10" />
+              </div>
+              <h3 className="text-2xl font-bold text-[#1c2938] mb-2">¡Enviado!</h3>
+              <p className="text-slate-500 mb-6">El documento está en camino a {invoice.clientEmail}</p>
+              <button 
+                onClick={() => setShowSuccessModal(false)}
+                className="w-full py-3 bg-[#1c2938] text-white rounded-xl font-bold hover:bg-[#27bea5] transition-colors"
+              >
+                 Entendido
+              </button>
            </div>
         </div>
-        <div className="hidden lg:block h-[800px]">
-           <DocumentTimeline 
-             events={invoice.timeline} 
-             type={invoice.type} 
-             successProbability={invoice.successProbability} 
-           />
-        </div>
-      </div>
+      )}
 
     </div>
   );

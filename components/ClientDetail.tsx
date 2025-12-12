@@ -46,7 +46,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
     clientDocs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     // Extract latest contact info from most recent doc or DB
-    const latestDoc = clientDocs[0] || {};
+    const latestDoc: Partial<Invoice> = clientDocs[0] || {};
     
     // Stats: Total Revenue Logic with Partial Payments
     const totalRevenue = clientDocs
@@ -87,7 +87,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
         totalRevenue,
         docCount: clientDocs.length,
         isVip,
-        lastInteraction: latestDoc.date
+        lastInteraction: latestDoc.date || new Date().toISOString()
       }
     };
   }, [invoices, clientName, dbClientData]);

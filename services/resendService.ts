@@ -22,6 +22,7 @@ interface Attachment {
 
 interface EmailPayload {
   to: string;
+  cc?: string; // Added CC support
   subject: string;
   html?: string;
   templateId?: string;
@@ -46,6 +47,11 @@ export const sendEmail = async (
       to: [payload.to],
       subject: payload.subject,
     };
+
+    // Add CC if present
+    if (payload.cc) {
+      body.cc = [payload.cc];
+    }
 
     // Priority to HTML content to ensure delivery
     if (payload.html) {
@@ -129,10 +135,12 @@ export const sendDocumentEmail = async (
     subject: string, 
     htmlContent: string, 
     issuerName: string,
-    attachments?: Attachment[]
+    attachments?: Attachment[],
+    ccEmail?: string
 ) => {
     return sendEmail({
         to: recipientEmail,
+        cc: ccEmail,
         subject: subject,
         html: htmlContent,
         senderName: issuerName,
