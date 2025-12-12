@@ -323,7 +323,6 @@ export const fetchInvoicesFromDb = async (userId: string): Promise<Invoice[] | n
   try {
     await client.connect();
     
-    // Create Tables if not exist (Lazy Init for Resiliency)
     await client.query(`
       CREATE TABLE IF NOT EXISTS invoices (
         id TEXT PRIMARY KEY,
@@ -378,7 +377,7 @@ export const fetchInvoicesFromDb = async (userId: string): Promise<Invoice[] | n
         status: row.status,
         date: row.date,
         type: row.type,
-        amountPaid: row.data.amountPaid ? parseFloat(row.data.amountPaid) : 0 // Ensure mapped
+        amountPaid: row.data.amountPaid ? parseFloat(row.data.amountPaid) : 0 
       }));
       allDocs = [...allDocs, ...mappedInvoices];
     }
@@ -416,7 +415,6 @@ export const fetchClientsFromDb = async (userId: string): Promise<DbClient[]> =>
   try {
     await client.connect();
     
-    // Ensure table exists just in case (Added columns tags, notes, phone, status)
     await client.query(`
       CREATE TABLE IF NOT EXISTS clients (
         id TEXT PRIMARY KEY,
@@ -433,11 +431,11 @@ export const fetchClientsFromDb = async (userId: string): Promise<DbClient[]> =>
       );
     `);
 
-    // AUTO-MIGRATION: Ensure 'status' column exists
+    // Ensure status column exists (Auto-migration)
     try {
       await client.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'PROSPECT';`);
     } catch (e) {
-      console.warn("Migration warning (status column):", e);
+      // Ignore if column already exists
     }
 
     const result = await client.query('SELECT * FROM clients WHERE user_id = $1', [userId]);
@@ -461,16 +459,53 @@ export const fetchClientsFromDb = async (userId: string): Promise<DbClient[]> =>
 };
 
 /**
- * SAVE CLIENT (Robust)
+ * SAVE CLIENT (Robust & Auto-Healing)
  */
-export const saveClientToDb = async (client: DbClient, userId: string, status: 'CLIENT' | 'PROSPECT'): Promise<boolean> => {
+export const saveClientToDb = async (client: DbClient, userId: string, status: 'CLIENT' | 'PROSPECT'): Promise<{success: boolean, error?: string}> => {
   const clientDb = getDbClient();
-  if (!clientDb) return false;
+  if (!clientDb) return { success: false, error: 'Database connection failed' };
+
+  // Prepare Data
+  const safeName = client.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const clientId = client.id || `cli_${userId.substring(0,8)}_${safeName}`;
+
+  // Define Query
+  const query = `
+    INSERT INTO clients (id, user_id, name, tax_id, email, address, phone, tags, notes, status, updated_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+    ON CONFLICT (id) 
+    DO UPDATE SET 
+      name = EXCLUDED.name,
+      tax_id = COALESCE(EXCLUDED.tax_id, clients.tax_id),
+      email = COALESCE(EXCLUDED.email, clients.email),
+      address = COALESCE(EXCLUDED.address, clients.address),
+      phone = COALESCE(EXCLUDED.phone, clients.phone),
+      tags = COALESCE(EXCLUDED.tags, clients.tags),
+      notes = COALESCE(EXCLUDED.notes, clients.notes),
+      status = CASE 
+          WHEN clients.status = 'CLIENT' THEN 'CLIENT'
+          ELSE EXCLUDED.status
+      END,
+      updated_at = NOW();
+  `;
+
+  const values = [
+    clientId,
+    userId,
+    client.name,
+    client.taxId || null,
+    client.email || null,
+    client.address || null,
+    client.phone || null,
+    client.tags || null,
+    client.notes || null,
+    status
+  ];
 
   try {
     await clientDb.connect();
-
-    // 1. Ensure Table Exists
+    
+    // 1. Initial Table Check
     await clientDb.query(`
       CREATE TABLE IF NOT EXISTS clients (
         id TEXT PRIMARY KEY,
@@ -486,59 +521,54 @@ export const saveClientToDb = async (client: DbClient, userId: string, status: '
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
+
+    // 2. Execute Insert
+    await clientDb.query(query, values);
+    await clientDb.end();
     
-    // Ensure column exists - critical for the "status" feature
-    try {
-      await clientDb.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'PROSPECT';`);
-    } catch (e) {
-        // Ignore if exists, but log if error
-        console.warn("Column migration check:", e);
+    logAuditAction(userId, 'SAVE_CLIENT', { clientName: client.name, status });
+    return { success: true };
+
+  } catch (error: any) {
+    console.error("Neon DB Client Save Error:", error);
+
+    // AUTO-HEALING: ID Type Mismatch (UUID vs TEXT)
+    if (error.code === '42804') { // datatype mismatch
+        try {
+            console.log("⚠️ Attempting Auto-Fix: Converting 'id' column to TEXT...");
+            // Re-connect since previous query failed
+            const retryDb = getDbClient();
+            if (retryDb) {
+                await retryDb.connect();
+                await retryDb.query(`ALTER TABLE clients ALTER COLUMN id TYPE TEXT;`);
+                await retryDb.query(query, values); // Retry insert
+                await retryDb.end();
+                return { success: true };
+            }
+        } catch (retryError) {
+            console.error("Auto-Fix Failed:", retryError);
+            return { success: false, error: 'Database schema mismatch. Run migration.' };
+        }
     }
 
-    // 2. Perform Upsert
-    const safeName = client.name.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const clientId = client.id || `cli_${userId.substring(0,8)}_${safeName}`;
+    // AUTO-HEALING: Missing Column
+    if (error.code === '42703') { // undefined column
+        try {
+            console.log("⚠️ Attempting Auto-Fix: Adding missing column...");
+            const retryDb = getDbClient();
+            if (retryDb) {
+                await retryDb.connect();
+                await retryDb.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'PROSPECT';`);
+                await retryDb.query(query, values); // Retry insert
+                await retryDb.end();
+                return { success: true };
+            }
+        } catch (retryError) {
+            console.error("Auto-Fix Failed:", retryError);
+        }
+    }
 
-    // Define query
-    const query = `
-      INSERT INTO clients (id, user_id, name, tax_id, email, address, phone, tags, notes, status, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
-      ON CONFLICT (id) 
-      DO UPDATE SET 
-        name = EXCLUDED.name,
-        tax_id = COALESCE(EXCLUDED.tax_id, clients.tax_id),
-        email = COALESCE(EXCLUDED.email, clients.email),
-        address = COALESCE(EXCLUDED.address, clients.address),
-        phone = COALESCE(EXCLUDED.phone, clients.phone),
-        tags = COALESCE(EXCLUDED.tags, clients.tags),
-        notes = COALESCE(EXCLUDED.notes, clients.notes),
-        status = CASE 
-           WHEN clients.status = 'CLIENT' THEN 'CLIENT'
-           ELSE EXCLUDED.status
-        END,
-        updated_at = NOW();
-    `;
-
-    await clientDb.query(query, [
-      clientId,
-      userId,
-      client.name,
-      client.taxId || null,
-      client.email || null,
-      client.address || null,
-      client.phone || null,
-      client.tags || null,
-      client.notes || null,
-      status // Ensuring status is passed
-    ]);
-
-    await clientDb.end();
-    logAuditAction(userId, 'SAVE_CLIENT', { clientName: client.name, status });
-
-    return true;
-  } catch (error) {
-    console.error("Neon DB Client Save Error:", error);
-    return false;
+    return { success: false, error: error.message };
   }
 };
 

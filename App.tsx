@@ -196,26 +196,34 @@ const AppContent: React.FC = () => {
     
     // Save Client (Implicitly Create Prospect or Update Client)
     if (invoice.clientName) {
-       const existing = dbClients.find(c => c.name.toLowerCase() === invoice.clientName.toLowerCase());
+       const cleanName = invoice.clientName.trim();
+       const existingClient = dbClients.find(c => c.name.toLowerCase() === cleanName.toLowerCase());
        
-       // Determine status: If Invoice -> CLIENT. If Quote -> PROSPECT (unless already CLIENT)
+       // Determine status: 
+       // If type is Invoice -> CLIENT. 
+       // If type is Quote -> PROSPECT (unless they were already a CLIENT).
        let clientStatus: 'CLIENT' | 'PROSPECT' = invoice.type === 'Invoice' ? 'CLIENT' : 'PROSPECT';
        
-       if (existing && existing.status === 'CLIENT') {
-           clientStatus = 'CLIENT'; // Never downgrade existing client
+       if (existingClient && existingClient.status === 'CLIENT') {
+           clientStatus = 'CLIENT'; // Never downgrade existing client status
        }
 
-       await saveClientToDb({ 
-         id: existing?.id,
-         name: invoice.clientName, 
+       const saveResult = await saveClientToDb({ 
+         id: existingClient?.id,
+         name: cleanName, 
          taxId: invoice.clientTaxId, 
          email: invoice.clientEmail,
          address: invoice.clientAddress,
-         tags: existing?.tags,
-         notes: existing?.notes,
-         phone: existing?.phone
+         tags: existingClient?.tags,
+         notes: existingClient?.notes,
+         phone: existingClient?.phone
        }, currentUser.id, clientStatus);
        
+       if (!saveResult.success) {
+           alert.addToast('error', 'Error Base de Datos', 'No se pudo guardar el cliente en el directorio.');
+       }
+
+       // Refresh clients regardless to get updated list
        const updatedClients = await fetchClientsFromDb(currentUser.id);
        setDbClients(updatedClients);
     }
@@ -297,13 +305,25 @@ const AppContent: React.FC = () => {
     }
 
     await saveInvoiceToDb({ ...updatedInvoice, userId: currentUser.id });
+    
+    // Update Client Status if invoice becomes Paid
+    if (updatedInvoice.type === 'Invoice' && (newStatus === 'Pagada' || newStatus === 'Aceptada')) {
+        const clientName = updatedInvoice.clientName.trim();
+        const existing = dbClients.find(c => c.name.toLowerCase() === clientName.toLowerCase());
+        if (existing && existing.status !== 'CLIENT') {
+             await saveClientToDb({ ...existing, name: clientName }, currentUser.id, 'CLIENT');
+             const updated = await fetchClientsFromDb(currentUser.id);
+             setDbClients(updated);
+        }
+    }
+
     alert.addToast('success', 'Estado Actualizado', `El documento ahora está: ${newStatus}`);
   };
 
   const handleSaveNewClient = async (clientData: DbClient) => {
     if (!currentUser) return;
 
-    await saveClientToDb({
+    const res = await saveClientToDb({
       name: clientData.name,
       taxId: clientData.taxId,
       email: clientData.email,
@@ -312,6 +332,11 @@ const AppContent: React.FC = () => {
       tags: clientData.tags,
       notes: clientData.notes
     }, currentUser.id, clientData.status || 'PROSPECT');
+
+    if (!res.success) {
+        alert.addToast('error', 'Error', res.error || 'No se pudo guardar el cliente.');
+        return;
+    }
 
     const updatedClients = await fetchClientsFromDb(currentUser.id);
     setDbClients(updatedClients);
@@ -524,10 +549,14 @@ const AppContent: React.FC = () => {
               const existing = dbClients.find(c => c.name === oldName);
               const currentStatus = existing?.status || 'PROSPECT';
               
-              await saveClientToDb(updatedClient, currentUser.id, currentStatus);
-              const updated = await fetchClientsFromDb(currentUser.id);
-              setDbClients(updated);
-              alert.addToast('success', 'Cliente Actualizado');
+              const res = await saveClientToDb(updatedClient, currentUser.id, currentStatus);
+              if (res.success) {
+                  const updated = await fetchClientsFromDb(currentUser.id);
+                  setDbClients(updated);
+                  alert.addToast('success', 'Cliente Actualizado');
+              } else {
+                  alert.addToast('error', 'Error', res.error);
+              }
            }}
            onCreateDocument={(type) => {
               const client = dbClients.find(c => c.name === selectedClientName);
