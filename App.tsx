@@ -25,7 +25,7 @@ import {
   saveInvoiceToDb, 
   deleteInvoiceFromDb,
   saveClientToDb,
-  saveProviderToDb, // NEW IMPORT
+  saveProviderToDb, 
   getUserById,
   fetchClientsFromDb 
 } from './services/neon';
@@ -47,13 +47,33 @@ const AppContent: React.FC = () => {
   // SESSION RESTORATION LOGIC
   useEffect(() => {
     const initSession = async () => {
+        // Check URL for Stripe return logic
+        const params = new URLSearchParams(window.location.search);
+        const paymentSuccess = params.get('payment_success');
+        
         const storedUserStr = localStorage.getItem('konsul_user_data'); 
         const storedUserId = localStorage.getItem('konsul_session_id');
 
         if (storedUserStr) {
            try {
              const cachedUser = JSON.parse(storedUserStr);
-             setCurrentUser(cachedUser);
+             
+             // HANDLE STRIPE SUCCESS RETURN
+             if (paymentSuccess === 'true') {
+                 if (cachedUser) {
+                    setCurrentUser(cachedUser);
+                    // Notify user of success
+                    setTimeout(() => {
+                        alert.addToast('success', 'Pago Exitoso', 'Tu plan ha sido activado y tu cuenta está lista.');
+                    }, 1000);
+                    
+                    // Clean URL
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                 }
+             } else {
+                 setCurrentUser(cachedUser);
+             }
+
              setIsSessionLoading(false); 
            } catch (e) {
              console.error("Cache parse error", e);
@@ -78,7 +98,7 @@ const AppContent: React.FC = () => {
         setIsSessionLoading(false);
     };
     initSession();
-  }, []);
+  }, [alert]);
 
   // Load data when user is set
   useEffect(() => {
@@ -121,10 +141,15 @@ const AppContent: React.FC = () => {
 
   const handleOnboardingComplete = async (data: Partial<UserProfile> & { password?: string, email?: string }) => {
     if (data.password && data.email) {
+       // Create User
        const success = await createUserInDb(data, data.password, data.email);
        if (success) {
          const user = await authenticateUser(data.email, data.password);
-         if (user) handleLoginSuccess(user);
+         if (user) {
+             // If plan is paid, user object will have it, but we might redirect after this function returns
+             // So we log them in locally first.
+             handleLoginSuccess(user);
+         }
        } else {
          alert.addToast('error', 'Error de Registro', 'El correo podría ya estar registrado.');
        }

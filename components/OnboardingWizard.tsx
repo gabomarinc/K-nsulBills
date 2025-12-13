@@ -1,36 +1,10 @@
 
 import React, { useState, useRef } from 'react';
 import { 
-  Building2, 
-  Check, 
-  ChevronRight, 
-  Palette, 
-  CreditCard, 
-  ShoppingBag, 
-  Mail, 
-  Sparkles,
-  Loader2,
-  Globe,
-  UploadCloud,
-  LayoutTemplate,
-  Search,
-  MapPin,
-  AlertCircle,
-  X,
-  Coins,
-  Smartphone,
-  Server,
-  AtSign,
-  ShieldCheck,
-  Zap,
-  ArrowRight,
-  PenLine,
-  User,
-  CheckCircle2,
-  Hash,
-  Lock,
-  Eye,
-  EyeOff
+  Building2, Check, ChevronRight, Palette, CreditCard, ShoppingBag, Mail, Sparkles,
+  Loader2, Globe, UploadCloud, LayoutTemplate, Search, MapPin, AlertCircle, X,
+  Coins, Smartphone, Server, AtSign, ShieldCheck, Zap, ArrowRight, PenLine,
+  User, CheckCircle2, Hash, Lock, Eye, EyeOff, Crown, Rocket
 } from 'lucide-react';
 import { UserProfile, CatalogItem, EmailConfig } from '../types';
 import { suggestCatalogItems, generateEmailTemplate } from '../services/geminiService';
@@ -40,7 +14,7 @@ interface OnboardingWizardProps {
   onComplete: (profileData: Partial<UserProfile> & { password?: string, email?: string }) => void;
 }
 
-type Step = 1 | 2 | 3 | 4 | 5 | 6;
+type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 // Panama only configuration
 const DEFAULT_COUNTRY = 'Panamá';
@@ -52,6 +26,7 @@ const CURRENCIES = ['USD', 'EUR', 'MXN', 'ARS', 'COP', 'CLP', 'PEN'];
 const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
   const [step, setStep] = useState<Step>(1);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
   
   // Step 1 State - Identity & Credentials
   const [personType, setPersonType] = useState<'NATURAL' | 'JURIDICA' | null>(null);
@@ -85,6 +60,9 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
   // Step 6 State (Channels)
   const [whatsappCountryCode, setWhatsappCountryCode] = useState(DEFAULT_PHONE_CODE);
   const [whatsappNumber, setWhatsappNumber] = useState('');
+
+  // Step 7 State (Plan)
+  const [selectedPlan, setSelectedPlan] = useState<'Free' | 'Emprendedor Pro' | 'Empresa Scale'>('Free');
 
   // --- ACTIONS ---
 
@@ -129,13 +107,47 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
     setIsLoading(false);
   };
 
-  const finishOnboarding = () => {
+  const initiatePayment = async (userId: string) => {
+    try {
+      setIsRedirecting(true);
+      const response = await fetch('/api/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan: selectedPlan,
+          email: email,
+          userId: userId
+        })
+      });
+      
+      const { url, error } = await response.json();
+      
+      if (error) throw new Error(error);
+      if (url) window.location.href = url;
+      
+    } catch (error) {
+      console.error("Payment Error:", error);
+      setIsRedirecting(false);
+      alert("Hubo un error iniciando el pago. Por favor intenta más tarde.");
+    }
+  };
+
+  const finishOnboarding = async () => {
     const emailConfig: EmailConfig = {
       provider: 'SYSTEM',
       email: email
     };
 
-    onComplete({
+    // We create the user object but we might delay "complete" if payment is needed
+    // However, logic here is: Save User -> If Paid, Redirect -> If Free, Enter App.
+    // The App component will handle authentication.
+    
+    // NOTE: This calls `onComplete` in App.tsx which creates the user in DB.
+    // We need to ensure we can capture the userId to pass to Stripe if needed,
+    // but createUserInDb is void/boolean.
+    // Strategy: We pass the plan to onComplete. 
+    
+    const profileData = {
       name: companyName || 'Usuario Nuevo',
       taxId,
       address,
@@ -150,10 +162,37 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
       emailConfig,
       whatsappNumber,
       whatsappCountryCode,
-      isOnboardingComplete: true,
-      email, // Pass credentials for account creation
+      plan: selectedPlan,
+      isOnboardingComplete: true, // Will be set to true in DB
+      email, 
       password
-    });
+    };
+
+    if (selectedPlan === 'Free') {
+        onComplete(profileData);
+    } else {
+        // 1. Create User in DB first via onComplete (Assume success for UI flow)
+        // We need the User ID for Stripe to reconcile later. 
+        // Since we don't have the ID here easily without refactoring App.tsx significantly,
+        // We will pass the email as reference to Stripe and reconcile by email on return.
+        
+        // Optimistic UI: Redirecting...
+        setIsRedirecting(true);
+        
+        // We trigger creation in background so the user exists when they return from Stripe
+        // But we DON'T wait for it to finish to start redirect logic to feel snappier,
+        // though we need the ID. 
+        // *Correction*: We must wait for creation or Stripe won't have an ID if we want strict linking.
+        // Let's rely on email linking in `create-checkout-session.js`.
+        
+        await onComplete(profileData); // This saves to DB and logs in
+        
+        // After onComplete, App.tsx sets currentUser. We can't access it here easily.
+        // But we can just fire the payment link for the email.
+        // On return, App.tsx checks query params.
+        
+        await initiatePayment(email); // Using email as temp ID for this flow
+    }
   };
 
   // --- RENDER HELPERS ---
@@ -381,7 +420,6 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
     </div>
   );
 
-  // ... (Steps 2, 3, 4, 5, 6 remain largely the same visually)
   const renderStep2_Branding = () => (
     <div className="animate-in fade-in slide-in-from-right-8 duration-500">
       <div className="text-center mb-10">
@@ -679,7 +717,6 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
     </div>
   );
 
-  // ... (Step 5 Comms code remains same)
   const renderStep5_Comms = () => (
     <div className="animate-in fade-in slide-in-from-right-8 duration-500">
       <div className="text-center mb-10">
@@ -844,10 +881,117 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
 
       <div className="flex justify-center mt-12">
         <button 
-          onClick={finishOnboarding}
-          className="bg-[#27bea5] text-white py-5 px-16 rounded-[2rem] font-bold text-xl hover:bg-[#22a890] transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 active:translate-y-0 flex items-center gap-3 animate-pulse-slow cursor-pointer"
+          onClick={() => setStep(7)} // Move to Step 7 (Plan)
+          className="bg-[#1c2938] text-white py-5 px-16 rounded-[2rem] font-bold text-xl hover:bg-[#27bea5] transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 active:translate-y-0 flex items-center gap-3 cursor-pointer"
         >
-          <ShieldCheck className="w-6 h-6" /> Finalizar y Entrar
+          Siguiente <ArrowRight className="w-6 h-6" />
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderStep7_Plan = () => (
+    <div className="animate-in fade-in slide-in-from-right-8 duration-500">
+      <div className="text-center mb-10">
+        <h2 className="text-4xl font-bold text-[#1c2938] mb-3">Elige tu Plan</h2>
+        <p className="text-slate-500 text-lg">Potencia tu negocio con las herramientas adecuadas.</p>
+      </div>
+
+      <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        {/* FREE PLAN */}
+        <div 
+          onClick={() => setSelectedPlan('Free')}
+          className={`p-8 rounded-[2.5rem] border-2 cursor-pointer transition-all duration-300 flex flex-col justify-between hover:-translate-y-1 ${
+            selectedPlan === 'Free' 
+              ? 'border-[#27bea5] bg-white ring-4 ring-[#27bea5]/10 shadow-xl' 
+              : 'border-transparent bg-white shadow-sm hover:border-slate-200'
+          }`}
+        >
+           <div>
+              <h3 className="text-xl font-bold text-[#1c2938] mb-2">Gratis</h3>
+              <p className="text-3xl font-black text-[#1c2938] mb-6">$0 <span className="text-sm font-medium text-slate-400">/mes</span></p>
+              <ul className="space-y-3 text-sm text-slate-600 mb-8">
+                 <li className="flex items-center gap-2"><Check className="w-4 h-4 text-[#27bea5]" /> 10 Facturas/mes</li>
+                 <li className="flex items-center gap-2"><Check className="w-4 h-4 text-[#27bea5]" /> Clientes limitados</li>
+                 <li className="flex items-center gap-2"><Check className="w-4 h-4 text-[#27bea5]" /> Marca de agua Kônsul</li>
+              </ul>
+           </div>
+           <div className={`w-full py-3 rounded-xl font-bold text-center transition-colors ${selectedPlan === 'Free' ? 'bg-[#1c2938] text-white' : 'bg-slate-100 text-slate-500'}`}>
+              {selectedPlan === 'Free' ? 'Seleccionado' : 'Elegir Gratis'}
+           </div>
+        </div>
+
+        {/* PRO PLAN */}
+        <div 
+          onClick={() => setSelectedPlan('Emprendedor Pro')}
+          className={`p-8 rounded-[2.5rem] border-2 cursor-pointer transition-all duration-300 flex flex-col justify-between hover:-translate-y-1 relative overflow-hidden ${
+            selectedPlan === 'Emprendedor Pro' 
+              ? 'border-amber-400 bg-amber-50/10 ring-4 ring-amber-400/20 shadow-xl' 
+              : 'border-transparent bg-white shadow-sm hover:border-amber-200'
+          }`}
+        >
+           {selectedPlan === 'Emprendedor Pro' && <div className="absolute top-0 right-0 bg-amber-400 text-white text-xs font-bold px-3 py-1 rounded-bl-xl">POPULAR</div>}
+           <div>
+              <div className="flex items-center gap-2 mb-2">
+                 <h3 className="text-xl font-bold text-[#1c2938]">Emprendedor Pro</h3>
+                 <Crown className="w-5 h-5 text-amber-500 fill-amber-500" />
+              </div>
+              <p className="text-3xl font-black text-[#1c2938] mb-6">$15 <span className="text-sm font-medium text-slate-400">/mes</span></p>
+              <ul className="space-y-3 text-sm text-slate-600 mb-8">
+                 <li className="flex items-center gap-2"><Check className="w-4 h-4 text-amber-500" /> Facturación Ilimitada</li>
+                 <li className="flex items-center gap-2"><Check className="w-4 h-4 text-amber-500" /> Sin Marca de Agua</li>
+                 <li className="flex items-center gap-2"><Check className="w-4 h-4 text-amber-500" /> IA Básica (Gemini)</li>
+                 <li className="flex items-center gap-2"><Check className="w-4 h-4 text-amber-500" /> Soporte Email</li>
+              </ul>
+           </div>
+           <div className={`w-full py-3 rounded-xl font-bold text-center transition-colors ${selectedPlan === 'Emprendedor Pro' ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500'}`}>
+              {selectedPlan === 'Emprendedor Pro' ? 'Seleccionado' : 'Elegir Pro'}
+           </div>
+        </div>
+
+        {/* SCALE PLAN */}
+        <div 
+          onClick={() => setSelectedPlan('Empresa Scale')}
+          className={`p-8 rounded-[2.5rem] border-2 cursor-pointer transition-all duration-300 flex flex-col justify-between hover:-translate-y-1 ${
+            selectedPlan === 'Empresa Scale' 
+              ? 'border-purple-500 bg-purple-50/10 ring-4 ring-purple-500/20 shadow-xl' 
+              : 'border-transparent bg-white shadow-sm hover:border-purple-200'
+          }`}
+        >
+           <div>
+              <div className="flex items-center gap-2 mb-2">
+                 <h3 className="text-xl font-bold text-[#1c2938]">Empresa Scale</h3>
+                 <Rocket className="w-5 h-5 text-purple-500 fill-purple-500" />
+              </div>
+              <p className="text-3xl font-black text-[#1c2938] mb-6">$35 <span className="text-sm font-medium text-slate-400">/mes</span></p>
+              <ul className="space-y-3 text-sm text-slate-600 mb-8">
+                 <li className="flex items-center gap-2"><Check className="w-4 h-4 text-purple-500" /> Todo lo de Pro</li>
+                 <li className="flex items-center gap-2"><Check className="w-4 h-4 text-purple-500" /> IA Avanzada (Análisis)</li>
+                 <li className="flex items-center gap-2"><Check className="w-4 h-4 text-purple-500" /> Múltiples Usuarios</li>
+                 <li className="flex items-center gap-2"><Check className="w-4 h-4 text-purple-500" /> Soporte Prioritario 24/7</li>
+              </ul>
+           </div>
+           <div className={`w-full py-3 rounded-xl font-bold text-center transition-colors ${selectedPlan === 'Empresa Scale' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+              {selectedPlan === 'Empresa Scale' ? 'Seleccionado' : 'Elegir Scale'}
+           </div>
+        </div>
+
+      </div>
+
+      <div className="flex justify-center mt-12">
+        <button 
+          onClick={finishOnboarding}
+          disabled={isRedirecting}
+          className="bg-[#1c2938] text-white py-5 px-16 rounded-[2rem] font-bold text-xl hover:bg-[#27bea5] transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 active:translate-y-0 flex items-center gap-3 animate-pulse-slow cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
+        >
+          {isRedirecting ? (
+             <><Loader2 className="w-6 h-6 animate-spin" /> Procesando...</>
+          ) : selectedPlan === 'Free' ? (
+             <><ShieldCheck className="w-6 h-6" /> Finalizar y Entrar</>
+          ) : (
+             <><CreditCard className="w-6 h-6" /> Pagar y Activar</>
+          )}
         </button>
       </div>
     </div>
@@ -883,7 +1027,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
         
         {/* Visual Progress Steps */}
         <div className="hidden md:flex gap-2">
-          {[1,2,3,4,5,6].map((i) => (
+          {[1,2,3,4,5,6,7].map((i) => (
             <div 
               key={i} 
               className={`h-1.5 rounded-full transition-all duration-500 ${
@@ -903,6 +1047,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
           {step === 4 && renderStep4_Catalog()}
           {step === 5 && renderStep5_Comms()}
           {step === 6 && renderStep6_Channels()}
+          {step === 7 && renderStep7_Plan()}
         </div>
       </div>
       
