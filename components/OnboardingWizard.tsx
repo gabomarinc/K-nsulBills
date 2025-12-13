@@ -4,7 +4,7 @@ import {
   Building2, Check, ChevronRight, Palette, CreditCard, ShoppingBag, Mail, Sparkles,
   Loader2, Globe, UploadCloud, LayoutTemplate, Search, MapPin, AlertCircle, X,
   Coins, Smartphone, Server, AtSign, ShieldCheck, Zap, ArrowRight, PenLine,
-  User, CheckCircle2, Hash, Lock, Eye, EyeOff, Crown, Rocket
+  User, CheckCircle2, Hash, Lock, Eye, EyeOff, Crown, Rocket, Star
 } from 'lucide-react';
 import { UserProfile, CatalogItem, EmailConfig } from '../types';
 import { suggestCatalogItems, generateEmailTemplate } from '../services/geminiService';
@@ -61,8 +61,8 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
   const [whatsappCountryCode, setWhatsappCountryCode] = useState(DEFAULT_PHONE_CODE);
   const [whatsappNumber, setWhatsappNumber] = useState('');
 
-  // Step 7 State (Plan)
-  const [selectedPlan, setSelectedPlan] = useState<'Free' | 'Emprendedor Pro' | 'Empresa Scale'>('Free');
+  // Step 7 State (Plan) - MODIFIED: Default to Paid, no Free option
+  const [selectedPlan, setSelectedPlan] = useState<'Emprendedor Pro'>('Emprendedor Pro');
 
   // --- ACTIONS ---
 
@@ -114,7 +114,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          plan: selectedPlan,
+          plan: 'Emprendedor Pro', // Hardcoded single plan
           email: email,
           userId: userId
         })
@@ -138,15 +138,6 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
       email: email
     };
 
-    // We create the user object but we might delay "complete" if payment is needed
-    // However, logic here is: Save User -> If Paid, Redirect -> If Free, Enter App.
-    // The App component will handle authentication.
-    
-    // NOTE: This calls `onComplete` in App.tsx which creates the user in DB.
-    // We need to ensure we can capture the userId to pass to Stripe if needed,
-    // but createUserInDb is void/boolean.
-    // Strategy: We pass the plan to onComplete. 
-    
     const profileData = {
       name: companyName || 'Usuario Nuevo',
       taxId,
@@ -162,37 +153,20 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
       emailConfig,
       whatsappNumber,
       whatsappCountryCode,
-      plan: selectedPlan,
-      isOnboardingComplete: true, // Will be set to true in DB
+      plan: 'Emprendedor Pro' as const, // Force Paid Plan
+      isOnboardingComplete: true, 
       email, 
       password
     };
 
-    if (selectedPlan === 'Free') {
-        onComplete(profileData);
-    } else {
-        // 1. Create User in DB first via onComplete (Assume success for UI flow)
-        // We need the User ID for Stripe to reconcile later. 
-        // Since we don't have the ID here easily without refactoring App.tsx significantly,
-        // We will pass the email as reference to Stripe and reconcile by email on return.
-        
-        // Optimistic UI: Redirecting...
-        setIsRedirecting(true);
-        
-        // We trigger creation in background so the user exists when they return from Stripe
-        // But we DON'T wait for it to finish to start redirect logic to feel snappier,
-        // though we need the ID. 
-        // *Correction*: We must wait for creation or Stripe won't have an ID if we want strict linking.
-        // Let's rely on email linking in `create-checkout-session.js`.
-        
-        await onComplete(profileData); // This saves to DB and logs in
-        
-        // After onComplete, App.tsx sets currentUser. We can't access it here easily.
-        // But we can just fire the payment link for the email.
-        // On return, App.tsx checks query params.
-        
-        await initiatePayment(email); // Using email as temp ID for this flow
-    }
+    // ALWAYS TRIGGER PAYMENT
+    // 1. Create User in DB first via onComplete
+    setIsRedirecting(true);
+    await onComplete(profileData); 
+    
+    // 2. Initiate Stripe Session
+    // Using email as reference since we might not have ID back immediately in this flow context
+    await initiatePayment(email); 
   };
 
   // --- RENDER HELPERS ---
@@ -893,106 +867,53 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
   const renderStep7_Plan = () => (
     <div className="animate-in fade-in slide-in-from-right-8 duration-500">
       <div className="text-center mb-10">
-        <h2 className="text-4xl font-bold text-[#1c2938] mb-3">Elige tu Plan</h2>
-        <p className="text-slate-500 text-lg">Potencia tu negocio con las herramientas adecuadas.</p>
+        <h2 className="text-4xl font-bold text-[#1c2938] mb-3">Activa tu Suscripción</h2>
+        <p className="text-slate-500 text-lg">Comienza a potenciar tu negocio hoy mismo.</p>
       </div>
 
-      <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="max-w-2xl mx-auto">
         
-        {/* FREE PLAN */}
+        {/* SINGLE PAID PLAN (VIP Style) */}
         <div 
-          onClick={() => setSelectedPlan('Free')}
-          className={`p-8 rounded-[2.5rem] border-2 cursor-pointer transition-all duration-300 flex flex-col justify-between hover:-translate-y-1 ${
-            selectedPlan === 'Free' 
-              ? 'border-[#27bea5] bg-white ring-4 ring-[#27bea5]/10 shadow-xl' 
-              : 'border-transparent bg-white shadow-sm hover:border-slate-200'
-          }`}
+          className="p-10 rounded-[2.5rem] border-2 border-amber-400 bg-amber-50/10 ring-4 ring-amber-400/20 shadow-2xl relative overflow-hidden transform hover:-translate-y-1 transition-all duration-300 cursor-pointer"
         >
-           <div>
-              <h3 className="text-xl font-bold text-[#1c2938] mb-2">Gratis</h3>
-              <p className="text-3xl font-black text-[#1c2938] mb-6">$0 <span className="text-sm font-medium text-slate-400">/mes</span></p>
-              <ul className="space-y-3 text-sm text-slate-600 mb-8">
-                 <li className="flex items-center gap-2"><Check className="w-4 h-4 text-[#27bea5]" /> 10 Facturas/mes</li>
-                 <li className="flex items-center gap-2"><Check className="w-4 h-4 text-[#27bea5]" /> Clientes limitados</li>
-                 <li className="flex items-center gap-2"><Check className="w-4 h-4 text-[#27bea5]" /> Marca de agua Kônsul</li>
-              </ul>
-           </div>
-           <div className={`w-full py-3 rounded-xl font-bold text-center transition-colors ${selectedPlan === 'Free' ? 'bg-[#1c2938] text-white' : 'bg-slate-100 text-slate-500'}`}>
-              {selectedPlan === 'Free' ? 'Seleccionado' : 'Elegir Gratis'}
-           </div>
-        </div>
-
-        {/* PRO PLAN */}
-        <div 
-          onClick={() => setSelectedPlan('Emprendedor Pro')}
-          className={`p-8 rounded-[2.5rem] border-2 cursor-pointer transition-all duration-300 flex flex-col justify-between hover:-translate-y-1 relative overflow-hidden ${
-            selectedPlan === 'Emprendedor Pro' 
-              ? 'border-amber-400 bg-amber-50/10 ring-4 ring-amber-400/20 shadow-xl' 
-              : 'border-transparent bg-white shadow-sm hover:border-amber-200'
-          }`}
-        >
-           {selectedPlan === 'Emprendedor Pro' && <div className="absolute top-0 right-0 bg-amber-400 text-white text-xs font-bold px-3 py-1 rounded-bl-xl">POPULAR</div>}
-           <div>
-              <div className="flex items-center gap-2 mb-2">
-                 <h3 className="text-xl font-bold text-[#1c2938]">Emprendedor Pro</h3>
-                 <Crown className="w-5 h-5 text-amber-500 fill-amber-500" />
+           <div className="absolute top-0 right-0 bg-amber-400 text-white text-sm font-bold px-6 py-2 rounded-bl-2xl">RECOMENDADO</div>
+           <div className="absolute inset-0 bg-gradient-to-br from-white via-amber-50/20 to-white pointer-events-none"></div>
+           
+           <div className="relative z-10 text-center">
+              <div className="flex items-center justify-center gap-2 mb-4">
+                 <h3 className="text-3xl font-bold text-[#1c2938]">Suscripción Kônsul</h3>
+                 <Crown className="w-8 h-8 text-amber-500 fill-amber-500" />
               </div>
-              <p className="text-3xl font-black text-[#1c2938] mb-6">$15 <span className="text-sm font-medium text-slate-400">/mes</span></p>
-              <ul className="space-y-3 text-sm text-slate-600 mb-8">
-                 <li className="flex items-center gap-2"><Check className="w-4 h-4 text-amber-500" /> Facturación Ilimitada</li>
-                 <li className="flex items-center gap-2"><Check className="w-4 h-4 text-amber-500" /> Sin Marca de Agua</li>
-                 <li className="flex items-center gap-2"><Check className="w-4 h-4 text-amber-500" /> IA Básica (Gemini)</li>
-                 <li className="flex items-center gap-2"><Check className="w-4 h-4 text-amber-500" /> Soporte Email</li>
-              </ul>
-           </div>
-           <div className={`w-full py-3 rounded-xl font-bold text-center transition-colors ${selectedPlan === 'Emprendedor Pro' ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500'}`}>
-              {selectedPlan === 'Emprendedor Pro' ? 'Seleccionado' : 'Elegir Pro'}
-           </div>
-        </div>
-
-        {/* SCALE PLAN */}
-        <div 
-          onClick={() => setSelectedPlan('Empresa Scale')}
-          className={`p-8 rounded-[2.5rem] border-2 cursor-pointer transition-all duration-300 flex flex-col justify-between hover:-translate-y-1 ${
-            selectedPlan === 'Empresa Scale' 
-              ? 'border-purple-500 bg-purple-50/10 ring-4 ring-purple-500/20 shadow-xl' 
-              : 'border-transparent bg-white shadow-sm hover:border-purple-200'
-          }`}
-        >
-           <div>
-              <div className="flex items-center gap-2 mb-2">
-                 <h3 className="text-xl font-bold text-[#1c2938]">Empresa Scale</h3>
-                 <Rocket className="w-5 h-5 text-purple-500 fill-purple-500" />
+              <p className="text-6xl font-black text-[#1c2938] mb-2">$15 <span className="text-xl font-medium text-slate-400">/mes</span></p>
+              <p className="text-slate-500 mb-8">Acceso total a todas las herramientas.</p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-left max-w-lg mx-auto mb-10">
+                 <li className="flex items-center gap-3"><CheckCircle2 className="w-5 h-5 text-amber-500 flex-shrink-0" /> <span className="font-medium text-slate-700">Facturación Ilimitada</span></li>
+                 <li className="flex items-center gap-3"><CheckCircle2 className="w-5 h-5 text-amber-500 flex-shrink-0" /> <span className="font-medium text-slate-700">Sin Marca de Agua</span></li>
+                 <li className="flex items-center gap-3"><CheckCircle2 className="w-5 h-5 text-amber-500 flex-shrink-0" /> <span className="font-medium text-slate-700">IA Integrada (Gemini)</span></li>
+                 <li className="flex items-center gap-3"><CheckCircle2 className="w-5 h-5 text-amber-500 flex-shrink-0" /> <span className="font-medium text-slate-700">Soporte Prioritario</span></li>
+                 <li className="flex items-center gap-3"><CheckCircle2 className="w-5 h-5 text-amber-500 flex-shrink-0" /> <span className="font-medium text-slate-700">Gestión de Clientes CRM</span></li>
+                 <li className="flex items-center gap-3"><CheckCircle2 className="w-5 h-5 text-amber-500 flex-shrink-0" /> <span className="font-medium text-slate-700">Reportes Financieros</span></li>
               </div>
-              <p className="text-3xl font-black text-[#1c2938] mb-6">$35 <span className="text-sm font-medium text-slate-400">/mes</span></p>
-              <ul className="space-y-3 text-sm text-slate-600 mb-8">
-                 <li className="flex items-center gap-2"><Check className="w-4 h-4 text-purple-500" /> Todo lo de Pro</li>
-                 <li className="flex items-center gap-2"><Check className="w-4 h-4 text-purple-500" /> IA Avanzada (Análisis)</li>
-                 <li className="flex items-center gap-2"><Check className="w-4 h-4 text-purple-500" /> Múltiples Usuarios</li>
-                 <li className="flex items-center gap-2"><Check className="w-4 h-4 text-purple-500" /> Soporte Prioritario 24/7</li>
-              </ul>
-           </div>
-           <div className={`w-full py-3 rounded-xl font-bold text-center transition-colors ${selectedPlan === 'Empresa Scale' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
-              {selectedPlan === 'Empresa Scale' ? 'Seleccionado' : 'Elegir Scale'}
+
+              <button 
+                onClick={finishOnboarding}
+                disabled={isRedirecting}
+                className="w-full bg-[#1c2938] text-white py-5 px-10 rounded-[2rem] font-bold text-xl hover:bg-amber-500 hover:text-white transition-all shadow-xl hover:shadow-2xl active:translate-y-0 flex items-center justify-center gap-3 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
+              >
+                {isRedirecting ? (
+                   <><Loader2 className="w-6 h-6 animate-spin" /> Procesando Pago...</>
+                ) : (
+                   <><CreditCard className="w-6 h-6" /> Suscribirse y Continuar</>
+                )}
+              </button>
+              <p className="text-xs text-slate-400 mt-4 flex items-center justify-center gap-1">
+                 <Lock className="w-3 h-3" /> Pago seguro vía Stripe
+              </p>
            </div>
         </div>
 
-      </div>
-
-      <div className="flex justify-center mt-12">
-        <button 
-          onClick={finishOnboarding}
-          disabled={isRedirecting}
-          className="bg-[#1c2938] text-white py-5 px-16 rounded-[2rem] font-bold text-xl hover:bg-[#27bea5] transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 active:translate-y-0 flex items-center gap-3 animate-pulse-slow cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
-        >
-          {isRedirecting ? (
-             <><Loader2 className="w-6 h-6 animate-spin" /> Procesando...</>
-          ) : selectedPlan === 'Free' ? (
-             <><ShieldCheck className="w-6 h-6" /> Finalizar y Entrar</>
-          ) : (
-             <><CreditCard className="w-6 h-6" /> Pagar y Activar</>
-          )}
-        </button>
       </div>
     </div>
   );

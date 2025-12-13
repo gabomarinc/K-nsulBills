@@ -11,33 +11,16 @@ export default async function handler(req, res) {
   const { plan, email, userId } = req.body;
   const origin = req.headers.origin || 'http://localhost:5173';
 
-  // Define plans
-  // NOTE: In production, use Price IDs from your Stripe Dashboard instead of inline price_data
-  let priceData = null;
-
-  if (plan === 'Emprendedor Pro') {
-    priceData = {
-      currency: 'usd',
-      product_data: {
-        name: 'Kônsul - Plan Emprendedor Pro',
-        description: 'Facturación ilimitada, IA básica y soporte estándar.',
-      },
-      unit_amount: 1500, // $15.00
-      recurring: { interval: 'month' },
-    };
-  } else if (plan === 'Empresa Scale') {
-    priceData = {
-      currency: 'usd',
-      product_data: {
-        name: 'Kônsul - Plan Empresa Scale',
-        description: 'IA Avanzada, multi-usuario y soporte prioritario.',
-      },
-      unit_amount: 3500, // $35.00
-      recurring: { interval: 'month' },
-    };
-  } else {
-    return res.status(400).json({ error: 'Invalid plan selected' });
-  }
+  // We only support one plan for this test flow, linked to a specific Product ID
+  // The product ID provided is: prod_Tb5hEomvGYQEhh
+  // We use price_data to define the cost on the fly while linking to the existing product.
+  
+  const priceData = {
+    currency: 'usd',
+    product: 'prod_Tb5hEomvGYQEhh', // Explicitly linking to the existing Stripe Product
+    unit_amount: 1500, // $15.00 - Standard Pro Rate
+    recurring: { interval: 'month' },
+  };
 
   try {
     const session = await stripe.checkout.sessions.create({
@@ -55,7 +38,7 @@ export default async function handler(req, res) {
       client_reference_id: userId,
       metadata: {
         userId: userId,
-        plan: plan
+        plan: 'Emprendedor Pro' // Keeping metadata consistent
       }
     });
 
