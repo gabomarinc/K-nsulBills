@@ -69,6 +69,26 @@ export const comparePassword = async (plain: string, hashed: string): Promise<bo
 };
 
 /**
+ * HELPER: Map DB Row to UserProfile
+ */
+const mapUserRowToProfile = (row: any): UserProfile => {
+  const profileSettings = row.profile_data || {};
+  
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    type: row.type === 'COMPANY' ? 'Empresa (SAS/SL)' : 'Autónomo',
+    // Map specific columns over generic profile data if they exist
+    stripeCustomerId: row.stripe_customer_id || profileSettings.stripeCustomerId,
+    plan: row.plan_name || profileSettings.plan || 'Free',
+    renewalDate: row.renewal_date || profileSettings.renewalDate,
+    ...profileSettings,
+    isOnboardingComplete: true
+  } as UserProfile;
+};
+
+/**
  * GET USER BY ID
  */
 export const getUserById = async (userId: string): Promise<UserProfile | null> => {
@@ -96,22 +116,16 @@ export const getUserById = async (userId: string): Promise<UserProfile | null> =
 
   try {
     await client.connect();
-    const query = 'SELECT id, name, email, type, profile_data FROM users WHERE id = $1';
+    // Updated query to fetch new columns
+    const query = `
+      SELECT id, name, email, type, profile_data, stripe_customer_id, plan_name, renewal_date 
+      FROM users WHERE id = $1
+    `;
     const { rows } = await client.query(query, [userId]);
     await client.end();
 
     if (rows.length > 0) {
-       const userRow = rows[0];
-       const profileSettings = userRow.profile_data || {};
-
-       return {
-         id: userRow.id,
-         name: userRow.name,
-         email: userRow.email,
-         type: userRow.type === 'COMPANY' ? 'Empresa (SAS/SL)' : 'Autónomo',
-         ...profileSettings,
-         isOnboardingComplete: true
-       } as UserProfile;
+       return mapUserRowToProfile(rows[0]);
     }
     return null; 
   } catch (error) {
@@ -129,7 +143,10 @@ export const authenticateUser = async (email: string, password: string): Promise
   if (client) {
     try {
       await client.connect();
-      const query = 'SELECT id, name, email, password, type, profile_data FROM users WHERE email = $1';
+      const query = `
+        SELECT id, name, email, password, type, profile_data, stripe_customer_id, plan_name, renewal_date 
+        FROM users WHERE email = $1
+      `;
       const { rows } = await client.query(query, [email]);
       
       if (rows.length > 0) {
@@ -150,15 +167,7 @@ export const authenticateUser = async (email: string, password: string): Promise
          if (isMatch) {
            await client.end(); 
            logAuditAction(userRow.id, 'LOGIN', { email: userRow.email });
-           const profileSettings = userRow.profile_data || {};
-           return {
-             id: userRow.id, 
-             name: userRow.name,
-             email: userRow.email,
-             type: userRow.type === 'COMPANY' ? 'Empresa (SAS/SL)' : 'Autónomo',
-             ...profileSettings, 
-             isOnboardingComplete: true 
-           } as UserProfile;
+           return mapUserRowToProfile(userRow);
          }
       }
       await client.end(); 
@@ -207,17 +216,33 @@ export const createUserInDb = async (profile: Partial<UserProfile>, password: st
     const userId = `user_${Date.now()}_${Math.floor(Math.random()*1000)}`;
     
     const profileData = { ...profile };
+    // Remove structured fields from JSON blob to avoid duplication
     delete (profileData as any).id;
     delete (profileData as any).name;
     delete (profileData as any).email;
     delete (profileData as any).type;
     delete (profileData as any).password;
+    delete (profileData as any).stripeCustomerId;
+    delete (profileData as any).plan;
+    delete (profileData as any).renewalDate;
 
     const dbType = (profile.type || '').includes('Empresa') ? 'COMPANY' : 'FREELANCE';
 
+    // Insert into new columns as well
     await client.query(
-      `INSERT INTO users (id, name, email, password, type, profile_data) VALUES ($1, $2, $3, $4, $5, $6)`,
-      [userId, profile.name, email, hashedPassword, dbType, JSON.stringify(profileData)]
+      `INSERT INTO users (id, name, email, password, type, profile_data, stripe_customer_id, plan_name, renewal_date) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [
+        userId, 
+        profile.name, 
+        email, 
+        hashedPassword, 
+        dbType, 
+        JSON.stringify(profileData),
+        profile.stripeCustomerId || null,
+        profile.plan || 'Free',
+        profile.renewalDate || null
+      ]
     );
 
     await client.end();
@@ -239,17 +264,32 @@ export const updateUserProfileInDb = async (profile: UserProfile): Promise<boole
   try {
     await client.connect();
     const profileData = { ...profile };
+    
+    // Clean JSON blob
     delete (profileData as any).id;
     delete (profileData as any).name;
     delete (profileData as any).email;
     delete (profileData as any).type;
     delete (profileData as any).password;
+    delete (profileData as any).stripeCustomerId;
+    delete (profileData as any).plan;
+    delete (profileData as any).renewalDate;
 
     const dbType = (profile.type || '').includes('Empresa') ? 'COMPANY' : 'FREELANCE';
 
     await client.query(
-      `UPDATE users SET name = $1, type = $2, profile_data = $3, updated_at = NOW() WHERE id = $4`,
-      [profile.name, dbType, JSON.stringify(profileData), profile.id]
+      `UPDATE users 
+       SET name = $1, type = $2, profile_data = $3, stripe_customer_id = $4, plan_name = $5, renewal_date = $6, updated_at = NOW() 
+       WHERE id = $7`,
+      [
+        profile.name, 
+        dbType, 
+        JSON.stringify(profileData), 
+        profile.stripeCustomerId || null,
+        profile.plan || 'Free',
+        profile.renewalDate || null,
+        profile.id
+      ]
     );
 
     await client.end();
