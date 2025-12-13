@@ -154,6 +154,7 @@ export interface UserProfile {
   // Subscription
   plan?: 'Free' | 'Emprendedor Pro' | 'Empresa Scale';
   renewalDate?: string;
+  stripeCustomerId?: string; // NEW: To link with Stripe Billing Portal
 
   // AI & Services Configuration
   apiKeys?: {

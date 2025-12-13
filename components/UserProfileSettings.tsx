@@ -5,7 +5,7 @@ import {
   Save, Crown, Calendar, Globe,
   Coins, Sparkles, Key, Eye, EyeOff, ShieldCheck,
   Check, Zap, Loader2, CheckCircle2, XCircle, AlertTriangle, Lock, ArrowRight,
-  ChevronRight, FileText, Scale, TrendingUp, HelpCircle, Calculator
+  ChevronRight, FileText, Scale, TrendingUp, HelpCircle, Calculator, ExternalLink
 } from 'lucide-react';
 import { UserProfile, PaymentIntegration, ProfileType, FiscalConfig } from '../types';
 import { testAiConnection } from '../services/geminiService';
@@ -22,6 +22,9 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
   const [showKeys, setShowKeys] = useState<{ [key: string]: boolean }>({});
   const [testStatus, setTestStatus] = useState<{ [key: string]: 'IDLE' | 'LOADING' | 'SUCCESS' | 'ERROR' }>({});
   const [activePaymentTab, setActivePaymentTab] = useState<'PAGUELOFACIL' | 'YAPPY'>('PAGUELOFACIL');
+  
+  // Stripe Portal State
+  const [isRedirectingToPortal, setIsRedirectingToPortal] = useState(false);
 
   // Initialize fiscal config if missing
   useEffect(() => {
@@ -144,6 +147,41 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
     }
   };
 
+  const handleManageSubscription = async () => {
+    // If we have a stripeCustomerId, we use the backend to create a portal session
+    // For demo purposes, if missing, we just show an alert or redirect to pricing
+    if (!profile.stripeCustomerId) {
+        if (profile.plan === 'Free') {
+            alert("Actualmente estás en el plan Gratis. Contacta a soporte para actualizar.");
+        } else {
+            // Demo fallback if ID is missing but plan is Pro (e.g. manual DB edit)
+            alert("No se encontró el ID de cliente de Stripe. Contacta a soporte.");
+        }
+        return;
+    }
+
+    setIsRedirectingToPortal(true);
+    try {
+        const response = await fetch('/api/create-portal-session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ customerId: profile.stripeCustomerId })
+        });
+        
+        const data = await response.json();
+        
+        if (data.url) {
+            window.location.href = data.url;
+        } else {
+            throw new Error(data.error || 'No se pudo generar el enlace');
+        }
+    } catch (error) {
+        console.error("Portal Error", error);
+        alert("Error conectando con Stripe.");
+        setIsRedirectingToPortal(false);
+    }
+  };
+
   // --- FISCAL CALCULATIONS (PANAMA LOGIC) ---
   const fiscalPreview = useMemo(() => {
     const config = profile.fiscalConfig || {} as FiscalConfig;
@@ -230,7 +268,7 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
       <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-4 border-b border-slate-100 pb-6">
         <div>
            <h1 className="text-3xl font-bold text-[#1c2938] tracking-tight">Tu Espacio de Trabajo</h1>
-           <p className="text-slate-500 mt-1 text-lg font-light">Personaliza cómo te ven tus clientes y cómo trabaja tu IA.</p>
+           <p className="text-slate-500 mt-1 text-lg font-light">Personaliza cómo te verán tus clientes y cómo trabaja tu IA.</p>
         </div>
         <button 
           onClick={saveChanges}
@@ -892,8 +930,16 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                     <div className="flex items-center gap-2 opacity-90">
                        <CreditCard className="w-4 h-4" /> •••• 4242
                     </div>
-                    <button className="font-bold hover:underline decoration-2 underline-offset-4">
-                       Gestionar
+                    <button 
+                      onClick={handleManageSubscription}
+                      disabled={isRedirectingToPortal}
+                      className="font-bold hover:underline decoration-2 underline-offset-4 flex items-center gap-1 disabled:opacity-70"
+                    >
+                       {isRedirectingToPortal ? (
+                         <><Loader2 className="w-3 h-3 animate-spin" /> Conectando...</>
+                       ) : (
+                         <>Gestionar <ExternalLink className="w-3 h-3" /></>
+                       )}
                     </button>
                  </div>
               </div>
