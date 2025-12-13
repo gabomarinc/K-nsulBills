@@ -18,7 +18,7 @@ export default async function handler(req, res) {
   const priceData = {
     currency: 'usd',
     product: 'prod_Tb5hEomvGYQEhh', // Explicitly linking to the existing Stripe Product
-    unit_amount: 1500, // $15.00 - Standard Pro Rate
+    unit_amount: 500, // $5.00 - Standard Pro Rate
     recurring: { interval: 'month' },
   };
 

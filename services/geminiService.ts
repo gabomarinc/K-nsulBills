@@ -12,14 +12,21 @@ export interface AiKeys {
 }
 
 const getAiClient = (keys?: AiKeys) => {
+  // Priority: 1. User provided key (keys.gemini) 2. System Env Key (process.env.API_KEY)
   const apiKey = keys?.gemini || process.env.API_KEY;
-  if (!apiKey) throw new Error(AI_ERROR_BLOCKED);
+  
+  if (!apiKey) {
+      console.error("Gemini AI Error: Missing API Key. User key is undefined and process.env.API_KEY is missing.");
+      throw new Error(AI_ERROR_BLOCKED);
+  }
   return new GoogleGenAI({ apiKey });
 };
 
-// ... (Existing Functions: parseExpenseImage, parseInvoiceRequest, askSupportBot, etc.) ...
-// We need to keep all existing functions. To be safe, I'm appending the new function and keeping imports/setup.
-// However, the "content" block replaces the file content. I will include ALL existing functions plus the new one.
+// Helper to sanitize JSON response from LLM
+const cleanJson = (text: string) => {
+  if (!text) return "{}";
+  return text.replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
+};
 
 export const parseExpenseImage = async (
   imageBase64: string, 
@@ -27,14 +34,9 @@ export const parseExpenseImage = async (
   keys?: AiKeys
 ): Promise<ParsedInvoiceData | null> => {
   
-  if (keys && !keys.gemini && !process.env.API_KEY) {
-      console.warn("BLOCKED: Vision requires Gemini Key");
-      throw new Error(AI_ERROR_BLOCKED);
-  }
-
-  const ai = getAiClient(keys);
-
   try {
+    const ai = getAiClient(keys);
+
     const schema: Schema = {
       type: Type.OBJECT,
       properties: {
@@ -69,7 +71,8 @@ export const parseExpenseImage = async (
     });
 
     if (response.text) {
-       const data = JSON.parse(response.text);
+       const cleaned = cleanJson(response.text);
+       const data = JSON.parse(cleaned);
        return { ...data, detectedType: 'Expense' } as ParsedInvoiceData;
     }
     return null;
@@ -101,7 +104,11 @@ export const parseInvoiceRequest = async (input: string, keys?: AiKeys): Promise
             config: { responseMimeType: "application/json", responseSchema: schema }
         });
 
-        return response.text ? JSON.parse(response.text) : null;
+        if (response.text) {
+            const cleaned = cleanJson(response.text);
+            return JSON.parse(cleaned);
+        }
+        return null;
     } catch (e) {
         console.error("Parse Invoice Request Error:", e);
         if ((e as Error).message === AI_ERROR_BLOCKED) throw e;
@@ -119,7 +126,7 @@ export const askSupportBot = async (message: string, keys?: AiKeys): Promise<str
         });
         return response.text || "No entendí, ¿puedes repetir?";
     } catch(e) {
-        return "Lo siento, no puedo responder ahora mismo.";
+        return "Lo siento, no puedo responder ahora mismo. (Error de conexión IA)";
     }
 };
 
@@ -140,12 +147,17 @@ export const suggestCatalogItems = async (businessDescription: string, keys?: Ai
         };
         const response = await ai.models.generateContent({
             model: GEMINI_MODEL_ID,
-            contents: `Sugiere 3-5 servicios o productos con precios estimados para este negocio: ${businessDescription}`,
+            contents: `Sugiere 3-5 servicios o productos con precios estimados para este negocio: ${businessDescription}. Precios realistas en USD.`,
             config: { responseMimeType: "application/json", responseSchema: schema }
         });
-        const items = JSON.parse(response.text || "[]");
+        
+        const text = response.text || "[]";
+        const cleaned = cleanJson(text);
+        const items = JSON.parse(cleaned);
+        
         return items.map((i: any) => ({ ...i, id: Date.now().toString() + Math.random(), isRecurring: false }));
     } catch (e) {
+        console.error("Suggest Catalog Error:", e);
         return [];
     }
 };
@@ -155,10 +167,11 @@ export const generateEmailTemplate = async (tone: 'Formal' | 'Casual', keys?: Ai
         const ai = getAiClient(keys);
         const response = await ai.models.generateContent({
             model: GEMINI_MODEL_ID,
-            contents: `Genera una plantilla de correo ${tone} para enviar una factura a un cliente. Solo el cuerpo del correo.`,
+            contents: `Genera una plantilla de correo ${tone} para enviar una factura a un cliente. Solo el cuerpo del correo, sin asunto. Manténlo breve y profesional.`,
         });
         return response.text || "";
     } catch(e) {
+        console.error("Generate Email Error:", e);
         return tone === 'Formal' ? "Estimado cliente, adjunto encontrará su factura. Saludos cordiales." : "Hola! Aquí tienes tu factura. Gracias!";
     }
 };
@@ -194,8 +207,11 @@ export const generateFinancialAnalysis = async (summary: string, keys?: AiKeys):
             contents: `Analiza este resumen financiero y actúa como un CFO experto: ${summary}`,
             config: { responseMimeType: "application/json", responseSchema: schema }
         });
-        return JSON.parse(response.text || "null");
+        
+        const cleaned = cleanJson(response.text || "{}");
+        return JSON.parse(cleaned);
     } catch (e) { 
+        console.error("Analysis Error:", e);
         if ((e as Error).message === AI_ERROR_BLOCKED) throw e;
         return null; 
     }
@@ -230,7 +246,8 @@ export const generateDeepDiveReport = async (title: string, context: string, key
             contents: `Generate a deep dive analysis report for the chart titled "${title}". Context data: ${context}`,
             config: { responseMimeType: "application/json", responseSchema: schema }
         });
-        return JSON.parse(response.text || "null");
+        const cleaned = cleanJson(response.text || "{}");
+        return JSON.parse(cleaned);
     } catch { return null; }
 };
 
@@ -253,7 +270,8 @@ export const analyzePriceMarket = async (itemName: string, country: string, keys
             contents: `Analyze market price for "${itemName}" in ${country}. Provide estimated range and reasoning.`,
             config: { responseMimeType: "application/json", responseSchema: schema }
         });
-        return JSON.parse(response.text || "null");
+        const cleaned = cleanJson(response.text || "{}");
+        return JSON.parse(cleaned);
     } catch (e) {
         if ((e as Error).message === AI_ERROR_BLOCKED) throw e;
         return null; 
@@ -274,7 +292,6 @@ export const enhanceProductDescription = async (desc: string, name: string, form
     }
 };
 
-// NEW FUNCTION FOR DISCOUNT RECOMMENDATION
 export const getDiscountRecommendation = async (
     amount: number, 
     clientName: string, 
@@ -301,7 +318,8 @@ export const getDiscountRecommendation = async (
             config: { responseMimeType: "application/json", responseSchema: schema }
         });
         
-        return JSON.parse(response.text || "null");
+        const cleaned = cleanJson(response.text || "{}");
+        return JSON.parse(cleaned);
     } catch (e) {
         if ((e as Error).message === AI_ERROR_BLOCKED) throw e;
         return null;

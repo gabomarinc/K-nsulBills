@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { UserProfile, CatalogItem, EmailConfig } from '../types';
 import { suggestCatalogItems, generateEmailTemplate } from '../services/geminiService';
-import { consultarRucDGI } from '../services/dgiService'; 
+import { createUserInDb } from '../services/neon'; // Import for direct DB creation
 
 interface OnboardingWizardProps {
   onComplete: (profileData: Partial<UserProfile> & { password?: string, email?: string }) => void;
@@ -138,7 +138,11 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
       email: email
     };
 
+    // Generate ID locally so we can pass it to both Stripe and DB
+    const newUserId = `user_${Date.now()}_${Math.floor(Math.random()*1000)}`;
+
     const profileData = {
+      id: newUserId, // Important: Pass generated ID
       name: companyName || 'Usuario Nuevo',
       taxId,
       address,
@@ -159,14 +163,23 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
       password
     };
 
-    // ALWAYS TRIGGER PAYMENT
-    // 1. Create User in DB first via onComplete
     setIsRedirecting(true);
-    await onComplete(profileData); 
-    
-    // 2. Initiate Stripe Session
-    // Using email as reference since we might not have ID back immediately in this flow context
-    await initiatePayment(email); 
+
+    try {
+        // 1. Create User in DB directly (bypass App state update to avoid flashing dashboard)
+        // We import createUserInDb directly instead of relying on callback that changes view
+        await createUserInDb(profileData, password, email);
+        
+        // 2. Set LocalStorage so when they return from Stripe, App.tsx can rehydrate session
+        localStorage.setItem('konsul_user_data', JSON.stringify(profileData));
+        
+        // 3. Initiate Stripe Session with the created User ID
+        await initiatePayment(newUserId); 
+    } catch (e) {
+        console.error("Onboarding Error", e);
+        alert("Hubo un error al guardar tu perfil. Intenta nuevamente.");
+        setIsRedirecting(false);
+    }
   };
 
   // --- RENDER HELPERS ---
@@ -877,7 +890,6 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
         <div 
           className="p-10 rounded-[2.5rem] border-2 border-amber-400 bg-amber-50/10 ring-4 ring-amber-400/20 shadow-2xl relative overflow-hidden transform hover:-translate-y-1 transition-all duration-300 cursor-pointer"
         >
-           <div className="absolute top-0 right-0 bg-amber-400 text-white text-sm font-bold px-6 py-2 rounded-bl-2xl">RECOMENDADO</div>
            <div className="absolute inset-0 bg-gradient-to-br from-white via-amber-50/20 to-white pointer-events-none"></div>
            
            <div className="relative z-10 text-center">
@@ -885,7 +897,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
                  <h3 className="text-3xl font-bold text-[#1c2938]">Suscripción Kônsul</h3>
                  <Crown className="w-8 h-8 text-amber-500 fill-amber-500" />
               </div>
-              <p className="text-6xl font-black text-[#1c2938] mb-2">$15 <span className="text-xl font-medium text-slate-400">/mes</span></p>
+              <p className="text-6xl font-black text-[#1c2938] mb-2">$5 <span className="text-xl font-medium text-slate-400">/mes</span></p>
               <p className="text-slate-500 mb-8">Acceso total a todas las herramientas.</p>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-left max-w-lg mx-auto mb-10">

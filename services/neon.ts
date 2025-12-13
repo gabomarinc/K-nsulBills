@@ -213,7 +213,9 @@ export const createUserInDb = async (profile: Partial<UserProfile>, password: st
     }
 
     const hashedPassword = await hashPassword(password);
-    const userId = `user_${Date.now()}_${Math.floor(Math.random()*1000)}`;
+    
+    // Use ID if provided (from Frontend generation), otherwise generate new
+    const userId = profile.id || `user_${Date.now()}_${Math.floor(Math.random()*1000)}`;
     
     const profileData = { ...profile };
     // Remove structured fields from JSON blob to avoid duplication
