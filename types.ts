@@ -128,6 +128,7 @@ export interface UserProfile {
   branding?: BrandingConfig;
   
   // Finance
+  bankName?: string; // New: Bank Name
   bankAccount?: string; // IBAN / CBU / CLABE
   defaultCurrency?: string; // New: Default currency for user
   paymentTermsDays?: number;

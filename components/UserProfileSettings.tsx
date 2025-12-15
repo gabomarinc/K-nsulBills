@@ -525,6 +525,15 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block">Nombre del Banco</label>
+                      <input 
+                        value={profile.bankName || ''}
+                        onChange={(e) => handleInputChange('bankName', e.target.value)}
+                        placeholder="Ej. Banco General"
+                        className="w-full bg-transparent text-xl font-medium text-white placeholder:text-slate-600 outline-none border-b border-slate-600 focus:border-[#27bea5] py-2 transition-colors"
+                      />
+                   </div>
+                   <div className="space-y-2">
                       <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block">Cuenta Bancaria (IBAN/ACH)</label>
                       <input 
                         value={profile.bankAccount || ''}
@@ -533,7 +542,7 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                         className="w-full bg-transparent text-xl font-mono text-white placeholder:text-slate-600 outline-none border-b border-slate-600 focus:border-[#27bea5] py-2 transition-colors"
                       />
                    </div>
-                   <div className="space-y-2">
+                   <div className="space-y-2 md:col-span-2">
                       <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block">Moneda Base</label>
                       <div className="relative">
                          <select 

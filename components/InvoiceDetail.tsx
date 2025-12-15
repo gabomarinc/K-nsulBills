@@ -91,8 +91,20 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
     };
   }, [invoice.resendEmailId, invoice.timeline, onUpdateInvoice]);
 
+  // --- CALCULATION LOGIC ---
   const subtotal = invoice.items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-  const taxTotal = invoice.items.reduce((acc, item) => acc + (item.price * item.quantity * (item.tax / 100)), 0);
+  const discountRate = invoice.discountRate || 0;
+  const discountAmount = subtotal * (discountRate / 100);
+  
+  // Calculate Tax on the Discounted Base (Proportional)
+  // Logic matches InvoiceWizard to ensure consistency
+  const taxTotal = invoice.items.reduce((acc, item) => {
+      const itemTotal = item.price * item.quantity;
+      // Apply discount share to this item
+      const itemTaxable = itemTotal * (1 - (discountRate / 100));
+      return acc + (itemTaxable * (item.tax / 100));
+  }, 0);
+
   const amountPaid = invoice.amountPaid || 0;
   const remainingBalance = Math.max(0, invoice.total - amountPaid);
   
@@ -392,6 +404,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
               ) : (
                 <div className="bg-slate-50 p-6 rounded-xl text-slate-700 text-sm">
                   <p className="font-bold mb-2 text-lg">Datos Bancarios</p>
+                  {issuer.bankName && <p className="font-medium text-[#1c2938]">{issuer.bankName}</p>}
                   <p className="font-mono text-base">{issuer.bankAccount || 'No configurado'}</p>
                 </div>
               )}
@@ -402,6 +415,12 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                 <span>Subtotal</span>
                 <span>${subtotal.toFixed(2)}</span>
               </div>
+              {discountAmount > 0 && (
+                <div className="flex justify-between text-lg">
+                    <span className="text-slate-500">Descuento ({discountRate.toFixed(1)}%)</span>
+                    <span className="text-green-600 font-medium">-${discountAmount.toFixed(2)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-slate-500 text-lg">
                 <span>ITBMS (7%)</span>
                 <span>${taxTotal.toFixed(2)}</span>
@@ -409,7 +428,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
               <div className="pt-6 border-t-2 border-slate-100 flex justify-between items-end">
                   <span className="font-bold text-[#1c2938] text-xl">Total</span>
                   <span className="font-bold text-[#1c2938] text-4xl" style={{ color: color }}>
-                    {invoice.currency} ${invoice.total.toFixed(2)}
+                    {invoice.currency} {invoice.total.toFixed(2)}
                   </span>
               </div>
               
@@ -487,6 +506,12 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                 <span>Subtotal:</span>
                 <span>${subtotal.toFixed(2)}</span>
              </div>
+             {discountAmount > 0 && (
+                <div className="flex justify-between text-slate-600 font-serif text-sm">
+                    <span>Descuento:</span>
+                    <span>-${discountAmount.toFixed(2)}</span>
+                </div>
+             )}
              <div className="flex justify-between text-slate-600 font-serif text-sm border-b border-slate-300 pb-2">
                 <span>Impuesto:</span>
                 <span>${taxTotal.toFixed(2)}</span>
@@ -543,12 +568,26 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
        </div>
 
        <div className="flex justify-end">
-          <div className="text-right">
-             <p className="text-xs text-slate-400 uppercase tracking-widest mb-1">Total a Pagar</p>
+          <div className="text-right space-y-1">
+             <div className="flex justify-end gap-8 text-sm text-slate-500">
+                <span>Subtotal</span>
+                <span>${subtotal.toFixed(2)}</span>
+             </div>
+             {discountAmount > 0 && (
+                <div className="flex justify-end gap-8 text-sm text-slate-500">
+                    <span>Descuento</span>
+                    <span>-${discountAmount.toFixed(2)}</span>
+                </div>
+             )}
+             <div className="flex justify-end gap-8 text-sm text-slate-500 pb-4">
+                <span>Impuesto</span>
+                <span>${taxTotal.toFixed(2)}</span>
+             </div>
+             
+             <p className="text-xs text-slate-400 uppercase tracking-widest mb-1 pt-4 border-t border-slate-100">Total a Pagar</p>
              <h2 className="text-5xl font-bold text-slate-900 tracking-tighter" style={{ color: color }}>
                 {invoice.currency} {invoice.total.toLocaleString()}
              </h2>
-             <p className="text-xs text-slate-400 mt-4">Impuestos incluidos</p>
           </div>
        </div>
 
