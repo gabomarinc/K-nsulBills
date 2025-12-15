@@ -130,6 +130,7 @@ export interface UserProfile {
   // Finance
   bankName?: string; // New: Bank Name
   bankAccount?: string; // IBAN / CBU / CLABE
+  bankAccountType?: 'Ahorro' | 'Corriente'; // New: Account Type
   defaultCurrency?: string; // New: Default currency for user
   paymentTermsDays?: number;
   acceptsOnlinePayment?: boolean; // Legacy flag, migrating to paymentIntegration

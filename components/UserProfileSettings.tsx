@@ -542,7 +542,23 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                         className="w-full bg-transparent text-xl font-mono text-white placeholder:text-slate-600 outline-none border-b border-slate-600 focus:border-[#27bea5] py-2 transition-colors"
                       />
                    </div>
-                   <div className="space-y-2 md:col-span-2">
+                   
+                   <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block">Tipo de Cuenta</label>
+                      <div className="relative">
+                         <select 
+                           value={profile.bankAccountType || 'Ahorro'}
+                           onChange={(e) => handleInputChange('bankAccountType', e.target.value)}
+                           className="w-full bg-white/10 text-white p-3 rounded-xl outline-none appearance-none cursor-pointer hover:bg-white/20 transition-colors font-bold border border-white/5 focus:border-[#27bea5]"
+                         >
+                           <option value="Ahorro" className="text-slate-900">Ahorro</option>
+                           <option value="Corriente" className="text-slate-900">Corriente</option>
+                         </select>
+                         <ChevronRight className="absolute right-3 top-3 w-5 h-5 text-slate-400 pointer-events-none rotate-90" />
+                      </div>
+                   </div>
+
+                   <div className="space-y-2">
                       <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block">Moneda Base</label>
                       <div className="relative">
                          <select 
@@ -678,7 +694,7 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
 
                                   <div className="space-y-2">
                                      <label className="text-[10px] font-bold text-[#ff6b00] uppercase tracking-widest flex items-center gap-1">
-                                        <Lock className="w-3 h-3" /> Merchant ID
+                                        <Lock className="w-3 h-3" /> Merchant ID (Opcional para enlace directo)
                                      </label>
                                      <input 
                                        value={profile.paymentIntegration?.yappyMerchantId || ''}
@@ -689,7 +705,7 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                                   </div>
                                   <div className="space-y-2">
                                      <label className="text-[10px] font-bold text-[#ff6b00] uppercase tracking-widest flex items-center gap-1">
-                                        <Key className="w-3 h-3" /> Secret Key
+                                        <Key className="w-3 h-3" /> Secret Key (Opcional)
                                      </label>
                                      <div className="relative">
                                         <input 
