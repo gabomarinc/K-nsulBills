@@ -16,6 +16,7 @@ const getDbClient = () => {
       return null;
     }
     
+    // Validate URL format simply
     if (!url.startsWith('postgres://') && !url.startsWith('postgresql://')) {
       console.warn("Invalid Database URL format");
       return null;
@@ -357,32 +358,16 @@ export const fetchCatalogItemsFromDb = async (userId: string): Promise<CatalogIt
 };
 
 // Save (Upsert) Catalog Item
-export const saveCatalogItemToDb = async (item: CatalogItem, userId: string): Promise<boolean> => {
+export const saveCatalogItemToDb = async (item: CatalogItem, userId: string): Promise<{success: boolean, error?: string}> => {
   const client = getDbClient();
-  if (!client) return false;
+  if (!client) return { success: false, error: 'Database client not initialized. Check DATABASE_URL.' };
 
   try {
     await client.connect();
 
-    // Ensure schema is ready (Self-Healing logic)
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS catalog_items (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        name TEXT NOT NULL,
-        price NUMERIC NOT NULL,
-        description TEXT,
-        is_recurring BOOLEAN DEFAULT FALSE,
-        sku TEXT,
-        created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
-    
-    // Run Migrations just in case
-    await client.query(`ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS sku TEXT;`);
-    await client.query(`ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS is_recurring BOOLEAN DEFAULT FALSE;`);
-    await client.query(`ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS description TEXT;`);
+    // REMOVED REPETITIVE SCHEMA MIGRATION FROM HERE
+    // It causes connection overhead and "Table already exists" errors in strict modes.
+    // The schema is handled in fetchCatalogItemsFromDb or via manual SQL script.
 
     const query = `
       INSERT INTO catalog_items (id, user_id, name, price, description, is_recurring, sku, updated_at)
@@ -407,10 +392,11 @@ export const saveCatalogItemToDb = async (item: CatalogItem, userId: string): Pr
     ]);
     
     await client.end();
-    return true;
-  } catch (error) {
+    return { success: true };
+  } catch (error: any) {
     console.error("Save Catalog Item Error:", error);
-    return false;
+    // Return specific error message to help debugging
+    return { success: false, error: error.message || 'Unknown database error' };
   }
 };
 

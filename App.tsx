@@ -495,14 +495,14 @@ const AppContent: React.FC = () => {
   const handleSaveCatalogItem = async (item: CatalogItem) => {
     if (!currentUser) return;
     
-    const success = await saveCatalogItemToDb(item, currentUser.id);
-    if (success) {
+    const res = await saveCatalogItemToDb(item, currentUser.id);
+    if (res.success) {
         // Refresh local state by fetching (to handle ID generation or DB triggers if any) or optimistic update
         const updatedList = await fetchCatalogItemsFromDb(currentUser.id);
         setCurrentUser(prev => prev ? ({ ...prev, defaultServices: updatedList }) : null);
         alert.addToast('success', 'Ítem Guardado', `${item.name} se ha guardado en tu catálogo.`);
     } else {
-        alert.addToast('error', 'Error al Guardar', 'No se pudo conectar con la base de datos.');
+        alert.addToast('error', 'Error al Guardar', res.error || 'No se pudo conectar con la base de datos.');
     }
   };
 

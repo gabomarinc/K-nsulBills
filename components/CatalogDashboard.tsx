@@ -4,7 +4,7 @@ import {
   Plus, Search, Edit2, Trash2, Tag, 
   Sparkles, Loader2, ArrowRight, TrendingUp, X,
   ShoppingBag, MoreVertical, Wand2, Info,
-  AlignLeft, List, CalendarClock, Package, Check, Calculator, AlertCircle, Lock
+  AlignLeft, List, CalendarClock, Package, Check, Calculator, AlertCircle, Lock, Save
 } from 'lucide-react';
 import { CatalogItem, PriceAnalysisResult, UserProfile } from '../types';
 import { analyzePriceMarket, enhanceProductDescription, AI_ERROR_BLOCKED } from '../services/geminiService';
@@ -14,10 +14,10 @@ interface CatalogDashboardProps {
   items: CatalogItem[];
   userCountry: string;
   apiKey?: { gemini?: string; openai?: string }; 
-  onSaveItem: (item: CatalogItem) => void;
+  onSaveItem: (item: CatalogItem) => Promise<void>; // Updated type to Promise
   onDeleteItem: (id: string) => void;
   referenceHourlyRate?: number;
-  currentUser?: UserProfile; // New Prop for Context
+  currentUser?: UserProfile; 
 }
 
 const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry, apiKey, onSaveItem, onDeleteItem, referenceHourlyRate, currentUser }) => {
@@ -25,6 +25,9 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<CatalogItem | null>(null);
   
+  // Loading State for Save
+  const [isSaving, setIsSaving] = useState(false);
+
   const alert = useAlert();
 
   // Check AI Access
@@ -70,24 +73,32 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.name || formData.price === undefined) return;
+    setIsSaving(true);
 
-    if (editingItem) {
-      // Update Existing
-      onSaveItem({ ...editingItem, ...formData } as CatalogItem);
-    } else {
-      // Create New - Ensure ID is unique and string
-      const newItem: CatalogItem = {
-        id: `cat_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-        name: formData.name,
-        price: formData.price,
-        description: formData.description || '',
-        isRecurring: formData.isRecurring
-      };
-      onSaveItem(newItem);
+    try {
+        if (editingItem) {
+          // Update Existing
+          await onSaveItem({ ...editingItem, ...formData } as CatalogItem);
+        } else {
+          // Create New - Ensure ID is unique and string
+          const newItem: CatalogItem = {
+            id: `cat_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+            name: formData.name,
+            price: formData.price,
+            description: formData.description || '',
+            isRecurring: formData.isRecurring
+          };
+          await onSaveItem(newItem);
+        }
+        setIsModalOpen(false);
+    } catch (e) {
+        console.error("Failed to save item", e);
+        // Error toast is handled in App.tsx
+    } finally {
+        setIsSaving(false);
     }
-    setIsModalOpen(false);
   };
 
   const handleAnalyzePrice = async () => {
@@ -442,9 +453,11 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
                  </button>
                  <button 
                    onClick={handleSave}
-                   className="flex-1 bg-[#1c2938] text-white py-4 rounded-2xl font-bold hover:bg-[#27bea5] shadow-xl hover:shadow-2xl hover:-translate-y-1 active:translate-y-0 transition-all duration-300"
+                   disabled={isSaving}
+                   className="flex-1 bg-[#1c2938] text-white py-4 rounded-2xl font-bold hover:bg-[#27bea5] shadow-xl hover:shadow-2xl hover:-translate-y-1 active:translate-y-0 transition-all duration-300 disabled:opacity-70 flex items-center justify-center gap-2"
                  >
-                   Guardar Producto
+                   {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                   {isSaving ? 'Guardando...' : 'Guardar Producto'}
                  </button>
               </div>
            </div>
