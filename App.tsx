@@ -27,7 +27,10 @@ import {
   saveClientToDb,
   saveProviderToDb, 
   getUserById,
-  fetchClientsFromDb 
+  fetchClientsFromDb,
+  fetchCatalogItemsFromDb,
+  saveCatalogItemToDb,
+  deleteCatalogItemFromDb
 } from './services/neon';
 
 // Wrapper Component to use Hooks
@@ -152,10 +155,23 @@ const AppContent: React.FC = () => {
         if (clients) {
             setDbClients(clients);
         }
+
+        // Fetch Catalog Items (NEW) and sync into current user profile for legacy compatibility
+        const items = await fetchCatalogItemsFromDb(currentUser.id);
+        if (items) {
+            setCurrentUser(prev => {
+                if (!prev) return null;
+                // Only update if actually different to avoid render loops, or just update silently
+                if (JSON.stringify(prev.defaultServices) !== JSON.stringify(items)) {
+                    return { ...prev, defaultServices: items };
+                }
+                return prev;
+            });
+        }
       };
       loadData();
     }
-  }, [currentUser]);
+  }, [currentUser?.id]); // Only re-run if ID changes
 
   const handleLoginSuccess = (user: UserProfile) => {
     localStorage.setItem('konsul_session_id', user.id);
@@ -475,13 +491,32 @@ const AppContent: React.FC = () => {
     alert.addToast('success', 'Perfil Actualizado', 'Tus cambios se han guardado.');
   };
 
-  const handleUpdateCatalog = async (items: CatalogItem[]) => {
+  // --- CATALOG HANDLERS ---
+  const handleSaveCatalogItem = async (item: CatalogItem) => {
     if (!currentUser) return;
-    const updated = { ...currentUser, defaultServices: items };
-    setCurrentUser(updated);
-    localStorage.setItem('konsul_user_data', JSON.stringify(updated)); 
-    await updateUserProfileInDb(updated);
-    alert.addToast('success', 'Catálogo Actualizado');
+    
+    const success = await saveCatalogItemToDb(item, currentUser.id);
+    if (success) {
+        // Refresh local state by fetching (to handle ID generation or DB triggers if any) or optimistic update
+        const updatedList = await fetchCatalogItemsFromDb(currentUser.id);
+        setCurrentUser(prev => prev ? ({ ...prev, defaultServices: updatedList }) : null);
+        alert.addToast('success', 'Ítem Guardado', `${item.name} se ha guardado en tu catálogo.`);
+    } else {
+        alert.addToast('error', 'Error al Guardar', 'No se pudo conectar con la base de datos.');
+    }
+  };
+
+  const handleDeleteCatalogItem = async (itemId: string) => {
+    if (!currentUser) return;
+    
+    const success = await deleteCatalogItemFromDb(itemId, currentUser.id);
+    if (success) {
+        const updatedList = (currentUser.defaultServices || []).filter(i => i.id !== itemId);
+        setCurrentUser(prev => prev ? ({ ...prev, defaultServices: updatedList }) : null);
+        alert.addToast('info', 'Ítem Eliminado', 'El producto ha sido removido del catálogo.');
+    } else {
+        alert.addToast('error', 'Error al Eliminar', 'Intenta nuevamente.');
+    }
   };
 
   // --- RENDER ---
@@ -665,7 +700,8 @@ const AppContent: React.FC = () => {
           items={currentUser.defaultServices || []}
           userCountry={currentUser.country || 'Global'}
           apiKey={currentUser.apiKeys}
-          onUpdate={handleUpdateCatalog}
+          onSaveItem={handleSaveCatalogItem}
+          onDeleteItem={handleDeleteCatalogItem}
           referenceHourlyRate={currentUser.hourlyRateConfig?.calculatedRate}
           currentUser={currentUser}
         />

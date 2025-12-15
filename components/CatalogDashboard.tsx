@@ -8,21 +8,25 @@ import {
 } from 'lucide-react';
 import { CatalogItem, PriceAnalysisResult, UserProfile } from '../types';
 import { analyzePriceMarket, enhanceProductDescription, AI_ERROR_BLOCKED } from '../services/geminiService';
+import { useAlert } from './AlertSystem';
 
 interface CatalogDashboardProps {
   items: CatalogItem[];
   userCountry: string;
   apiKey?: { gemini?: string; openai?: string }; 
-  onUpdate: (items: CatalogItem[]) => void;
+  onSaveItem: (item: CatalogItem) => void;
+  onDeleteItem: (id: string) => void;
   referenceHourlyRate?: number;
   currentUser?: UserProfile; // New Prop for Context
 }
 
-const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry, apiKey, onUpdate, referenceHourlyRate, currentUser }) => {
+const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry, apiKey, onSaveItem, onDeleteItem, referenceHourlyRate, currentUser }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<CatalogItem | null>(null);
   
+  const alert = useAlert();
+
   // Check AI Access
   const hasAiAccess = !!apiKey?.gemini || !!apiKey?.openai;
 
@@ -53,25 +57,25 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
     setIsModalOpen(true);
   };
 
-  const handleDelete = (id: string) => {
-    if (window.confirm('¿Estás seguro de eliminar este ítem?')) {
-      const newItems = items.filter(i => i.id !== id);
-      onUpdate(newItems);
+  const handleDelete = async (id: string) => {
+    const confirmed = await alert.confirm({
+        title: '¿Eliminar ítem?',
+        message: 'Este producto se eliminará de tu catálogo permanentemente.',
+        confirmText: 'Sí, Eliminar',
+        type: 'danger'
+    });
+
+    if (confirmed) {
+      onDeleteItem(id);
     }
   };
 
   const handleSave = () => {
     if (!formData.name || formData.price === undefined) return;
 
-    // Deep clone items to avoid reference issues
-    const currentItems = [...items];
-
     if (editingItem) {
       // Update Existing
-      const updatedItems = currentItems.map(i => 
-        i.id === editingItem.id ? { ...i, ...formData } as CatalogItem : i
-      );
-      onUpdate(updatedItems);
+      onSaveItem({ ...editingItem, ...formData } as CatalogItem);
     } else {
       // Create New - Ensure ID is unique and string
       const newItem: CatalogItem = {
@@ -81,14 +85,14 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
         description: formData.description || '',
         isRecurring: formData.isRecurring
       };
-      onUpdate([...currentItems, newItem]);
+      onSaveItem(newItem);
     }
     setIsModalOpen(false);
   };
 
   const handleAnalyzePrice = async () => {
     if (!formData.name) return;
-    if (!hasAiAccess) { alert("Configura tu API Key en Ajustes para usar esta función."); return; }
+    if (!hasAiAccess) { alert.addToast('warning', 'IA no configurada', "Configura tu API Key en Ajustes para usar esta función."); return; }
     
     setIsAnalyzing(true);
     setAnalysis(null);
@@ -99,7 +103,7 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
         setAnalysis(result);
     } catch (e: any) {
         if (e.message === AI_ERROR_BLOCKED) {
-            alert("API Key requerida.");
+            alert.addToast('error', 'Acceso Bloqueado', "API Key requerida.");
         }
     }
     setIsAnalyzing(false);
@@ -107,7 +111,7 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
 
   const handleEnhanceDescription = async () => {
     if (!formData.name || !formData.description) return;
-    if (!hasAiAccess) { alert("Configura tu API Key en Ajustes para usar esta función."); return; }
+    if (!hasAiAccess) { alert.addToast('warning', 'IA no configurada', "Configura tu API Key en Ajustes para usar esta función."); return; }
 
     setIsEnhancing(true);
     const improvedText = await enhanceProductDescription(formData.description, formData.name, descFormat, apiKey);

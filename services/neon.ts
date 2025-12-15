@@ -1,6 +1,6 @@
 
 import { Client } from '@neondatabase/serverless';
-import { Invoice, UserProfile, DbClient, DbProvider } from '../types';
+import { Invoice, UserProfile, DbClient, DbProvider, CatalogItem } from '../types';
 import bcrypt from 'bcryptjs';
 
 /**
@@ -298,6 +298,93 @@ export const updateUserProfileInDb = async (profile: UserProfile): Promise<boole
     return true;
   } catch (error) {
     console.error("Update User Error:", error);
+    return false;
+  }
+};
+
+/**
+ * CATALOG MANAGEMENT
+ */
+
+// Fetch Catalog Items
+export const fetchCatalogItemsFromDb = async (userId: string): Promise<CatalogItem[]> => {
+  const client = getDbClient();
+  if (!client) return [];
+
+  try {
+    await client.connect();
+    
+    // Create Table if not exists
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS catalog_items (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        price NUMERIC NOT NULL,
+        description TEXT,
+        is_recurring BOOLEAN DEFAULT FALSE,
+        sku TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    const result = await client.query('SELECT * FROM catalog_items WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
+    await client.end();
+
+    return result.rows.map(row => ({
+      id: row.id,
+      name: row.name,
+      price: parseFloat(row.price),
+      description: row.description,
+      isRecurring: row.is_recurring,
+      sku: row.sku
+    }));
+  } catch (error) {
+    console.error("Fetch Catalog Error:", error);
+    return [];
+  }
+};
+
+// Save (Upsert) Catalog Item
+export const saveCatalogItemToDb = async (item: CatalogItem, userId: string): Promise<boolean> => {
+  const client = getDbClient();
+  if (!client) return false;
+
+  try {
+    await client.connect();
+    const query = `
+      INSERT INTO catalog_items (id, user_id, name, price, description, is_recurring, sku, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+      ON CONFLICT (id) DO UPDATE SET 
+        name = EXCLUDED.name,
+        price = EXCLUDED.price,
+        description = EXCLUDED.description,
+        is_recurring = EXCLUDED.is_recurring,
+        sku = EXCLUDED.sku,
+        updated_at = NOW();
+    `;
+    await client.query(query, [item.id, userId, item.name, item.price, item.description, item.isRecurring, item.sku]);
+    await client.end();
+    return true;
+  } catch (error) {
+    console.error("Save Catalog Item Error:", error);
+    return false;
+  }
+};
+
+// Delete Catalog Item
+export const deleteCatalogItemFromDb = async (itemId: string, userId: string): Promise<boolean> => {
+  const client = getDbClient();
+  if (!client) return false;
+
+  try {
+    await client.connect();
+    await client.query('DELETE FROM catalog_items WHERE id = $1 AND user_id = $2', [itemId, userId]);
+    await client.end();
+    return true;
+  } catch (error) {
+    console.error("Delete Catalog Item Error:", error);
     return false;
   }
 };

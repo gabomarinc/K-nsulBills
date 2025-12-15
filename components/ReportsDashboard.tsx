@@ -593,6 +593,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                       </div>
                       Flujo de Caja Real
                     </h3>
+                    <p className="text-slate-400 text-sm mt-1 ml-11">Comparativa mensual entre ingresos cobrados y gastos operativos.</p>
                   </div>
                   <button id="no-print" onClick={() => handleDeepDive('cashflow', 'Flujo de Caja', data.monthlyData)} className="p-3 rounded-xl bg-slate-50 hover:text-[#27bea5] transition-all">
                     {isDeepDiving === 'cashflow' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
@@ -641,6 +642,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                       </div>
                       Evolución de Ingresos
                     </h3>
+                    <p className="text-slate-400 text-sm mt-1 ml-11">Tendencia de crecimiento de tus ingresos cobrados en el tiempo.</p>
                   </div>
                   <button id="no-print" onClick={() => handleDeepDive('trends', 'Tendencia de Ingresos', data.monthlyData)} className="p-3 rounded-xl bg-slate-50 hover:text-blue-500 transition-all">
                     {isDeepDiving === 'trends' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
@@ -722,7 +724,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                       </div>
                       Embudo Real
                     </h3>
-                    <p className="text-slate-400 text-sm mt-1 ml-11">Conversión de Documentos</p>
+                    <p className="text-slate-400 text-sm mt-1 ml-11">Visualiza la conversión de tus documentos desde borrador hasta pago.</p>
                   </div>
                   <button id="no-print" onClick={() => handleDeepDive('funnel', 'Embudo de Ventas', data.funnelData)} className="p-3 rounded-xl bg-slate-50 hover:text-indigo-500 transition-all">
                     {isDeepDiving === 'funnel' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
@@ -762,7 +764,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                       </div>
                       Distribución de Valor
                     </h3>
-                    <p className="text-slate-400 text-sm mt-1 ml-11">Relación Ítems vs Monto</p>
+                    <p className="text-slate-400 text-sm mt-1 ml-11">Relación entre la cantidad de ítems y el monto total por factura.</p>
                   </div>
                   <button id="no-print" onClick={() => handleDeepDive('scatter', 'Distribución de Valor', data.scatterData)} className="p-3 rounded-xl bg-slate-50 hover:text-rose-500 transition-all">
                     {isDeepDiving === 'scatter' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
@@ -834,7 +836,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                     </div>
                     Top Clientes (LTV Real)
                   </h3>
-                  <p className="text-slate-400 text-sm mt-1 ml-11">Ingresos cobrados históricamente</p>
+                  <p className="text-slate-400 text-sm mt-1 ml-11">Ranking de clientes basado en el volumen total facturado históricamente.</p>
                 </div>
                 <button id="no-print" onClick={() => handleDeepDive('ltv', 'Valor de Clientes', data.ltvData.slice(0,10))} className="p-3 rounded-xl bg-slate-50 hover:text-amber-500 transition-all">
                     {isDeepDiving === 'ltv' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
@@ -864,7 +866,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
               </div>
           </div>
 
-          {/* Retention Pie */}
+          {/* Retention Pie - FIXED ALIGNMENT */}
           <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-slate-50 hover:shadow-md transition-shadow relative overflow-hidden">
               <div className="flex justify-between items-start mb-2">
                 <div>
@@ -874,6 +876,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                     </div>
                     Salud de Cartera
                   </h3>
+                  <p className="text-slate-400 text-sm mt-1 ml-11">Proporción de clientes activos versus aquellos en riesgo de inactividad.</p>
                 </div>
                 <button id="no-print" onClick={() => handleDeepDive('retention', 'Salud de Cartera', data.clientActivityData)} className="p-3 rounded-xl bg-slate-50 hover:text-emerald-500 transition-all">
                     {isDeepDiving === 'retention' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
@@ -896,10 +899,11 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                         ))}
                       </Pie>
                       <Tooltip contentStyle={{ borderRadius: '12px', border: 'none' }} />
-                      <Legend verticalAlign="middle" align="right" layout="vertical" iconType="circle" />
+                      <Legend verticalAlign="bottom" align="center" iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
                     </PieChart>
                 </ResponsiveContainer>
-                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none pr-24">
+                {/* ABSOLUTE CENTERED TEXT */}
+                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
                     <p className="text-3xl font-bold text-[#1c2938]">{data.ltvData.length}</p>
                     <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Total</p>
                 </div>
@@ -967,7 +971,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                      </div>
                      <div>
                         <h3 className="text-xl font-bold text-[#1c2938]">Escudo Fiscal (ITBMS)</h3>
-                        <p className="text-xs text-slate-400">Crédito vs Débito</p>
+                        <p className="text-xs text-slate-400">Balance entre impuestos cobrados y créditos fiscales por gastos.</p>
                      </div>
                   </div>
 
@@ -1006,7 +1010,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                      </div>
                      <div>
                         <h3 className="text-xl font-bold text-[#1c2938]">Recomendaciones Tácticas</h3>
-                        <p className="text-xs text-slate-400">Acciones sugeridas por tu perfil</p>
+                        <p className="text-xs text-slate-400">Acciones estratégicas sugeridas según tu perfil fiscal actual.</p>
                      </div>
                   </div>
 

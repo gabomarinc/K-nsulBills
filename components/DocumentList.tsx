@@ -61,14 +61,16 @@ const DocumentList: React.FC<DocumentListProps> = ({
         return acc;
     }, 0);
 
+  // Updated Pending Calculation: Sum of outstanding balances
   const totalPending = invoices
-    .filter(i => i.type === 'Invoice' && (i.status === 'Enviada' || i.status === 'Seguimiento' || i.status === 'Abonada'))
+    .filter(i => i.type === 'Invoice' && i.status !== 'Borrador' && i.status !== 'Rechazada' && i.status !== 'Incobrable')
     .reduce((acc, curr) => {
-       // Only count remaining amount for pending totals
-       if (curr.status === 'Abonada' && curr.amountPaid) {
-           return acc + (curr.total - curr.amountPaid);
-       }
-       return acc + curr.total;
+       // If fully paid status, assume 0 pending
+       if (curr.status === 'Pagada' || curr.status === 'Aceptada') return acc;
+       
+       const paid = curr.amountPaid || 0;
+       const pending = Math.max(0, curr.total - paid);
+       return acc + pending;
     }, 0);
 
   // PIPELINE: Active Quotes Only (Sent, Viewed, Negotiation)
@@ -151,6 +153,9 @@ const DocumentList: React.FC<DocumentListProps> = ({
 
 
   const filteredDocs = invoices.filter(doc => {
+    // 1. Exclude Expenses from this view (handled in ExpenseTracker)
+    if (doc.type === 'Expense') return false;
+
     const matchesSearch = doc.clientName.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           doc.id.toLowerCase().includes(searchTerm.toLowerCase());
     
