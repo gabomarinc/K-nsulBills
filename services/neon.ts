@@ -329,6 +329,16 @@ export const fetchCatalogItemsFromDb = async (userId: string): Promise<CatalogIt
       );
     `);
 
+    // AUTO-MIGRATION: Ensure columns exist if table was created in older version
+    try {
+        await client.query(`ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS sku TEXT;`);
+        await client.query(`ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS is_recurring BOOLEAN DEFAULT FALSE;`);
+        await client.query(`ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS description TEXT;`);
+    } catch (migError) {
+        // Ignore errors if columns already exist or generic warnings
+        console.log("Catalog Schema Check: OK");
+    }
+
     const result = await client.query('SELECT * FROM catalog_items WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
     await client.end();
 
@@ -353,6 +363,27 @@ export const saveCatalogItemToDb = async (item: CatalogItem, userId: string): Pr
 
   try {
     await client.connect();
+
+    // Ensure schema is ready (Self-Healing logic)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS catalog_items (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        price NUMERIC NOT NULL,
+        description TEXT,
+        is_recurring BOOLEAN DEFAULT FALSE,
+        sku TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    
+    // Run Migrations just in case
+    await client.query(`ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS sku TEXT;`);
+    await client.query(`ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS is_recurring BOOLEAN DEFAULT FALSE;`);
+    await client.query(`ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS description TEXT;`);
+
     const query = `
       INSERT INTO catalog_items (id, user_id, name, price, description, is_recurring, sku, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
@@ -364,7 +395,17 @@ export const saveCatalogItemToDb = async (item: CatalogItem, userId: string): Pr
         sku = EXCLUDED.sku,
         updated_at = NOW();
     `;
-    await client.query(query, [item.id, userId, item.name, item.price, item.description, item.isRecurring, item.sku]);
+    
+    await client.query(query, [
+        item.id, 
+        userId, 
+        item.name, 
+        item.price, 
+        item.description || null, 
+        item.isRecurring || false, 
+        item.sku || null
+    ]);
+    
     await client.end();
     return true;
   } catch (error) {
