@@ -11,22 +11,44 @@ export interface AiKeys {
   openai?: string;
 }
 
-const getAiClient = (keys?: AiKeys) => {
-  // Priority: 1. User provided key (keys.gemini) 2. System Env Key (process.env.API_KEY)
-  const apiKey = keys?.gemini || process.env.API_KEY;
-  
-  if (!apiKey) {
-      console.error("Gemini AI Error: Missing API Key. User key is undefined and process.env.API_KEY is missing.");
-      throw new Error(AI_ERROR_BLOCKED);
+// Modified to accept a permission flag for using the system/env key
+const getAiClient = (keys?: AiKeys, allowSystemFallback: boolean = false) => {
+  // Priority 1: User's provided key
+  if (keys?.gemini) {
+      return new GoogleGenAI({ apiKey: keys.gemini });
   }
-  return new GoogleGenAI({ apiKey });
+
+  // Priority 2: System Key (ONLY if explicitly allowed, e.g. for Onboarding Wizard)
+  if (allowSystemFallback) {
+      // Check multiple sources for the API key to ensure Vercel/Vite compatibility
+      let systemKey = process.env.API_KEY || process.env.VITE_API_KEY;
+      
+      // Try import.meta.env if available (Client-side Vite)
+      if (!systemKey && typeof import.meta !== 'undefined' && (import.meta as any).env) {
+          systemKey = (import.meta as any).env.VITE_API_KEY;
+      }
+
+      if (systemKey) {
+          return new GoogleGenAI({ apiKey: systemKey });
+      }
+  }
+  
+  // If no user key and (system key not allowed OR system key missing)
+  console.error("Gemini AI Error: Missing User API Key. System fallback is " + (allowSystemFallback ? "enabled but key missing" : "disabled") + ".");
+  throw new Error(AI_ERROR_BLOCKED);
 };
 
 // Helper to sanitize JSON response from LLM
 const cleanJson = (text: string) => {
   if (!text) return "{}";
-  return text.replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
+  // Remove markdown code blocks if present
+  let cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+  // Remove any leading/trailing whitespace
+  cleaned = cleaned.trim();
+  return cleaned;
 };
+
+// --- APP FEATURES (Strict Mode: User Key Only) ---
 
 export const parseExpenseImage = async (
   imageBase64: string, 
@@ -35,7 +57,7 @@ export const parseExpenseImage = async (
 ): Promise<ParsedInvoiceData | null> => {
   
   try {
-    const ai = getAiClient(keys);
+    const ai = getAiClient(keys, false); // Strict: No System Key
 
     const schema: Schema = {
       type: Type.OBJECT,
@@ -85,7 +107,7 @@ export const parseExpenseImage = async (
 
 export const parseInvoiceRequest = async (input: string, keys?: AiKeys): Promise<ParsedInvoiceData | null> => {
     try {
-        const ai = getAiClient(keys);
+        const ai = getAiClient(keys, false); // Strict: No System Key
         const schema: Schema = {
             type: Type.OBJECT,
             properties: {
@@ -118,7 +140,7 @@ export const parseInvoiceRequest = async (input: string, keys?: AiKeys): Promise
 
 export const askSupportBot = async (message: string, keys?: AiKeys): Promise<string> => {
     try {
-        const ai = getAiClient(keys);
+        const ai = getAiClient(keys, false); // Strict: No System Key
         const response = await ai.models.generateContent({
             model: GEMINI_MODEL_ID,
             contents: message,
@@ -126,13 +148,18 @@ export const askSupportBot = async (message: string, keys?: AiKeys): Promise<str
         });
         return response.text || "No entendí, ¿puedes repetir?";
     } catch(e) {
+        if ((e as Error).message === AI_ERROR_BLOCKED) return "Por favor configura tu API Key de IA en Ajustes para hablar conmigo.";
         return "Lo siento, no puedo responder ahora mismo. (Error de conexión IA)";
     }
 };
 
-export const suggestCatalogItems = async (businessDescription: string, keys?: AiKeys): Promise<CatalogItem[]> => {
+// --- ONBOARDING FEATURES (Allow System Key) ---
+
+export const suggestCatalogItems = async (businessDescription: string, keys?: AiKeys, useSystemKey: boolean = false): Promise<CatalogItem[]> => {
     try {
-        const ai = getAiClient(keys);
+        // ALLOW System Key fallback here
+        const ai = getAiClient(keys, useSystemKey);
+        
         const schema: Schema = {
             type: Type.ARRAY,
             items: {
@@ -162,9 +189,11 @@ export const suggestCatalogItems = async (businessDescription: string, keys?: Ai
     }
 };
 
-export const generateEmailTemplate = async (tone: 'Formal' | 'Casual', keys?: AiKeys): Promise<string> => {
+export const generateEmailTemplate = async (tone: 'Formal' | 'Casual', keys?: AiKeys, useSystemKey: boolean = false): Promise<string> => {
     try {
-        const ai = getAiClient(keys);
+        // ALLOW System Key fallback here
+        const ai = getAiClient(keys, useSystemKey);
+        
         const response = await ai.models.generateContent({
             model: GEMINI_MODEL_ID,
             contents: `Genera una plantilla de correo ${tone} para enviar una factura a un cliente. Solo el cuerpo del correo, sin asunto. Manténlo breve y profesional.`,
@@ -176,9 +205,12 @@ export const generateEmailTemplate = async (tone: 'Formal' | 'Casual', keys?: Ai
     }
 };
 
+// --- APP FEATURES (Strict Mode Continued) ---
+
 export const testAiConnection = async (provider: 'gemini' | 'openai', key: string): Promise<boolean> => {
     if (provider === 'gemini') {
         try {
+            // Direct instantiation to test the specific key provided
             const ai = new GoogleGenAI({ apiKey: key });
             await ai.models.generateContent({ model: GEMINI_MODEL_ID, contents: "Hi" });
             return true;
@@ -190,7 +222,7 @@ export const testAiConnection = async (provider: 'gemini' | 'openai', key: strin
 
 export const generateFinancialAnalysis = async (summary: string, keys?: AiKeys): Promise<FinancialAnalysisResult | null> => {
     try {
-        const ai = getAiClient(keys);
+        const ai = getAiClient(keys, false); // Strict: No System Key
         const schema: Schema = {
             type: Type.OBJECT,
             properties: {
@@ -219,7 +251,7 @@ export const generateFinancialAnalysis = async (summary: string, keys?: AiKeys):
 
 export const generateDeepDiveReport = async (title: string, context: string, keys?: AiKeys): Promise<DeepDiveReport | null> => {
     try {
-        const ai = getAiClient(keys);
+        const ai = getAiClient(keys, false); // Strict: No System Key
         const schema: Schema = {
             type: Type.OBJECT,
             properties: {
@@ -253,7 +285,7 @@ export const generateDeepDiveReport = async (title: string, context: string, key
 
 export const analyzePriceMarket = async (itemName: string, country: string, keys?: AiKeys): Promise<PriceAnalysisResult | null> => {
     try {
-        const ai = getAiClient(keys);
+        const ai = getAiClient(keys, false); // Strict: No System Key
         const schema: Schema = {
             type: Type.OBJECT,
             properties: {
@@ -280,7 +312,7 @@ export const analyzePriceMarket = async (itemName: string, country: string, keys
 
 export const enhanceProductDescription = async (desc: string, name: string, format: 'paragraph' | 'bullets', keys?: AiKeys): Promise<string> => {
     try {
-        const ai = getAiClient(keys);
+        const ai = getAiClient(keys, false); // Strict: No System Key
         const response = await ai.models.generateContent({
             model: GEMINI_MODEL_ID,
             contents: `Improve and expand the sales description for product "${name}". Original description: "${desc}". Format as ${format}. Language: Spanish.`,
@@ -298,7 +330,7 @@ export const getDiscountRecommendation = async (
     keys?: AiKeys
 ): Promise<{ recommendedRate: number, reasoning: string } | null> => {
     try {
-        const ai = getAiClient(keys);
+        const ai = getAiClient(keys, false); // Strict: No System Key
         const schema: Schema = {
             type: Type.OBJECT,
             properties: {

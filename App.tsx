@@ -50,30 +50,55 @@ const AppContent: React.FC = () => {
         // Check URL for Stripe return logic
         const params = new URLSearchParams(window.location.search);
         const paymentSuccess = params.get('payment_success');
+        const sessionId = params.get('session_id');
         
         const storedUserStr = localStorage.getItem('konsul_user_data'); 
         const storedUserId = localStorage.getItem('konsul_session_id');
 
         if (storedUserStr) {
            try {
-             const cachedUser = JSON.parse(storedUserStr);
+             let cachedUser = JSON.parse(storedUserStr);
              
-             // HANDLE STRIPE SUCCESS RETURN
-             if (paymentSuccess === 'true') {
-                 if (cachedUser) {
-                    setCurrentUser(cachedUser);
-                    // Notify user of success
-                    setTimeout(() => {
-                        alert.addToast('success', 'Pago Exitoso', 'Tu plan ha sido activado y tu cuenta está lista.');
-                    }, 1000);
-                    
-                    // Clean URL
-                    window.history.replaceState({}, document.title, window.location.pathname);
+             // HANDLE STRIPE SUCCESS RETURN & SYNC
+             if (paymentSuccess === 'true' && sessionId) {
+                 try {
+                    // Fetch real customer ID and renewal date from our backend bridge
+                    const stripeRes = await fetch(`/api/get-stripe-session?sessionId=${sessionId}`);
+                    const stripeData = await stripeRes.json();
+
+                    if (stripeData.customerId) {
+                        console.log("Stripe Sync Successful:", stripeData);
+                        
+                        // Merge new data
+                        const updatedUserWithStripe = {
+                            ...cachedUser,
+                            stripeCustomerId: stripeData.customerId,
+                            renewalDate: stripeData.renewalDate ? new Date(stripeData.renewalDate).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' }) : cachedUser.renewalDate,
+                            plan: stripeData.plan || 'Emprendedor Pro'
+                        };
+
+                        // 1. Update Local State
+                        cachedUser = updatedUserWithStripe;
+                        localStorage.setItem('konsul_user_data', JSON.stringify(updatedUserWithStripe));
+                        
+                        // 2. Sync to Neon DB immediately
+                        await updateUserProfileInDb(updatedUserWithStripe);
+
+                        // 3. Notify user
+                        setTimeout(() => {
+                            alert.addToast('success', 'Suscripción Activada', 'Tu cuenta Pro está lista y sincronizada.');
+                        }, 1000);
+                    }
+                 } catch (err) {
+                    console.error("Error syncing Stripe data:", err);
+                    // Continue with cached user even if sync fails temporarily
                  }
-             } else {
-                 setCurrentUser(cachedUser);
+                 
+                 // Clean URL
+                 window.history.replaceState({}, document.title, window.location.pathname);
              }
 
+             setCurrentUser(cachedUser);
              setIsSessionLoading(false); 
            } catch (e) {
              console.error("Cache parse error", e);
@@ -84,7 +109,16 @@ const AppContent: React.FC = () => {
             try {
                 const user = await getUserById(storedUserId);
                 if (user) {
-                    setCurrentUser(user);
+                    // If we have a fresh user from DB, it might be more up to date than cache
+                    // But if we just did a stripe sync in this very session, cache might be newer for a split second
+                    // Generally, prefer DB if available and online
+                    setCurrentUser(prev => {
+                        // Keep Stripe ID if DB doesn't have it yet (race condition safety)
+                        if (prev?.stripeCustomerId && !user.stripeCustomerId) {
+                            return prev;
+                        }
+                        return user;
+                    });
                     localStorage.setItem('konsul_user_data', JSON.stringify(user));
                 } else {
                     console.warn("User ID invalid or not found in DB. Logging out.");

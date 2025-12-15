@@ -23,7 +23,8 @@ import {
   CheckCircle2,
   XCircle,
   Ban,
-  Archive
+  Archive,
+  Lightbulb
 } from 'lucide-react';
 import { Invoice, AppView, UserProfile } from '../types';
 
@@ -62,7 +63,13 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
       .filter(inv => inv.type === 'Invoice' && (inv.status === 'Enviada' || inv.status === 'Seguimiento' || inv.status === 'Abonada' || inv.status === 'Creada'))
       .reduce((acc, curr) => acc + curr.total, 0);
 
-    // Quotes
+    // PIPELINE (Active Quotes: Not Accepted, Not Rejected, Not Drafts ideally for real pipeline)
+    // Strictly: Sent, Viewed, Negotiation
+    const pipelineAmount = recentInvoices
+      .filter(inv => inv.type === 'Quote' && (inv.status === 'Enviada' || inv.status === 'Seguimiento' || inv.status === 'Negociacion'))
+      .reduce((acc, curr) => acc + curr.total, 0);
+
+    // General Quote Stats
     const quotesCount = recentInvoices.filter(inv => inv.type === 'Quote').length;
     const quotesAmount = recentInvoices
       .filter(inv => inv.type === 'Quote')
@@ -98,6 +105,7 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
     return { 
       monthlyRevenue, 
       pendingAmount,
+      pipelineAmount, // New KPI
       quotesCount,
       quotesAmount,
       uniqueClients,
@@ -195,7 +203,7 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
              </div>
           </button>
 
-          {/* Card 3: Quotes (Blue) -> Invoices (Quotes view is part of invoice list usually) */}
+          {/* Card 3: Pipeline (Blue) -> Invoices/Quotes */}
           <button 
             onClick={() => onNavigate && onNavigate(AppView.INVOICES)}
             className="bg-[#dbeafe] p-5 rounded-[2rem] flex flex-col justify-between h-40 shadow-sm relative overflow-hidden text-left active:scale-95 transition-transform"
@@ -205,8 +213,8 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
                 <BarChart3 className="w-5 h-5" />
              </div>
              <div className="relative z-10">
-                <p className="text-2xl font-black text-[#1c2938]">${stats.quotesAmount.toLocaleString()}</p>
-                <p className="text-xs font-bold text-slate-700 mt-1">{stats.quotesCount} Cotizaciones</p>
+                <p className="text-2xl font-black text-[#1c2938]">${stats.pipelineAmount.toLocaleString()}</p>
+                <p className="text-xs font-bold text-slate-700 mt-1">Pipeline Activo</p>
              </div>
           </button>
 
@@ -483,6 +491,14 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
 
                 {activeTab === 'QUOTES' && (
                    <div className="space-y-2 animate-in fade-in slide-in-from-right-8">
+                      {/* NEW: Pipeline Value Header inside the list */}
+                      <div className="mb-3 p-3 bg-purple-50 rounded-xl border border-purple-100 flex items-center justify-between">
+                          <span className="text-xs font-bold text-purple-800 uppercase flex items-center gap-1">
+                             <Lightbulb className="w-3 h-3" /> Pipeline
+                          </span>
+                          <span className="font-bold text-purple-700">${stats.pipelineAmount.toLocaleString()}</span>
+                      </div>
+
                       {/* Borradores */}
                       <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100">
                          <div className="flex items-center gap-3">

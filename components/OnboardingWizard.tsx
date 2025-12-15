@@ -88,7 +88,8 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
   const generateCatalog = async () => {
     if (!businessDesc) return;
     setIsLoading(true);
-    const items = await suggestCatalogItems(businessDesc);
+    // Explicitly allow system key for onboarding
+    const items = await suggestCatalogItems(businessDesc, undefined, true);
     setCatalogItems(items);
     setIsLoading(false);
   };
@@ -102,7 +103,8 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
   const generateEmail = async (selectedTone: 'Formal' | 'Casual') => {
     setTone(selectedTone);
     setIsLoading(true);
-    const text = await generateEmailTemplate(selectedTone);
+    // Explicitly allow system key for onboarding
+    const text = await generateEmailTemplate(selectedTone, undefined, true);
     setEmailPreview(text);
     setIsLoading(false);
   };

@@ -71,8 +71,10 @@ const DocumentList: React.FC<DocumentListProps> = ({
        return acc + curr.total;
     }, 0);
 
+  // PIPELINE: Active Quotes Only (Sent, Viewed, Negotiation)
+  // Excludes: Drafts, Accepted, Rejected
   const totalPipeline = invoices
-    .filter(i => i.type === 'Quote' && i.status !== 'Rechazada')
+    .filter(i => i.type === 'Quote' && (i.status === 'Enviada' || i.status === 'Seguimiento' || i.status === 'Negociacion'))
     .reduce((acc, curr) => acc + curr.total, 0);
 
   // --- FISCAL REALITY ENGINE (PANAMA) ---
@@ -508,7 +510,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
                 <div className="flex items-center gap-3 mb-4">
                    <div className="p-2.5 bg-purple-50 text-purple-600 rounded-xl"><FileBadge className="w-6 h-6" /></div>
                 </div>
-                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">En Tubería</p>
+                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Pipeline</p>
                 <h3 className="text-2xl font-bold text-[#1c2938] mt-1 tracking-tight">{currencySymbol} {totalPipeline.toLocaleString()}</h3>
              </div>
           </div>
