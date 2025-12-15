@@ -335,6 +335,8 @@ export const fetchCatalogItemsFromDb = async (userId: string): Promise<CatalogIt
         await client.query(`ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS sku TEXT;`);
         await client.query(`ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS is_recurring BOOLEAN DEFAULT FALSE;`);
         await client.query(`ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS description TEXT;`);
+        // FIXED: ADD MISSING COLUMN MIGRATION
+        await client.query(`ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();`);
     } catch (migError) {
         // Ignore errors if columns already exist or generic warnings
         console.log("Catalog Schema Check: OK");
@@ -366,8 +368,7 @@ export const saveCatalogItemToDb = async (item: CatalogItem, userId: string): Pr
     await client.connect();
 
     // REMOVED REPETITIVE SCHEMA MIGRATION FROM HERE
-    // It causes connection overhead and "Table already exists" errors in strict modes.
-    // The schema is handled in fetchCatalogItemsFromDb or via manual SQL script.
+    // Schema is handled in fetchCatalogItemsFromDb
 
     const query = `
       INSERT INTO catalog_items (id, user_id, name, price, description, is_recurring, sku, updated_at)
