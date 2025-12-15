@@ -46,6 +46,8 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
   // --- AGGREGATION LOGIC ---
   const { clients, stats } = useMemo(() => {
     const clientMap = new Map<string, AggregatedClient>();
+    let totalPipelineValue = 0;
+    let openOpportunitiesCount = 0;
 
     // 1. Process DB Clients (Base Layer)
     dbClients.forEach(dbClient => {
@@ -123,6 +125,13 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
       } else if (inv.type === 'Quote') {
         client.quoteCount++;
         client.totalQuoted += inv.total; // Accumulate Quotes for Prospects
+        
+        // GLOBAL STATS: Calculate Active Pipeline
+        if (inv.status === 'Enviada' || inv.status === 'Seguimiento' || inv.status === 'Negociacion') {
+            totalPipelineValue += inv.total;
+            openOpportunitiesCount++;
+        }
+
         if (inv.status === 'Aceptada') {
              client.status = 'CLIENT'; 
              client.quotesWon++;
@@ -164,12 +173,15 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
     const totalInvoicesCount = processedClients.reduce((acc, c) => acc + c.invoiceCount, 0);
     const avgGlobalTicket = totalInvoicesCount > 0 ? totalPortfolioValue / totalInvoicesCount : 0;
     
-    // Radar Logic: High Potential Clients (Win Rate > 50%)
-    const highPotentialClients = processedClients.filter(c => c.winRate > 50).length;
-
     return { 
       clients: processedClients, 
-      stats: { totalPortfolioValue, totalActiveClients, avgGlobalTicket, highPotentialClients } 
+      stats: { 
+          totalPortfolioValue, 
+          totalActiveClients, 
+          avgGlobalTicket, 
+          totalPipelineValue, 
+          openOpportunitiesCount 
+      } 
     };
 
   }, [invoices, dbClients]);
@@ -264,11 +276,11 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
                 
                 <div>
                    <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Radar de Oportunidad</p>
-                   {stats.highPotentialClients > 0 ? (
+                   {stats.totalPipelineValue > 0 ? (
                       <>
-                         <h3 className="text-lg font-bold leading-tight mb-1">Alta Probabilidad</h3>
+                         <h3 className="text-2xl font-bold leading-tight mb-1">{currencySymbol} {stats.totalPipelineValue.toLocaleString()}</h3>
                          <p className="text-xs text-[#27bea5] font-medium flex items-center gap-1">
-                            <Target className="w-3 h-3" /> {stats.highPotentialClients} Clientes con {'>'}50% Conv.
+                            <Target className="w-3 h-3" /> {stats.openOpportunitiesCount} Cotizaciones en curso
                          </p>
                       </>
                    ) : (

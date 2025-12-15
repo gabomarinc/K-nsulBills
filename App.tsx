@@ -667,6 +667,7 @@ const AppContent: React.FC = () => {
           apiKey={currentUser.apiKeys}
           onUpdate={handleUpdateCatalog}
           referenceHourlyRate={currentUser.hourlyRateConfig?.calculatedRate}
+          currentUser={currentUser}
         />
       )}
 

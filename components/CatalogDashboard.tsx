@@ -6,18 +6,19 @@ import {
   ShoppingBag, MoreVertical, Wand2, Info,
   AlignLeft, List, CalendarClock, Package, Check, Calculator, AlertCircle, Lock
 } from 'lucide-react';
-import { CatalogItem, PriceAnalysisResult } from '../types';
+import { CatalogItem, PriceAnalysisResult, UserProfile } from '../types';
 import { analyzePriceMarket, enhanceProductDescription, AI_ERROR_BLOCKED } from '../services/geminiService';
 
 interface CatalogDashboardProps {
   items: CatalogItem[];
   userCountry: string;
-  apiKey?: { gemini?: string; openai?: string }; // Updated type
+  apiKey?: { gemini?: string; openai?: string }; 
   onUpdate: (items: CatalogItem[]) => void;
-  referenceHourlyRate?: number; // New: Benchmark from ExpenseTracker
+  referenceHourlyRate?: number;
+  currentUser?: UserProfile; // New Prop for Context
 }
 
-const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry, apiKey, onUpdate, referenceHourlyRate }) => {
+const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry, apiKey, onUpdate, referenceHourlyRate, currentUser }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<CatalogItem | null>(null);
@@ -62,22 +63,25 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
   const handleSave = () => {
     if (!formData.name || formData.price === undefined) return;
 
+    // Deep clone items to avoid reference issues
+    const currentItems = [...items];
+
     if (editingItem) {
-      // Update
-      const updatedItems = items.map(i => 
+      // Update Existing
+      const updatedItems = currentItems.map(i => 
         i.id === editingItem.id ? { ...i, ...formData } as CatalogItem : i
       );
       onUpdate(updatedItems);
     } else {
-      // Create
+      // Create New - Ensure ID is unique and string
       const newItem: CatalogItem = {
-        id: Date.now().toString(),
+        id: `cat_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
         name: formData.name,
         price: formData.price,
         description: formData.description || '',
         isRecurring: formData.isRecurring
       };
-      onUpdate([...items, newItem]);
+      onUpdate([...currentItems, newItem]);
     }
     setIsModalOpen(false);
   };
@@ -90,8 +94,8 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
     setAnalysis(null);
     
     try {
-        // Pass full apiKey object
-        const result = await analyzePriceMarket(formData.name, userCountry || 'Global', apiKey);
+        // Pass currentUser for profile-aware pricing
+        const result = await analyzePriceMarket(formData.name, userCountry || 'Global', apiKey, currentUser);
         setAnalysis(result);
     } catch (e: any) {
         if (e.message === AI_ERROR_BLOCKED) {
@@ -106,7 +110,6 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
     if (!hasAiAccess) { alert("Configura tu API Key en Ajustes para usar esta función."); return; }
 
     setIsEnhancing(true);
-    // Pass full apiKey object
     const improvedText = await enhanceProductDescription(formData.description, formData.name, descFormat, apiKey);
     setFormData(prev => ({ ...prev, description: improvedText }));
     setIsEnhancing(false);
@@ -336,7 +339,7 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
                                <Sparkles className="w-5 h-5" />
                              </div>
                              <div>
-                                <p className="text-xs font-bold uppercase text-[#27bea5] tracking-widest mb-1">Inteligencia de Mercado</p>
+                                <p className="text-xs font-bold uppercase text-[#27bea5] tracking-widest mb-1">Inteligencia de Mercado (Panamá)</p>
                                 <p className="text-sm text-slate-200 leading-relaxed max-w-md">{analysis.reasoning}</p>
                              </div>
                           </div>

@@ -53,7 +53,7 @@ export const sendEmail = async (
       body.cc = [payload.cc];
     }
 
-    // Priority to HTML content to ensure delivery
+    // Priority to HTML content to ensure delivery, BUT if templateId is present and no HTML, use template
     if (payload.html) {
         body.html = payload.html;
     } else if (payload.templateId) {
@@ -108,17 +108,17 @@ export const getEmailStatus = async (id: string): Promise<any> => {
 };
 
 /**
- * Sends the Welcome Email.
+ * Sends the Welcome Email using the 'welcome-to-konsul-bills' template.
  */
 export const sendWelcomeEmail = async (user: UserProfile) => {
     const loginUrl = window.location.origin; 
-    const html = generateWelcomeHtml(user.name, loginUrl);
-
+    
+    // NOTE: HTML property is omitted to force usage of templateId in sendEmail logic
     return sendEmail({
         to: user.email!,
-        subject: 'Bienvenido a Kônsul 🚀',
-        html: html,
-        senderName: 'Equipo Kônsul', // System welcome
+        subject: 'Bienvenido a Kônsul 🚀', // This might be overridden by the template settings in Resend
+        templateId: 'welcome-to-konsul-bills',
+        senderName: 'Equipo Kônsul',
         data: {
             name: user.name,
             login_url: loginUrl,
@@ -227,7 +227,7 @@ export const generateDocumentHtml = (invoice: Invoice, issuer: UserProfile): str
 };
 
 /**
- * Generates a Welcome HTML Email
+ * Generates a Welcome HTML Email (Deprecated in favor of Template)
  */
 export const generateWelcomeHtml = (userName: string, url: string): string => {
   return `

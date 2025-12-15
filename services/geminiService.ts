@@ -1,6 +1,5 @@
-
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { CatalogItem, FinancialAnalysisResult, DeepDiveReport, ParsedInvoiceData, PriceAnalysisResult } from "../types";
+import { CatalogItem, FinancialAnalysisResult, DeepDiveReport, ParsedInvoiceData, PriceAnalysisResult, UserProfile } from "../types";
 
 export const AI_ERROR_BLOCKED = 'AI_BLOCKED_MISSING_KEYS';
 const GEMINI_MODEL_ID = 'gemini-2.5-flash';
@@ -283,25 +282,52 @@ export const generateDeepDiveReport = async (title: string, context: string, key
     } catch { return null; }
 };
 
-export const analyzePriceMarket = async (itemName: string, country: string, keys?: AiKeys): Promise<PriceAnalysisResult | null> => {
+export const analyzePriceMarket = async (
+    itemName: string, 
+    country: string, 
+    keys?: AiKeys,
+    userContext?: UserProfile // NEW: Context-aware pricing
+): Promise<PriceAnalysisResult | null> => {
     try {
         const ai = getAiClient(keys, false); // Strict: No System Key
+        
+        // Build User Context String
+        let contextPrompt = `Ubicación: ${country}.`;
+        if (userContext) {
+            const isCompany = userContext.type.includes('Empresa') || userContext.fiscalConfig?.entityType === 'JURIDICA';
+            const annualRevenue = userContext.fiscalConfig?.annualRevenue || 0;
+            
+            contextPrompt += ` El vendedor es un perfil ${isCompany ? 'Empresarial/Corporativo' : 'Freelance/Independiente'}. `;
+            contextPrompt += `Nivel de facturación anual aprox: $${annualRevenue.toLocaleString()}. `;
+            
+            if (!isCompany || annualRevenue < 20000) {
+                contextPrompt += "ESTRATEGIA: Sugiere precios competitivos y accesibles para ganar mercado.";
+            } else {
+                contextPrompt += "ESTRATEGIA: Sugiere precios de mercado estándar o premium según calidad.";
+            }
+        }
+
         const schema: Schema = {
             type: Type.OBJECT,
             properties: {
-                minPrice: { type: Type.NUMBER },
-                maxPrice: { type: Type.NUMBER },
-                avgPrice: { type: Type.NUMBER },
-                currency: { type: Type.STRING },
-                reasoning: { type: Type.STRING }
+                minPrice: { type: Type.NUMBER, description: "Precio mínimo viable en el mercado local" },
+                maxPrice: { type: Type.NUMBER, description: "Precio máximo (premium)" },
+                avgPrice: { type: Type.NUMBER, description: "Precio recomendado para este perfil específico" },
+                currency: { type: Type.STRING, description: "Moneda (USD para Panamá)" },
+                reasoning: { type: Type.STRING, description: "Breve explicación del precio sugerido basada en el perfil del usuario." }
             },
             required: ['minPrice', 'maxPrice', 'avgPrice', 'currency', 'reasoning']
         };
+
         const response = await ai.models.generateContent({
             model: GEMINI_MODEL_ID,
-            contents: `Analyze market price for "${itemName}" in ${country}. Provide estimated range and reasoning.`,
+            contents: `Actúa como un experto en precios para el mercado de ${country}. ${contextPrompt}
+            
+            Analiza el precio de mercado para el servicio/producto: "${itemName}".
+            Devuelve un rango realista en USD.`,
             config: { responseMimeType: "application/json", responseSchema: schema }
         });
+
         const cleaned = cleanJson(response.text || "{}");
         return JSON.parse(cleaned);
     } catch (e) {

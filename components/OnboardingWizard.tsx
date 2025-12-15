@@ -6,9 +6,10 @@ import {
   Coins, Smartphone, Server, AtSign, ShieldCheck, Zap, ArrowRight, PenLine,
   User, CheckCircle2, Hash, Lock, Eye, EyeOff, Crown, Rocket, Star
 } from 'lucide-react';
-import { UserProfile, CatalogItem, EmailConfig } from '../types';
+import { UserProfile, CatalogItem, EmailConfig, ProfileType } from '../types';
 import { suggestCatalogItems, generateEmailTemplate } from '../services/geminiService';
 import { createUserInDb } from '../services/neon'; // Import for direct DB creation
+import { sendWelcomeEmail } from '../services/resendService'; // Import Email Service
 
 interface OnboardingWizardProps {
   onComplete: (profileData: Partial<UserProfile> & { password?: string, email?: string }) => void;
@@ -162,7 +163,10 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
       plan: 'Emprendedor Pro' as const, // Force Paid Plan
       isOnboardingComplete: true, 
       email, 
-      password
+      password,
+      // Include required fields for UserProfile
+      type: personType === 'JURIDICA' ? ProfileType.COMPANY : ProfileType.FREELANCE,
+      avatar: logoPreview || ''
     };
 
     setIsRedirecting(true);
@@ -172,10 +176,19 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
         // We import createUserInDb directly instead of relying on callback that changes view
         await createUserInDb(profileData, password, email);
         
-        // 2. Set LocalStorage so when they return from Stripe, App.tsx can rehydrate session
+        // 2. SEND WELCOME EMAIL (Template: welcome-to-konsul-bills)
+        // We do this before redirecting. It's best effort.
+        try {
+            await sendWelcomeEmail({ ...profileData, email } as UserProfile);
+        } catch (mailError) {
+            console.error("Failed to send welcome email:", mailError);
+            // Continue flow even if email fails
+        }
+
+        // 3. Set LocalStorage so when they return from Stripe, App.tsx can rehydrate session
         localStorage.setItem('konsul_user_data', JSON.stringify(profileData));
         
-        // 3. Initiate Stripe Session with the created User ID
+        // 4. Initiate Stripe Session with the created User ID
         await initiatePayment(newUserId); 
     } catch (e) {
         console.error("Onboarding Error", e);
