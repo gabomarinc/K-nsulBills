@@ -73,6 +73,9 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
 
     // 2. Process Invoices (Overlay Layer - Revenue)
     invoices.forEach(inv => {
+      // FIX: Skip Expenses (Providers) so they don't appear as Clients/Prospects in this list
+      if (inv.type === 'Expense') return;
+
       const nameKey = inv.clientName.trim();
       
       if (!clientMap.has(nameKey)) {

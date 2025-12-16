@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { CatalogItem, FinancialAnalysisResult, DeepDiveReport, ParsedInvoiceData, PriceAnalysisResult, UserProfile } from "../types";
 
@@ -380,6 +381,35 @@ export const getDiscountRecommendation = async (
         return JSON.parse(cleaned);
     } catch (e) {
         if ((e as Error).message === AI_ERROR_BLOCKED) throw e;
+        return null;
+    }
+};
+
+// NEW: Short Strategic Insight for Dashboard
+export const generateRevenueInsight = async (
+    currentRevenue: number, 
+    prevRevenue: number, 
+    percentChange: number,
+    keys?: AiKeys
+): Promise<string | null> => {
+    try {
+        const ai = getAiClient(keys, false); // Strict: No System Key
+        
+        const trend = percentChange > 0 ? "positiva" : (percentChange < 0 ? "negativa" : "neutral");
+        const context = `Mes Actual: $${currentRevenue}. Mes Anterior: $${prevRevenue}. Variación: ${percentChange.toFixed(1)}%.`;
+
+        const response = await ai.models.generateContent({
+            model: GEMINI_MODEL_ID,
+            contents: `Eres un CFO. Dados estos datos: ${context}.
+            Genera una frase ESTRATÉGICA y CORTA (máximo 10 palabras) sobre la tendencia ${trend}.
+            Ejemplo positivo: "Crecimiento sólido, reinvierte en captación."
+            Ejemplo negativo: "Caída leve, activa promociones para cerrar mes."
+            NO digas "Basado en los datos". Sé directo.`,
+        });
+        
+        return response.text?.trim() || null;
+    } catch (e) {
+        if ((e as Error).message === AI_ERROR_BLOCKED) return null;
         return null;
     }
 };

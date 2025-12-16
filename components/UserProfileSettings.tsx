@@ -934,36 +934,45 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                    <div>
                      <p className="text-xs font-bold text-teal-100 uppercase tracking-wider mb-1">Membresía Kônsul</p>
                      <h3 className="text-2xl font-bold flex items-center gap-2">
-                       {profile.plan || 'Emprendedor Pro'} <Crown className="w-5 h-5 text-yellow-300 fill-yellow-300" />
+                       {profile.plan || 'Plan Gratuito'} <Crown className="w-5 h-5 text-yellow-300 fill-yellow-300" />
                      </h3>
                    </div>
                  </div>
                  
                  <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/20 mb-6">
                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-xs text-teal-50 font-medium">Renovación</span>
+                      <span className="text-xs text-teal-50 font-medium">Próxima Renovación</span>
                       <span className="text-sm font-bold flex items-center gap-1.5">
-                        <Calendar className="w-3.5 h-3.5" /> {profile.renewalDate || '25 Oct 2024'}
+                        <Calendar className="w-3.5 h-3.5" /> 
+                        {profile.renewalDate 
+                          ? new Date(profile.renewalDate).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }) 
+                          : 'Indefinida'}
                       </span>
                    </div>
                    <div className="w-full bg-black/10 h-1.5 rounded-full overflow-hidden">
-                     <div className="bg-white w-3/4 h-full rounded-full"></div>
+                     <div className="bg-white w-full h-full rounded-full opacity-50"></div>
                    </div>
                  </div>
 
                  <div className="flex items-center justify-between text-sm border-t border-white/20 pt-4">
                     <div className="flex items-center gap-2 opacity-90">
-                       <CreditCard className="w-4 h-4" /> •••• 4242
+                       {profile.stripeCustomerId ? (
+                           <span className="flex items-center gap-2 font-medium text-emerald-100 bg-emerald-500/20 px-2 py-1 rounded-lg">
+                               <CheckCircle2 className="w-4 h-4" /> Activa
+                           </span>
+                       ) : (
+                           <span className="text-white/70 text-xs">Cuenta Local</span>
+                       )}
                     </div>
                     <button 
                       onClick={handleManageSubscription}
-                      disabled={isRedirectingToPortal}
-                      className="font-bold hover:underline decoration-2 underline-offset-4 flex items-center gap-1 disabled:opacity-70"
+                      disabled={isRedirectingToPortal || !profile.stripeCustomerId}
+                      className="font-bold hover:underline decoration-2 underline-offset-4 flex items-center gap-1 disabled:opacity-50 disabled:no-underline"
                     >
                        {isRedirectingToPortal ? (
                          <><Loader2 className="w-3 h-3 animate-spin" /> Conectando...</>
                        ) : (
-                         <>Gestionar <ExternalLink className="w-3 h-3" /></>
+                         <>Gestionar Suscripción <ExternalLink className="w-3 h-3" /></>
                        )}
                     </button>
                  </div>

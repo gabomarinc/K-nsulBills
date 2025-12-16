@@ -442,10 +442,13 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
             <tbody className="divide-y divide-slate-50">
               {invoice.items.map((item, idx) => (
                 <tr key={idx}>
-                  <td className="py-5 font-medium text-slate-800 text-lg">{item.description}</td>
-                  <td className="py-5 text-center text-slate-600">{item.quantity}</td>
-                  <td className="py-5 text-right text-slate-600">${item.price.toFixed(2)}</td>
-                  <td className="py-5 text-right font-bold text-[#1c2938] text-lg">${(item.quantity * item.price).toFixed(2)}</td>
+                  <td className="py-5">
+                    <p className="font-medium text-slate-800 text-lg">{item.description}</p>
+                    {item.details && <p className="text-sm text-slate-500 mt-1 whitespace-pre-wrap leading-relaxed">{item.details}</p>}
+                  </td>
+                  <td className="py-5 text-center text-slate-600 align-top pt-6">{item.quantity}</td>
+                  <td className="py-5 text-right text-slate-600 align-top pt-6">${item.price.toFixed(2)}</td>
+                  <td className="py-5 text-right font-bold text-[#1c2938] text-lg align-top pt-6">${(item.quantity * item.price).toFixed(2)}</td>
                 </tr>
               ))}
             </tbody>
@@ -562,10 +565,13 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
           <tbody className="divide-y divide-slate-200">
              {invoice.items.map((item, idx) => (
                 <tr key={idx}>
-                   <td className="py-4 font-serif text-slate-700">{item.description}</td>
-                   <td className="py-4 font-serif text-slate-700 text-right">{item.quantity}</td>
-                   <td className="py-4 font-serif text-slate-700 text-right">${item.price.toFixed(2)}</td>
-                   <td className="py-4 font-serif font-bold text-slate-800 text-right">${(item.quantity * item.price).toFixed(2)}</td>
+                   <td className="py-4 font-serif text-slate-700">
+                      <p>{item.description}</p>
+                      {item.details && <p className="text-sm text-slate-500 mt-1 italic">{item.details}</p>}
+                   </td>
+                   <td className="py-4 font-serif text-slate-700 text-right align-top pt-4">{item.quantity}</td>
+                   <td className="py-4 font-serif text-slate-700 text-right align-top pt-4">${item.price.toFixed(2)}</td>
+                   <td className="py-4 font-serif font-bold text-slate-800 text-right align-top pt-4">${(item.quantity * item.price).toFixed(2)}</td>
                 </tr>
              ))}
           </tbody>
@@ -638,10 +644,11 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
 
        <div className="space-y-4 mb-16">
           {invoice.items.map((item, idx) => (
-             <div key={idx} className="flex justify-between items-center py-4 border-b border-slate-50">
+             <div key={idx} className="flex justify-between items-start py-4 border-b border-slate-50">
                 <div>
                    <p className="font-medium text-slate-900 text-lg">{item.description}</p>
-                   <p className="text-xs text-slate-400">{item.quantity} x ${item.price.toFixed(2)}</p>
+                   {item.details && <p className="text-sm text-slate-500 mt-1">{item.details}</p>}
+                   <p className="text-xs text-slate-400 mt-1">{item.quantity} x ${item.price.toFixed(2)}</p>
                 </div>
                 <p className="font-bold text-slate-900 text-lg">${(item.quantity * item.price).toFixed(2)}</p>
              </div>

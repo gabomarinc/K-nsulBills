@@ -170,7 +170,8 @@ export interface UserProfile {
 
 export interface InvoiceItem {
   id: string;
-  description: string;
+  description: string; // Used as Item Name/Title
+  details?: string;    // New: Extended description
   quantity: number;
   price: number;
   tax: number;

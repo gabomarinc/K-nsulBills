@@ -30,7 +30,8 @@ const getDbClient = () => {
 };
 
 /**
- * AUDIT LOGGING SYSTEM
+ * AUDIT LOGGING SYSTEM (OPTIMIZED)
+ * Stores only the latest activity per user to save space.
  */
 export const logAuditAction = async (userId: string, action: string, details: any) => {
   const client = getDbClient();
@@ -38,6 +39,8 @@ export const logAuditAction = async (userId: string, action: string, details: an
 
   try {
     await client.connect();
+    
+    // Ensure table exists
     await client.query(`
       CREATE TABLE IF NOT EXISTS audit_log (
         id SERIAL PRIMARY KEY,
@@ -47,13 +50,37 @@ export const logAuditAction = async (userId: string, action: string, details: an
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await client.query(
-      `INSERT INTO audit_log (user_id, action, details) VALUES ($1, $2, $3)`,
-      [userId, action, JSON.stringify(details)]
+
+    // 1. Try to UPDATE existing record for this user
+    const updateRes = await client.query(
+        `UPDATE audit_log SET action = $1, details = $2, created_at = NOW() WHERE user_id = $3`,
+        [action, JSON.stringify(details), userId]
     );
+
+    // 2. Logic based on result
+    const rowsAffected = updateRes.rowCount || 0;
+
+    if (rowsAffected === 0) {
+        // CASE A: No record exists -> Insert new
+        await client.query(
+            `INSERT INTO audit_log (user_id, action, details) VALUES ($1, $2, $3)`,
+            [userId, action, JSON.stringify(details)]
+        );
+    } else if (rowsAffected > 1) {
+        // CASE B: Multiple records exist (Legacy Cleanup) -> Delete all and Insert fresh
+        // This auto-cleans the DB as users perform actions
+        await client.query(`DELETE FROM audit_log WHERE user_id = $1`, [userId]);
+        await client.query(
+            `INSERT INTO audit_log (user_id, action, details) VALUES ($1, $2, $3)`,
+            [userId, action, JSON.stringify(details)]
+        );
+    }
+    
+    // CASE C: rowsAffected === 1 -> Successfully updated the single record. Do nothing else.
+
     await client.end();
   } catch (e) {
-    console.error("Audit Log Failed:", e);
+    console.error("Audit Log Optimization Failed:", e);
   }
 };
 

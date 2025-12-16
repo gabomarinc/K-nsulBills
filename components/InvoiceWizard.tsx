@@ -205,6 +205,7 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
         const newItems = [{
           id: Date.now().toString(),
           description: result.concept || 'Servicios Profesionales',
+          details: '', // AI parsing currently just returns concept
           quantity: 1,
           price: result.amount || 0,
           tax: applyTax ? 7 : 0 
@@ -308,6 +309,7 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
       items: [...prev.items, {
         id: Date.now().toString(),
         description: catalogItem?.name || '',
+        details: catalogItem?.description || '', // Pull description from catalog
         quantity: 1,
         price: catalogItem?.price || 0,
         tax: applyTax ? 7 : 0 
@@ -525,11 +527,20 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
                   <button onClick={() => addItem()} className="text-center p-2 text-sm text-[#27bea5] font-medium hover:underline w-full">+ En blanco</button>
                 </div>
               )}
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {draft.items.map((item, idx) => (
                   <div key={item.id} className="flex gap-2 items-start group">
                     <div className="flex-1 space-y-2">
-                      <input value={item.description} onChange={(e) => updateItem(idx, 'description', e.target.value)} placeholder="Descripción" className="w-full p-2 font-medium border-b border-transparent focus:border-[#27bea5] bg-transparent outline-none placeholder:text-slate-300" />
+                      <input value={item.description} onChange={(e) => updateItem(idx, 'description', e.target.value)} placeholder="Nombre del producto/servicio" className="w-full p-2 font-bold text-slate-700 border-b border-transparent focus:border-[#27bea5] bg-transparent outline-none placeholder:text-slate-300" />
+                      
+                      {/* NEW: DETAILS TEXTAREA */}
+                      <textarea 
+                        value={item.details || ''} 
+                        onChange={(e) => updateItem(idx, 'details', e.target.value)} 
+                        placeholder="Descripción detallada (opcional)" 
+                        className="w-full p-2 text-sm text-slate-500 border border-slate-100 rounded-lg focus:border-[#27bea5] bg-slate-50/50 outline-none resize-none h-16 placeholder:text-slate-300" 
+                      />
+
                       <div className="flex gap-2">
                          <div className="w-20"><input type="number" value={item.quantity} onChange={(e) => updateItem(idx, 'quantity', parseFloat(e.target.value))} className="w-full p-2 bg-slate-50 rounded-lg text-sm text-center outline-none focus:ring-1 focus:ring-[#27bea5]" placeholder="Cant" /></div>
                          <div className="flex-1 relative"><span className="absolute left-3 top-2 text-slate-400 text-sm">{draft.currency === 'EUR' ? '€' : '$'}</span><input type="number" value={item.price} onChange={(e) => updateItem(idx, 'price', parseFloat(e.target.value))} className="w-full p-2 pl-6 bg-slate-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-[#27bea5]" placeholder="Precio" /></div>
