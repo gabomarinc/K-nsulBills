@@ -10,7 +10,7 @@ import {
   BrainCircuit, Activity, Target, Lightbulb,
   X, TrendingDown, Wallet,
   LayoutDashboard, FileBarChart, Users, Filter, Calendar, Download, Mail, Smartphone, CheckCircle2,
-  Clock, AlertTriangle, Trophy, FileText, Lock, ArrowRight, Table, Scale, Landmark, Calculator, PiggyBank, Briefcase, ShieldCheck, AlertCircle, FileWarning, XCircle 
+  Clock, AlertTriangle, Trophy, FileText, Lock, ArrowRight, Table, Scale, Landmark, Calculator, PiggyBank, Briefcase, ShieldCheck, AlertCircle, FileWarning, XCircle, RefreshCw 
 } from 'lucide-react';
 import { Invoice, FinancialAnalysisResult, DeepDiveReport, UserProfile } from '../types';
 import { generateFinancialAnalysis, generateDeepDiveReport, AI_ERROR_BLOCKED } from '../services/geminiService';
@@ -25,7 +25,7 @@ interface ReportsDashboardProps {
   currentUser?: UserProfile;
 }
 
-type TimeRange = '30D' | '90D' | '12M' | 'CUSTOM';
+type TimeRange = 'THIS_MONTH' | 'LAST_QUARTER' | 'THIS_YEAR' | 'CUSTOM';
 type ReportTab = 'OVERVIEW' | 'DOCUMENTS' | 'CLIENTS' | 'FISCAL';
 
 const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: ReportsDashboardProps) => {
@@ -51,12 +51,12 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
   const fiscalRef = useRef<HTMLDivElement>(null); // New Ref
   const deepDiveRef = useRef<HTMLDivElement>(null); 
 
-  // Filter State - Default to 12M
-  const [timeRange, setTimeRange] = useState<TimeRange>('12M');
+  // Filter State - Default to This Year
+  const [timeRange, setTimeRange] = useState<TimeRange>('THIS_YEAR');
   
   // Custom Date Range State
   const [customStart, setCustomStart] = useState<string>(
-    new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().split('T')[0]
+    new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]
   );
   const [customEnd, setCustomEnd] = useState<string>(
     new Date().toISOString().split('T')[0]
@@ -64,7 +64,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
 
   // Deep Dive Report State
   const [deepDiveReport, setDeepDiveReport] = useState<DeepDiveReport | null>(null);
-  const [deepDiveVisual, setDeepDiveVisual] = useState<{ type: string, data: any } | null>(null);
+  const [deepDiveVisual, setDeepDiveVisual] = useState<{ type: string, data: any, title: string } | null>(null);
   const [isDeepDiving, setIsDeepDiving] = useState<string | null>(null); // Holds the Chart ID being analyzed
   const [deepDiveError, setDeepDiveError] = useState(false); // New: Explicit error state for modal
 
@@ -177,24 +177,32 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
     let startDate = new Date();
     let endDate = new Date(); 
 
-    if (timeRange === '30D') {
-      startDate.setDate(now.getDate() - 30);
-    } else if (timeRange === '90D') {
-      startDate.setDate(now.getDate() - 90);
-    } else if (timeRange === '12M') {
-      startDate.setDate(now.getDate() - 365);
+    if (timeRange === 'THIS_MONTH') {
+      // First day of current month
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else if (timeRange === 'LAST_QUARTER') {
+      // Last 3 months
+      startDate = new Date();
+      startDate.setMonth(now.getMonth() - 3);
+    } else if (timeRange === 'THIS_YEAR') {
+      // Jan 1st of current year
+      startDate = new Date(now.getFullYear(), 0, 1);
     } else if (timeRange === 'CUSTOM') {
       startDate = new Date(customStart + 'T00:00:00');
       const end = new Date(customEnd + 'T23:59:59');
       endDate = end;
     }
 
+    // Set end date to today for standard ranges
+    if (timeRange !== 'CUSTOM') {
+        endDate = new Date();
+        endDate.setHours(23, 59, 59, 999);
+    }
+
     return invoices.filter(inv => {
       const d = new Date(inv.date);
-      if (timeRange === 'CUSTOM') {
-         return d >= startDate && d <= endDate;
-      }
-      return d >= startDate;
+      // Ensure we compare including time or strictly by day
+      return d >= startDate && d <= endDate;
     });
   }, [invoices, timeRange, customStart, customEnd]);
 
@@ -203,9 +211,23 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
     const timelineMap = new Map<string, { ingresos: number, gastos: number, date: Date }>();
     let totalRevenue = 0; let totalExpenses = 0; let paymentDaysSum = 0; let paidInvoicesCount = 0;
     
+    // Determine aggregation granularity
+    // If range is "THIS_MONTH" or short custom range (< 60 days), group by DAY.
+    // Otherwise group by MONTH.
+    const isDaily = timeRange === 'THIS_MONTH' || (
+        timeRange === 'CUSTOM' && 
+        (new Date(customEnd).getTime() - new Date(customStart).getTime()) / (1000 * 3600 * 24) < 60
+    );
+
     filteredInvoices.forEach(inv => {
       const d = new Date(inv.date);
-      const key = d.toLocaleDateString('es-ES', { month: 'short', year: '2-digit' });
+      
+      let key;
+      if (isDaily) {
+          key = d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }); // e.g. "05 ene"
+      } else {
+          key = d.toLocaleDateString('es-ES', { month: 'short', year: '2-digit' }); // e.g. "ene 24"
+      }
       
       if (!timelineMap.has(key)) timelineMap.set(key, { ingresos: 0, gastos: 0, date: d });
       const entry = timelineMap.get(key)!;
@@ -288,7 +310,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
     const clientActivityData = [ { name: 'Activos (<90d)', value: activeClientsCount, color: '#27bea5' }, { name: 'Riesgo (>90d)', value: churnRiskCount, color: '#ef4444' }, ];
     
     return { monthlyData, funnelData, scatterData, ltvData, clientActivityData, kpis: { totalRevenue, totalExpenses, netMargin, marginPercent, avgPaymentDays, conversionRate, churnRiskCount, activeClientsCount } };
-  }, [filteredInvoices]);
+  }, [filteredInvoices, timeRange, customStart, customEnd]);
 
   // --- 3. FISCAL REPORT ENGINE (DGI PANAMA LOGIC) ---
   const fiscalData = useMemo(() => {
@@ -477,34 +499,56 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
     }
   };
 
+  // Reusable function to fetch AI report (used for initial click and retries)
+  const fetchDeepDiveReport = async (chartTitle: string, chartData: any) => {
+      if (!hasAiAccess) return;
+      
+      setDeepDiveReport(null);
+      setDeepDiveError(false);
+      
+      // OPTIMIZATION: Slice large data sets to prevent token limits/errors
+      let dataForAi = chartData;
+      if (Array.isArray(chartData) && chartData.length > 30) {
+          dataForAi = chartData.slice(0, 30); // Take top 30 items
+      }
+
+      const context = `Periodo: ${timeRange}. Datos Reales (Muestra): ${JSON.stringify(dataForAi)}. Contexto KPI: Margen ${data.kpis.marginPercent.toFixed(1)}%, Conversión ${data.kpis.conversionRate.toFixed(1)}%.`;
+      
+      try {
+          const report = await generateDeepDiveReport(chartTitle, context, apiKey);
+          if (report) {
+              setDeepDiveReport(report);
+          } else {
+              setDeepDiveError(true);
+          }
+      } catch (e) {
+          console.error("Deep Dive Error", e);
+          setDeepDiveError(true);
+      } finally {
+          setIsDeepDiving(null);
+      }
+  };
+
   const handleDeepDive = async (chartId: string, chartTitle: string, chartData: any) => {
     // Show Modal with Data immediately
     setIsDeepDiving(chartId);
     setDeepDiveReport(null);
     setDeepDiveError(false);
-    setDeepDiveVisual({ type: chartId, data: chartData }); // Set visual context
+    setDeepDiveVisual({ type: chartId, data: chartData, title: chartTitle }); // Set visual context
     
+    // Trigger AI generation
     if (hasAiAccess) {
-        // Generate AI Insight in background
-        const context = `Periodo: ${timeRange}. Datos Reales: ${JSON.stringify(chartData)}. Contexto KPI: Margen ${data.kpis.marginPercent}%, Conversión ${data.kpis.conversionRate}%. Analiza como experto contable.`;
-        try {
-            const report = await generateDeepDiveReport(chartTitle, context, apiKey);
-            if (report) {
-                setDeepDiveReport(report);
-            } else {
-                setDeepDiveError(true);
-            }
-        } catch (e) {
-            console.error("Deep Dive Error", e);
-            setDeepDiveError(true);
-        } finally {
-            // CRITICAL: Ensure we stop loading state
-            setIsDeepDiving(null);
-        }
+        fetchDeepDiveReport(chartTitle, chartData);
     } else {
-        // No AI access, stop loading immediately
         setIsDeepDiving(null);
     }
+  };
+
+  const handleRetryDeepDive = () => {
+      if (deepDiveVisual) {
+          setIsDeepDiving(deepDiveVisual.type);
+          fetchDeepDiveReport(deepDiveVisual.title, deepDiveVisual.data);
+      }
   };
 
   // --- HELPER: RENDER TABLE IN DEEP DIVE ---
@@ -519,7 +563,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                       <table className="w-full text-left text-sm">
                           <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-xs">
                               <tr>
-                                  <th className="p-4">Mes</th>
+                                  <th className="p-4">Periodo</th>
                                   <th className="p-4 text-right">Ingresos</th>
                                   {deepDiveVisual.type === 'cashflow' && <th className="p-4 text-right">Gastos</th>}
                                   {deepDiveVisual.type === 'cashflow' && <th className="p-4 text-right">Neto</th>}
@@ -661,7 +705,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                       </div>
                       Flujo de Caja Real
                     </h3>
-                    <p className="text-slate-400 text-sm mt-1 ml-11">Comparativa mensual entre ingresos cobrados y gastos operativos.</p>
+                    <p className="text-slate-400 text-sm mt-1 ml-11">Comparativa entre ingresos cobrados y gastos operativos.</p>
                   </div>
                   <button id="no-print" onClick={() => handleDeepDive('cashflow', 'Flujo de Caja', data.monthlyData)} className="p-3 rounded-xl bg-slate-50 hover:text-[#27bea5] transition-all">
                     {isDeepDiving === 'cashflow' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
@@ -1151,19 +1195,36 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
         <div className="flex flex-col sm:flex-row items-center gap-4">
            {/* Date Filter Buttons */}
            <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 overflow-x-auto max-w-full">
-             {(['30D', '90D', '12M'] as const).map((range) => (
-               <button
-                 key={range}
-                 onClick={() => setTimeRange(range)}
+             <button
+                 onClick={() => setTimeRange('THIS_MONTH')}
                  className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 ${
-                   timeRange === range 
+                   timeRange === 'THIS_MONTH' 
                      ? 'bg-[#1c2938] text-white shadow-md' 
                      : 'text-slate-400 hover:text-slate-600'
                  }`}
                >
-                 {range}
-               </button>
-             ))}
+                 Mes Actual
+             </button>
+             <button
+                 onClick={() => setTimeRange('LAST_QUARTER')}
+                 className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 ${
+                   timeRange === 'LAST_QUARTER' 
+                     ? 'bg-[#1c2938] text-white shadow-md' 
+                     : 'text-slate-400 hover:text-slate-600'
+                 }`}
+               >
+                 Último Trimestre
+             </button>
+             <button
+                 onClick={() => setTimeRange('THIS_YEAR')}
+                 className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 ${
+                   timeRange === 'THIS_YEAR' 
+                     ? 'bg-[#1c2938] text-white shadow-md' 
+                     : 'text-slate-400 hover:text-slate-600'
+                 }`}
+               >
+                 Todo el Año
+             </button>
              <button
                onClick={() => setTimeRange('CUSTOM')}
                className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 flex items-center gap-1 ${
@@ -1387,7 +1448,9 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                    </div>
                    <div>
                      <h3 className="font-bold text-[#1c2938] text-xl">Reporte Detallado</h3>
-                     <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">{deepDiveReport?.chartTitle || 'Cargando Datos...'}</p>
+                     <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">
+                        {deepDiveVisual?.title || deepDiveReport?.chartTitle || 'Análisis de Datos'}
+                     </p>
                    </div>
                  </div>
                  <button 
@@ -1406,24 +1469,27 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
               {/* Scrollable Content */}
               <div ref={deepDiveRef} className="p-8 md:p-12 overflow-y-auto custom-scrollbar flex-1 bg-white rounded-b-[2.5rem]">
                  
-                 {/* 1. VISUALIZATION (Chart Copy or Data) */}
+                 {/* 1. VISUALIZATION (Chart Copy or Data) - ALWAYS VISIBLE */}
                  {deepDiveVisual && (
                     <div className="mb-10 animate-in slide-in-from-bottom-4">
                        <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                          <Table className="w-4 h-4" /> Desglose de Datos Reales
+                          <Table className="w-4 h-4" /> Datos del Reporte
                        </h4>
                        {renderDeepDiveTable()}
                     </div>
                  )}
 
-                 {/* 2. AI ANALYSIS CONTENT (Wait for Load) */}
+                 {/* 2. AI ANALYSIS CONTENT (Enhanced) */}
                  {deepDiveReport ? (
-                    <div className="prose prose-slate max-w-none animate-in slide-in-from-bottom-4">
-                        <div className="bg-slate-50 p-6 rounded-2xl mb-8 border border-slate-100">
-                           <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
-                              <BrainCircuit className="w-4 h-4" /> Análisis Ejecutivo (IA)
+                    <div className="prose prose-slate max-w-none animate-in slide-in-from-bottom-4 border-t border-slate-100 pt-8">
+                        <div className="bg-slate-50 p-6 rounded-2xl mb-8 border border-slate-100 relative overflow-hidden">
+                           <div className="absolute top-0 right-0 p-4 opacity-10">
+                              <BrainCircuit className="w-24 h-24 text-[#27bea5]" />
+                           </div>
+                           <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2 relative z-10">
+                              <Sparkles className="w-4 h-4 text-[#27bea5]" /> Interpretación Inteligente
                            </h4>
-                           <p className="text-[#1c2938] font-medium leading-relaxed">{deepDiveReport.executiveSummary}</p>
+                           <p className="text-[#1c2938] font-medium leading-relaxed relative z-10">{deepDiveReport.executiveSummary}</p>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -1455,17 +1521,29 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                  ) : (
                     // LOADING OR ERROR STATE
                     hasAiAccess && (
-                        <div className="flex flex-col items-center justify-center py-12 text-center">
+                        <div className="flex flex-col items-center justify-center py-8 text-center border-t border-slate-100 mt-4">
                             {deepDiveError ? (
-                                <div className="text-rose-500 animate-in fade-in">
-                                    <AlertCircle className="w-8 h-8 mb-4 mx-auto" />
-                                    <p className="font-medium">No se pudo generar el análisis detallado.</p>
-                                    <p className="text-sm opacity-80 mt-1">Intenta nuevamente en unos momentos.</p>
+                                <div className="animate-in fade-in flex flex-col items-center gap-3">
+                                    <div className="p-3 bg-amber-50 text-amber-600 rounded-full">
+                                      <BrainCircuit className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                      <p className="font-bold text-slate-600">Análisis de IA no disponible</p>
+                                      <p className="text-xs text-slate-400 max-w-xs mx-auto mt-1">
+                                        No se pudo generar la interpretación automática. Puedes reintentar o usar los datos de la tabla superior.
+                                      </p>
+                                    </div>
+                                    <button 
+                                      onClick={() => handleRetryDeepDive()}
+                                      className="mt-2 text-xs font-bold text-[#27bea5] hover:underline flex items-center gap-1"
+                                    >
+                                      <RefreshCw className="w-3 h-3" /> Reintentar Análisis
+                                    </button>
                                 </div>
                             ) : (
-                                <div className="text-slate-400">
-                                    <Loader2 className="w-8 h-8 animate-spin mb-4 mx-auto text-[#27bea5]" />
-                                    <p className="font-medium">El Analista Virtual está revisando los datos...</p>
+                                <div className="text-slate-400 flex flex-col items-center gap-2">
+                                    <Loader2 className="w-6 h-6 animate-spin text-[#27bea5]" />
+                                    <p className="font-medium text-sm">El Analista Virtual está revisando los datos...</p>
                                 </div>
                             )}
                         </div>
@@ -1476,7 +1554,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
               {/* Footer Actions */}
               <div className="p-6 border-t border-slate-100 flex justify-end gap-3 bg-white rounded-b-[2.5rem]">
                   <button 
-                    onClick={() => handleExportPdf(deepDiveRef, `Reporte_${deepDiveReport?.chartTitle || 'Detalle'}`)}
+                    onClick={() => handleExportPdf(deepDiveRef, `Reporte_${deepDiveVisual?.title || 'Detalle'}`)}
                     className="px-6 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 flex items-center gap-2"
                   >
                     <Download className="w-4 h-4" /> Exportar PDF
