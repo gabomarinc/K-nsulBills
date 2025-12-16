@@ -1,16 +1,15 @@
 
 import React, { useState, useMemo, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
-  PieChart, Pie, Cell, AreaChart, Area, ScatterChart, Scatter, LineChart, Line
+  PieChart, Pie, Cell, AreaChart, Area, ScatterChart, Scatter
 } from 'recharts';
 import { 
   Sparkles, TrendingUp, Loader2, 
   BrainCircuit, Activity, Target, Lightbulb,
   X, TrendingDown, Wallet,
-  LayoutDashboard, FileBarChart, Users, Filter, Calendar, Download, Mail, Smartphone, CheckCircle2,
-  Clock, AlertTriangle, Trophy, FileText, Lock, ArrowRight, Table, Scale, Landmark, Calculator, PiggyBank, Briefcase, ShieldCheck, AlertCircle, FileWarning, XCircle, RefreshCw, ChevronDown, ChevronRight
+  FileBarChart, Users, Filter, Calendar, Download, Mail, CheckCircle2,
+  Clock, AlertTriangle, FileText, Lock, ArrowRight, Scale, Landmark, Calculator, PiggyBank, ShieldCheck, AlertCircle, FileWarning, XCircle, RefreshCw, ChevronDown
 } from 'lucide-react';
 import { Invoice, FinancialAnalysisResult, DeepDiveReport, UserProfile } from '../types';
 import { generateFinancialAnalysis, generateDeepDiveReport, AI_ERROR_BLOCKED } from '../services/geminiService';
@@ -48,9 +47,8 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
   const overviewRef = useRef<HTMLDivElement>(null);
   const documentsRef = useRef<HTMLDivElement>(null);
   const clientsRef = useRef<HTMLDivElement>(null);
-  const fiscalRef = useRef<HTMLDivElement>(null); // New Ref
-  const deepDiveRef = useRef<HTMLDivElement>(null); 
-
+  const fiscalRef = useRef<HTMLDivElement>(null); 
+  
   // Filter State - Default to This Year
   const [timeRange, setTimeRange] = useState<TimeRange>('THIS_YEAR');
   
@@ -66,7 +64,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
   const [deepDiveReport, setDeepDiveReport] = useState<DeepDiveReport | null>(null);
   const [deepDiveVisual, setDeepDiveVisual] = useState<{ type: string, data: any, title: string } | null>(null);
   const [isDeepDiving, setIsDeepDiving] = useState<string | null>(null); // Holds the Chart ID being analyzed
-  const [deepDiveError, setDeepDiveError] = useState(false); // New: Explicit error state for modal
+  const [deepDiveError, setDeepDiveError] = useState(false); 
 
   // --- HELPER: Number Formatter for Charts (Anti-Overlap) ---
   const compactNumber = (num: number) => {
@@ -131,7 +129,6 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
   };
 
   // --- SHARE LOGIC ---
-  
   const handleShareWhatsapp = (summaryText: string) => {
     const encodedText = encodeURIComponent(summaryText);
     const url = `https://wa.me/?text=${encodedText}`;
@@ -319,7 +316,6 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
     
     // Config Extraction
     const config = currentUser.fiscalConfig;
-    const isNatural = config.entityType === 'NATURAL';
     
     // Variables Accumulators
     let debitFiscal = 0; // ITBMS on Sales (Collected)
@@ -499,7 +495,6 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
     }
   };
 
-  // Reusable function to fetch AI report (used for initial click and retries)
   const fetchDeepDiveReport = async (chartTitle: string, chartData: any, type: string) => {
       if (!hasAiAccess) return;
       
@@ -509,27 +504,29 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
       let context = '';
       
       if (type === 'cashflow') {
-          // Optimization: Only send top expenses if there are too many to prevent token overflow
-          const topExpenses = chartData.breakdown
-              .slice(0, 8) // Limit to top 8 items
-              .map((b: any) => `- ${b.category}: ${currencySymbol}${b.amount.toFixed(2)}`);
-          
           context = `
-            ESTADO DE RESULTADOS (P&L) - ${timeRange}
-            INGRESOS TOTALES: ${currencySymbol}${chartData.income.toFixed(2)}
-            TOTAL GASTOS: ${currencySymbol}${chartData.expenses.toFixed(2)}
-            UTILIDAD NETA: ${currencySymbol}${(chartData.income - chartData.expenses).toFixed(2)}
+            ESTADO DE FLUJO DE EFECTIVO (Método Indirecto Simplificado) - ${timeRange}
+            ------------------------------------------
+            UTILIDAD OPERATIVA: ${currencySymbol}${chartData.operatingProfit.toFixed(2)}
             
-            PRINCIPALES GASTOS (Muestra):
-            ${topExpenses.join('\n')}
-            ${chartData.breakdown.length > 8 ? `... y otros ${chartData.breakdown.length - 8} ítems menores.` : ''}
+            AJUSTES (No Monetarios):
+            - Cuentas por Cobrar (Dinero no entrado): ${currencySymbol}${chartData.adjustments.receivables.toFixed(2)}
+            
+            FLUJO NETO OPERATIVO: ${currencySymbol}${chartData.netOperatingCash.toFixed(2)}
+            
+            ACTIVIDADES DE INVERSIÓN:
+            - Compra de Activos/Software: ${currencySymbol}${chartData.investingActivities.toFixed(2)}
+            
+            FLUJO NETO TOTAL: ${currencySymbol}${chartData.netChange.toFixed(2)}
+            ------------------------------------------
             
             INSTRUCCIÓN ESPECIAL PARA IA:
-            En 'strategicInsight', identifica qué categoría de gasto principal es desproporcionada.
-            En 'recommendation', da 3 'Puntos a Mejorar' específicos.
+            Analiza la liquidez de la empresa basándote en este Estado de Flujo de Efectivo.
+            - ¿Están financiando operaciones con deuda o cobros eficientes?
+            - ¿La inversión es sostenible?
+            - Da 3 recomendaciones para mejorar el Flujo de Caja.
           `;
       } else {
-          // Standard Logic for other charts
           let dataForAi = chartData;
           if (Array.isArray(chartData) && chartData.length > 30) {
               dataForAi = chartData.slice(0, 30); // Take top 30 items
@@ -553,60 +550,73 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
   };
 
   const handleDeepDive = async (chartId: string, chartTitle: string, chartData: any) => {
-    // Show Modal with Data immediately
     setIsDeepDiving(chartId);
     setDeepDiveReport(null);
     setDeepDiveError(false);
     
     let visualData = { type: chartId, data: chartData, title: chartTitle };
 
-    // --- P&L LOGIC ---
-    // If Cash Flow is selected, we construct a categorical P&L object instead of just bars
     if (chartId === 'cashflow') {
-        const expenseBreakdown = new Map<string, number>();
-        let totalExpenses = 0;
-        let totalIncome = 0;
+        const investingKeywords = ['software', 'licencia', 'equipo', 'computadora', 'mueble', 'local', 'remodelacion', 'license', 'asset'];
+        
+        let totalInvoiced = 0; 
+        let totalCollected = 0; 
+        let operatingExpenses = 0;
+        let investingExpenses = 0;
 
         filteredInvoices.forEach(inv => {
-            if (inv.type === 'Invoice' && (inv.status === 'Pagada' || inv.status === 'Aceptada' || (inv.amountPaid || 0) > 0)) {
-                totalIncome += (inv.amountPaid || inv.total);
-            } else if (inv.type === 'Expense') {
-                const providerName = inv.clientName || 'Proveedor';
-                const description = inv.items[0]?.description || 'Varios';
-                // Composite key for granular tracking: Provider + Category
-                // Separator '|||' allows clean splitting later
-                const key = `${providerName}|||${description}`;
+            if (inv.type === 'Invoice') {
+                if (inv.status !== 'Borrador' && inv.status !== 'Rechazada') {
+                    totalInvoiced += inv.total;
+                }
                 
-                expenseBreakdown.set(key, (expenseBreakdown.get(key) || 0) + inv.total);
-                totalExpenses += inv.total;
+                if (inv.amountPaid && inv.amountPaid > 0) {
+                    totalCollected += inv.amountPaid;
+                } else if (inv.status === 'Pagada' || inv.status === 'Aceptada') {
+                    totalCollected += inv.total;
+                }
+            } 
+            else if (inv.type === 'Expense') {
+                const desc = (inv.items[0]?.description || '').toLowerCase();
+                const isInvesting = investingKeywords.some(k => desc.includes(k));
+                
+                if (isInvesting) {
+                    investingExpenses += inv.total;
+                } else {
+                    operatingExpenses += inv.total;
+                }
             }
         });
 
-        // Convert map to sorted array
-        const expensesArray = Array.from(expenseBreakdown.entries())
-            .map(([key, amount]) => {
-                const [provider, desc] = key.split('|||');
-                return { 
-                    category: `${provider} - ${desc}`, // Friendly label for AI
-                    rawProvider: provider,
-                    rawDesc: desc,
-                    amount 
-                };
-            })
-            .sort((a, b) => b.amount - a.amount);
+        const operatingProfit = totalInvoiced - operatingExpenses; 
+        const receivablesChange = -(totalInvoiced - totalCollected); 
+        
+        const netOperatingCash = operatingProfit + receivablesChange; 
+        
+        const investingFlow = -investingExpenses;
 
-        const pnlData = {
-            income: totalIncome,
-            expenses: totalExpenses,
-            breakdown: expensesArray
+        const netChange = netOperatingCash + investingFlow;
+
+        const beginningCash = 0;
+        const endingCash = beginningCash + netChange;
+
+        const cashFlowStatementData = {
+            operatingProfit,
+            adjustments: {
+                receivables: receivablesChange
+            },
+            netOperatingCash,
+            investingActivities: investingFlow,
+            netChange,
+            beginningCash,
+            endingCash
         };
         
-        visualData = { type: 'cashflow', data: pnlData, title: 'Estado de Resultados (P&L)' };
+        visualData = { type: 'cashflow', data: cashFlowStatementData, title: 'Estado de Flujo de Efectivo' };
     }
 
     setDeepDiveVisual(visualData);
     
-    // Trigger AI generation
     if (hasAiAccess) {
         fetchDeepDiveReport(chartTitle, visualData.data, chartId);
     } else {
@@ -621,91 +631,86 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
       }
   };
 
-  // --- HELPER: RENDER TABLE IN DEEP DIVE ---
   const renderDeepDiveTable = () => {
       if (!deepDiveVisual) return null;
 
-      // --- NEW P&L RENDERER ---
       if (deepDiveVisual.type === 'cashflow') {
-          const { income, expenses, breakdown } = deepDiveVisual.data;
-          const net = income - expenses;
-          const profitMargin = income > 0 ? (net / income) * 100 : 0;
+          const { 
+              operatingProfit, 
+              adjustments, 
+              netOperatingCash, 
+              investingActivities, 
+              netChange,
+              beginningCash,
+              endingCash
+          } = deepDiveVisual.data;
 
           return (
               <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden mb-8 shadow-sm">
-                  {/* Header */}
                   <div className="bg-slate-50 p-6 text-center border-b border-slate-200">
                       <h4 className="text-[#1c2938] font-bold text-lg">{currentUser?.name || 'Mi Empresa'}</h4>
-                      <p className="text-slate-500 text-sm font-medium uppercase tracking-wider mt-1">Pérdidas y Ganancias</p>
+                      <p className="text-slate-500 text-sm font-medium uppercase tracking-wider mt-1">Estado de Flujo de Efectivo</p>
                       <p className="text-slate-400 text-xs mt-1">{new Date().toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}</p>
                   </div>
 
-                  <div className="p-6 md:p-8 space-y-6">
-                      {/* 1. INCOME */}
-                      <div>
-                          <div className="flex justify-between items-center mb-2 group">
-                              <button className="flex items-center gap-2 text-sm font-bold text-slate-700">
-                                  <ChevronDown className="w-4 h-4 text-slate-400" /> Ingresos
-                              </button>
-                              <span className="font-bold text-[#1c2938]">{currencySymbol}{income.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                          </div>
-                          <div className="pl-6 pr-0 space-y-2">
-                              <div className="flex justify-between items-center text-sm">
-                                  <span className="text-slate-500">Ventas Brutas</span>
-                                  <span className="text-slate-700">{currencySymbol}{income.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                              </div>
-                              <div className="flex justify-between items-center text-sm pt-2 border-t border-slate-100">
-                                  <span className="font-bold text-slate-700">Total Ingresos</span>
-                                  <span className="font-bold text-[#1c2938]">{currencySymbol}{income.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                              </div>
-                          </div>
-                      </div>
-
-                      {/* 2. EXPENSES */}
-                      <div>
-                          <div className="flex justify-between items-center mb-2">
-                              <button className="flex items-center gap-2 text-sm font-bold text-slate-700">
-                                  <ChevronDown className="w-4 h-4 text-slate-400" /> Gastos Operativos
-                              </button>
-                              <span className="font-bold text-slate-700">{currencySymbol}{expenses.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                          </div>
+                  <div className="p-0">
+                      <div className="p-6 border-b border-slate-100">
+                          <button className="flex items-center gap-2 text-sm font-bold text-slate-700 mb-4">
+                              <ChevronDown className="w-4 h-4 text-slate-400" /> Flujos de efectivo de actividades operativas
+                          </button>
+                          
                           <div className="pl-6 space-y-3">
-                              {breakdown.length > 0 ? (
-                                  breakdown.map((item: any, idx: number) => (
-                                      <div key={idx} className="flex justify-between items-center text-sm group">
-                                          <div className="flex items-center gap-2">
-                                              <div className="flex flex-col">
-                                                  <span className="font-bold text-[#1c2938]">{item.rawProvider || item.category}</span>
-                                                  {item.rawDesc && <span className="text-xs text-slate-400">{item.rawDesc}</span>}
-                                              </div>
-                                              {/* Visual bar for relative size */}
-                                              <div className="h-1.5 bg-rose-100 rounded-full ml-2 hidden sm:block" style={{ width: `${Math.min(100, (item.amount / expenses) * 50)}px` }}></div>
-                                          </div>
-                                          <span className="text-slate-700">{currencySymbol}{item.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                                      </div>
-                                  ))
-                              ) : (
-                                  <p className="text-xs text-slate-400 italic">Sin gastos registrados.</p>
-                              )}
+                              <div className="flex justify-between items-center text-sm">
+                                  <span className="text-slate-500">Utilidad del periodo (Operativa)</span>
+                                  <span className="font-medium text-slate-700">{currencySymbol}{operatingProfit.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                              </div>
+
+                              <div className="pl-4 border-l-2 border-slate-100 py-1 space-y-2">
+                                  <p className="text-xs font-bold text-slate-400 uppercase">Ajustes (Partidas no monetarias)</p>
+                                  <div className="flex justify-between items-center text-sm group">
+                                      <span className="text-slate-500 group-hover:text-[#1c2938] transition-colors">Cuentas por Cobrar (Variación)</span>
+                                      <span className="text-slate-700">{currencySymbol}{adjustments.receivables.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                                  </div>
+                              </div>
                               
                               <div className="flex justify-between items-center text-sm pt-3 border-t border-slate-100">
-                                  <span className="font-bold text-slate-700">Total Gastos</span>
-                                  <span className="font-bold text-slate-700">{currencySymbol}{expenses.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                                  <span className="font-bold text-slate-700">Efectivo neto de actividades operativas</span>
+                                  <span className="font-bold text-[#1c2938]">{currencySymbol}{netOperatingCash.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
                               </div>
                           </div>
                       </div>
 
-                      {/* 3. NET INCOME */}
-                      <div className={`mt-6 p-4 rounded-xl flex justify-between items-center border ${net >= 0 ? 'bg-slate-50 border-slate-200' : 'bg-red-50 border-red-100'}`}>
-                          <div>
-                              <span className="block font-bold text-[#1c2938] text-lg">Utilidad Neta</span>
-                              <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${net >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                                  {profitMargin.toFixed(1)}% Margen
-                              </span>
+                      <div className="p-6 border-b border-slate-100 bg-slate-50/30">
+                          <button className="flex items-center gap-2 text-sm font-bold text-slate-700 mb-4">
+                              <ChevronDown className="w-4 h-4 text-slate-400" /> Flujos de efectivo de actividades de inversión
+                          </button>
+                          <div className="pl-6 space-y-3">
+                              <div className="flex justify-between items-center text-sm">
+                                  <span className="text-slate-500">Compra de Activos / Software</span>
+                                  <span className="text-slate-700">{currencySymbol}{investingActivities.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                              </div>
+                              <div className="flex justify-between items-center text-sm pt-3 border-t border-slate-100">
+                                  <span className="font-bold text-slate-700">Efectivo neto usado en inversión</span>
+                                  <span className="font-bold text-slate-700">{currencySymbol}{investingActivities.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                              </div>
                           </div>
-                          <span className={`text-2xl font-bold ${net >= 0 ? 'text-[#1c2938]' : 'text-red-600'}`}>
-                              {currencySymbol}{net.toLocaleString(undefined, {minimumFractionDigits: 2})}
-                          </span>
+                      </div>
+
+                      <div className="p-6 bg-slate-100/50">
+                          <div className="space-y-3">
+                              <div className="flex justify-between items-center text-sm font-bold text-slate-700">
+                                  <span>AUMENTO (DISMINUCIÓN) NETO DE EFECTIVO</span>
+                                  <span className={netChange >= 0 ? 'text-emerald-600' : 'text-red-600'}>{currencySymbol}{netChange.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                              </div>
+                              <div className="flex justify-between items-center text-sm text-slate-500">
+                                  <span>Efectivo al principio del periodo</span>
+                                  <span>{currencySymbol}{beginningCash.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                              </div>
+                              <div className="flex justify-between items-center pt-3 border-t border-slate-200">
+                                  <span className="text-lg font-bold text-[#1c2938]">EFECTIVO AL FINAL DEL EJERCICIO</span>
+                                  <span className="text-lg font-bold text-[#1c2938]">{currencySymbol}{endingCash.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                              </div>
+                          </div>
                       </div>
                   </div>
               </div>
@@ -815,12 +820,10 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
       }
   };
 
-  // --- RENDERERS ---
-
   const renderOverview = () => (
     <div ref={overviewRef} className="p-4 bg-slate-50/50 rounded-[3rem] -m-4">
       <div className="p-4">
-        {/* KPI CARDS - REAL DATA FIRST */}
+        {/* KPI CARDS */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
            <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-50">
               <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Ingreso Neto</p>
@@ -1130,7 +1133,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
               </div>
           </div>
 
-          {/* Retention Pie - FIXED ALIGNMENT */}
+          {/* Retention Pie */}
           <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-slate-50 hover:shadow-md transition-shadow relative overflow-hidden">
               <div className="flex justify-between items-start mb-2">
                 <div>
@@ -1190,7 +1193,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
       <div ref={fiscalRef} className="p-4 bg-slate-50/50 rounded-[3rem] -m-4">
          <div className="p-4">
             
-            {/* Top: Estimated Tax Liability (LIQUIDACIÓN ITBMS) */}
+            {/* Top: Estimated Tax Liability */}
             <div className={`rounded-[2.5rem] p-8 text-white relative overflow-hidden shadow-xl mb-8 ${fiscalData.isCreditBalance ? 'bg-gradient-to-r from-emerald-600 to-teal-500' : 'bg-gradient-to-r from-amber-600 to-orange-500'}`}>
                <div className="absolute top-0 right-0 w-96 h-96 bg-white rounded-full blur-[120px] opacity-10 -translate-y-1/2 translate-x-1/2"></div>
                <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
@@ -1330,402 +1333,190 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
     );
   };
 
+  // MAIN RETURN
   return (
     <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in pb-12">
       
-      {/* HEADER WITH ACTIONS (Date Filters) */}
-      <div className="flex flex-col xl:flex-row justify-between items-end xl:items-center gap-6 pb-2">
-        {/* Title */}
+      {/* HEADER */}
+      <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-6">
         <div>
-           <h1 className="text-3xl font-bold text-[#1c2938] tracking-tight">Centro de Inteligencia</h1>
-           <p className="text-slate-500 mt-1 text-lg font-light">
-             Radiografía completa de tu negocio basada en <span className="font-bold text-[#1c2938]">{filteredInvoices.length} operaciones</span>.
-           </p>
+          <h1 className="text-3xl font-bold text-[#1c2938] tracking-tight">Inteligencia de Negocio</h1>
+          <p className="text-slate-500 mt-1 text-lg font-light">Toma decisiones basadas en datos reales.</p>
         </div>
+        
+        <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto">
+           {/* Time Range Selector */}
+           <div className="bg-white p-1 rounded-xl shadow-sm border border-slate-100 flex items-center">
+              {(['THIS_MONTH', 'LAST_QUARTER', 'THIS_YEAR'] as TimeRange[]).map(r => (
+                  <button 
+                    key={r}
+                    onClick={() => setTimeRange(r)}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${timeRange === r ? 'bg-[#1c2938] text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    {r === 'THIS_MONTH' ? 'Este Mes' : r === 'LAST_QUARTER' ? 'Último Trimestre' : 'Este Año'}
+                  </button>
+              ))}
+           </div>
 
-        {/* Filters */}
-        <div className="flex flex-col sm:flex-row items-center gap-4">
-           {/* Date Filter Buttons */}
-           <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 overflow-x-auto max-w-full">
-             <button
-                 onClick={() => setTimeRange('THIS_MONTH')}
-                 className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 ${
-                   timeRange === 'THIS_MONTH' 
-                     ? 'bg-[#1c2938] text-white shadow-md' 
-                     : 'text-slate-400 hover:text-slate-600'
-                 }`}
-               >
-                 Mes Actual
-             </button>
-             <button
-                 onClick={() => setTimeRange('LAST_QUARTER')}
-                 className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 ${
-                   timeRange === 'LAST_QUARTER' 
-                     ? 'bg-[#1c2938] text-white shadow-md' 
-                     : 'text-slate-400 hover:text-slate-600'
-                 }`}
-               >
-                 Último Trimestre
-             </button>
-             <button
-                 onClick={() => setTimeRange('THIS_YEAR')}
-                 className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 ${
-                   timeRange === 'THIS_YEAR' 
-                     ? 'bg-[#1c2938] text-white shadow-md' 
-                     : 'text-slate-400 hover:text-slate-600'
-                 }`}
-               >
-                 Todo el Año
-             </button>
-             <button
-               onClick={() => setTimeRange('CUSTOM')}
-               className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 flex items-center gap-1 ${
-                 timeRange === 'CUSTOM'
-                   ? 'bg-[#1c2938] text-white shadow-md' 
-                   : 'text-slate-400 hover:text-slate-600'
-               }`}
-             >
-               <Calendar className="w-3 h-3" />
-               Personalizado
-             </button>
+           <button 
+             onClick={handleAnalyze}
+             disabled={isAnalyzing}
+             className="bg-white border border-[#27bea5] text-[#27bea5] px-4 py-2.5 rounded-xl font-bold hover:bg-[#27bea5] hover:text-white transition-all flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+           >
+             {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+             <span className="hidden md:inline">Analizar con IA</span>
+           </button>
+        </div>
+      </div>
+
+      {/* AI ANALYSIS MODAL */}
+      {analysis && (
+        <div className="fixed inset-0 bg-[#1c2938]/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+           <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-2xl shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar">
+              <button onClick={() => setAnalysis(null)} className="absolute top-6 right-6 p-2 hover:bg-slate-100 rounded-full transition-colors">
+                 <X className="w-6 h-6 text-slate-400" />
+              </button>
+              
+              <div className="flex items-center gap-4 mb-6">
+                 <div className={`p-4 rounded-2xl ${analysis.healthStatus === 'Critical' ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-500'}`}>
+                    <Activity className="w-8 h-8" />
+                 </div>
+                 <div>
+                    <h3 className="text-2xl font-bold text-[#1c2938]">Diagnóstico Financiero</h3>
+                    <p className="text-slate-500">Salud del Negocio: <strong className={analysis.healthStatus === 'Critical' ? 'text-red-500' : 'text-green-500'}>{analysis.healthStatus}</strong> ({analysis.healthScore}/100)</p>
+                 </div>
+              </div>
+
+              <div className="space-y-6">
+                 <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                    <h4 className="font-bold text-[#1c2938] mb-2 flex items-center gap-2"><BrainCircuit className="w-4 h-4 text-[#27bea5]"/> Análisis</h4>
+                    <p className="text-slate-600 leading-relaxed text-sm">{analysis.diagnosis}</p>
+                 </div>
+
+                 <div>
+                    <h4 className="font-bold text-[#1c2938] mb-3 flex items-center gap-2"><Target className="w-4 h-4 text-blue-500"/> Plan de Acción</h4>
+                    <div className="space-y-3">
+                       {analysis.actionableTips.map((tip, idx) => (
+                          <div key={idx} className="flex gap-3 items-start">
+                             <div className="mt-1 w-5 h-5 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">{idx+1}</div>
+                             <p className="text-sm text-slate-600">{tip}</p>
+                          </div>
+                       ))}
+                    </div>
+                 </div>
+
+                 <div className="bg-[#1c2938] p-6 rounded-2xl text-white">
+                    <h4 className="font-bold mb-2 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-[#27bea5]"/> Proyección</h4>
+                    <p className="text-slate-300 text-sm italic">"{analysis.projection}"</p>
+                 </div>
+              </div>
            </div>
         </div>
-      </div>
-
-      {/* Custom Range Inputs */}
-      {timeRange === 'CUSTOM' && (
-         <div className="flex justify-end -mt-6 mb-2">
-            <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-4 bg-white p-1 rounded-xl border border-slate-100 shadow-sm">
-                <input 
-                  type="date" 
-                  value={customStart}
-                  onChange={(e) => setCustomStart(e.target.value)}
-                  className="px-3 py-2 bg-slate-50 rounded-lg text-xs font-bold text-[#1c2938] outline-none focus:ring-1 focus:ring-[#27bea5]"
-                />
-                <span className="text-slate-400 text-xs font-bold">a</span>
-                <input 
-                  type="date" 
-                  value={customEnd}
-                  onChange={(e) => setCustomEnd(e.target.value)}
-                  className="px-3 py-2 bg-slate-50 rounded-lg text-xs font-bold text-[#1c2938] outline-none focus:ring-1 focus:ring-[#27bea5]"
-                />
-            </div>
-         </div>
       )}
 
-      {/* CFO VIRTUAL IA SECTION (Prominent & Top) */}
-      <div className="bg-[#1c2938] rounded-[2.5rem] p-8 md:p-10 shadow-2xl relative overflow-hidden text-white transition-all duration-500">
-         {/* Abstract Background */}
-         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-[#27bea5] rounded-full blur-[120px] opacity-10 -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
-         <div className="absolute bottom-0 left-0 w-64 h-64 bg-blue-600 rounded-full blur-[80px] opacity-10 translate-y-1/2 -translate-x-1/2 pointer-events-none"></div>
-
-         <div className="relative z-10">
-            {/* IDLE STATE */}
-            {!analysis && (
-               <div className="flex flex-col md:flex-row items-center justify-between gap-8">
-                  <div className="max-w-2xl">
-                     <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#27bea5]/20 text-[#27bea5] text-xs font-bold uppercase tracking-wider mb-4 border border-[#27bea5]/20">
-                        <Sparkles className="w-3 h-3" /> Inteligencia Artificial
-                     </div>
-                     
-                     {/* ERROR FEEDBACK */}
-                     {aiError && (
-                        <div className="mb-4 p-3 bg-red-500/20 border border-red-500/30 text-red-200 rounded-xl text-sm flex items-center gap-2 animate-in fade-in">
-                           <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                           {aiError}
-                        </div>
-                     )}
-
-                     <h2 className="text-3xl md:text-4xl font-bold mb-4 tracking-tight">CFO Virtual</h2>
-                     <p className="text-slate-300 text-lg leading-relaxed">
-                        Analiza tus tendencias financieras, detecta riesgos de fuga y encuentra oportunidades de crecimiento ocultas en tus datos.
-                     </p>
-                  </div>
-                  
-                  {hasAiAccess ? (
-                    <button 
-                        onClick={handleAnalyze}
-                        disabled={isAnalyzing || invoices.length === 0}
-                        className="group bg-white text-[#1c2938] px-8 py-4 rounded-2xl font-bold hover:bg-[#27bea5] hover:text-white transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(39,190,165,0.4)] hover:-translate-y-1 active:translate-y-0 disabled:opacity-50 disabled:transform-none flex-shrink-0 flex items-center gap-3"
-                    >
-                        {isAnalyzing ? <Loader2 className="w-6 h-6 animate-spin" /> : <BrainCircuit className="w-6 h-6" />}
-                        <span className="text-lg">Generar Análisis</span>
-                        {!isAnalyzing && <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />}
-                    </button>
-                  ) : (
-                    <button 
-                        disabled
-                        className="group bg-slate-700 text-slate-400 px-8 py-4 rounded-2xl font-bold flex-shrink-0 flex items-center gap-3 border border-slate-600 cursor-not-allowed"
-                    >
-                        <Lock className="w-6 h-6" />
-                        <span className="text-lg">Configura tu API Key</span>
-                    </button>
-                  )}
-               </div>
-            )}
-
-            {/* ANALYZED STATE */}
-            {analysis && (
-               <div className="animate-in fade-in slide-in-from-bottom-4">
-                  <div className="flex justify-between items-start mb-8 border-b border-white/10 pb-6">
-                     <div>
-                        <div className="flex items-center gap-3 mb-2">
-                           <BrainCircuit className="w-8 h-8 text-[#27bea5]" />
-                           <h2 className="text-3xl font-bold">Diagnóstico Ejecutivo</h2>
-                        </div>
-                        <p className="text-slate-400">Análisis generado el {new Date().toLocaleDateString()} a las {new Date().toLocaleTimeString()}</p>
-                     </div>
-                     <button onClick={() => setAnalysis(null)} className="p-2 hover:bg-white/10 rounded-full transition-colors text-slate-400 hover:text-white">
-                        <X className="w-6 h-6" />
-                     </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-10 mb-8">
-                     {/* Score Card */}
-                     <div className="lg:col-span-1 bg-white/5 p-6 rounded-3xl border border-white/10 backdrop-blur-sm">
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Salud Financiera</p>
-                        <div className="flex items-center gap-4 mb-4">
-                           <span className={`text-6xl font-bold ${analysis.healthScore >= 80 ? 'text-[#27bea5]' : analysis.healthScore >= 50 ? 'text-amber-400' : 'text-rose-400'}`}>
-                              {analysis.healthScore}
-                           </span>
-                           <span className="text-sm text-slate-400 font-medium bg-white/5 px-3 py-1 rounded-lg">
-                              / 100
-                           </span>
-                        </div>
-                        <div className="w-full bg-black/20 h-2 rounded-full overflow-hidden mb-4">
-                           <div 
-                              className={`h-full rounded-full ${analysis.healthScore >= 80 ? 'bg-[#27bea5]' : analysis.healthScore >= 50 ? 'bg-amber-400' : 'bg-rose-400'}`} 
-                              style={{width: `${analysis.healthScore}%`}}
-                           ></div>
-                        </div>
-                        <p className="font-bold text-lg text-white mb-1">{analysis.healthStatus}</p>
-                        <p className="text-sm text-slate-400">{analysis.projection}</p>
-                     </div>
-
-                     {/* Diagnosis Text */}
-                     <div className="lg:col-span-2 space-y-6">
-                        <div>
-                           <h3 className="text-xl font-bold text-[#27bea5] mb-3">Resumen Estratégico</h3>
-                           <p className="text-lg text-slate-200 leading-relaxed">"{analysis.diagnosis}"</p>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                           {analysis.actionableTips.map((tip, idx) => (
-                              <div key={idx} className="flex gap-3 bg-white/5 p-4 rounded-2xl border border-white/5 hover:bg-white/10 transition-colors">
-                                 <div className="w-6 h-6 rounded-full bg-[#27bea5]/20 flex items-center justify-center flex-shrink-0 text-[#27bea5] mt-0.5">
-                                    <CheckCircle2 className="w-3.5 h-3.5" />
-                                 </div>
-                                 <p className="text-sm text-slate-300">{tip}</p>
-                              </div>
-                           ))}
-                        </div>
-                     </div>
-                  </div>
-
-                  {/* ACTION BUTTONS (Revealed on Generation) */}
-                  <div className="flex flex-wrap gap-4 pt-4 border-t border-white/10">
-                     <button 
-                        onClick={() => handleExportPdf(overviewRef, 'Reporte_CFO_IA')}
-                        disabled={!!isExporting}
-                        className="bg-white text-[#1c2938] px-6 py-3 rounded-xl font-bold hover:bg-[#27bea5] hover:text-white transition-all flex items-center gap-2 shadow-lg disabled:opacity-50"
-                     >
-                        {isExporting === 'pdf' ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
-                        Descargar Reporte PDF
-                     </button>
-                     <button 
-                        onClick={() => handleSendEmail(overviewRef, `Reporte CFO ${new Date().toLocaleDateString()}`)}
-                        disabled={emailStatus === 'SENDING'}
-                        className="bg-white/10 text-white px-6 py-3 rounded-xl font-bold hover:bg-white/20 transition-all flex items-center gap-2 border border-white/10 disabled:opacity-50"
-                     >
-                        {emailStatus === 'SENDING' ? <Loader2 className="w-5 h-5 animate-spin" /> : <Mail className="w-5 h-5" />}
-                        Enviar por Email
-                     </button>
-                     <button 
-                        onClick={() => handleShareWhatsapp(`CFO Diagnosis: ${analysis.diagnosis}`)}
-                        className="bg-[#25D366] text-white px-6 py-3 rounded-xl font-bold hover:bg-[#20bd5a] transition-all flex items-center gap-2 shadow-lg"
-                     >
-                        <Smartphone className="w-5 h-5" />
-                        WhatsApp
-                     </button>
-                  </div>
-               </div>
-            )}
-         </div>
+      {/* TABS */}
+      <div className="flex border-b border-slate-200">
+         {(['OVERVIEW', 'DOCUMENTS', 'CLIENTS', 'FISCAL'] as ReportTab[]).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-6 py-4 text-sm font-bold transition-all border-b-2 ${activeTab === tab ? 'border-[#27bea5] text-[#1c2938]' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+            >
+              {tab === 'OVERVIEW' ? 'Visión General' : tab === 'DOCUMENTS' ? 'Documentos' : tab === 'CLIENTS' ? 'Clientes' : 'Fiscalidad'}
+            </button>
+         ))}
       </div>
 
-      {/* TABS NAVIGATION */}
-      <div id="no-print" className="flex justify-center w-full sticky top-4 z-30">
-         <div className="bg-white/80 backdrop-blur-md p-1.5 rounded-2xl shadow-lg border border-slate-100 flex overflow-x-auto max-w-full custom-scrollbar">
-            {(['OVERVIEW', 'DOCUMENTS', 'CLIENTS', 'FISCAL'] as const).map(tab => (
-               <button
-                 key={tab}
-                 onClick={() => setActiveTab(tab)}
-                 className={`px-6 py-3 rounded-xl text-sm font-bold transition-all duration-300 whitespace-nowrap flex items-center gap-2 ${
-                   activeTab === tab
-                     ? 'bg-[#1c2938] text-white shadow-md' 
-                     : 'text-slate-500 hover:text-[#1c2938] hover:bg-slate-100'
-                 }`}
-               >
-                 {tab === 'OVERVIEW' ? <LayoutDashboard className="w-4 h-4" /> : 
-                  tab === 'DOCUMENTS' ? <FileBarChart className="w-4 h-4" /> : 
-                  tab === 'CLIENTS' ? <Users className="w-4 h-4" /> : 
-                  <Landmark className="w-4 h-4" />}
-                 {tab === 'OVERVIEW' ? 'Finanzas' : 
-                  tab === 'DOCUMENTS' ? 'Operatividad' : 
-                  tab === 'CLIENTS' ? 'Clientes' : 
-                  'Reporte Fiscal'}
-               </button>
-            ))}
-         </div>
-      </div>
-      
-      {/* WRAPPER FOR TAB CONTENT */}
-      <div className="space-y-10 p-4 -m-4">
-        {activeTab === 'OVERVIEW' && renderOverview()}
-        {activeTab === 'DOCUMENTS' && renderDocumentsView()}
-        {activeTab === 'CLIENTS' && renderClientsView()}
-        {activeTab === 'FISCAL' && renderFiscalView()}
+      {/* CONTENT */}
+      <div className="min-h-[500px]">
+         {activeTab === 'OVERVIEW' && renderOverview()}
+         {activeTab === 'DOCUMENTS' && renderDocumentsView()}
+         {activeTab === 'CLIENTS' && renderClientsView()}
+         {activeTab === 'FISCAL' && renderFiscalView()}
       </div>
 
-      {/* MODAL: DEEP DIVE REPORT (PORTAL) */}
-      {(deepDiveVisual || deepDiveReport || isDeepDiving || deepDiveError) && createPortal(
-        <div className="fixed inset-0 z-[99] flex items-center justify-center p-4 bg-[#1c2938]/60 backdrop-blur-md animate-in fade-in">
-           <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col relative animate-in zoom-in-95 duration-300">
-              
+      {/* DEEP DIVE MODAL */}
+      {isDeepDiving && (
+        <div className="fixed inset-0 bg-[#1c2938]/80 backdrop-blur-md z-[60] flex items-center justify-center p-4 animate-in fade-in duration-300">
+           <div className="bg-white rounded-[2.5rem] w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl relative animate-in slide-in-from-bottom-8">
               {/* Header */}
-              <div className="px-8 py-6 border-b border-slate-50 flex justify-between items-center bg-white rounded-t-[2.5rem]">
-                 <div className="flex items-center gap-3">
-                   <div className="p-2 bg-[#27bea5]/10 rounded-xl text-[#27bea5]">
-                     <FileText className="w-6 h-6" />
-                   </div>
-                   <div>
-                     <h3 className="font-bold text-[#1c2938] text-xl">Reporte Detallado</h3>
-                     <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">
-                        {deepDiveVisual?.title || deepDiveReport?.chartTitle || 'Análisis de Datos'}
-                     </p>
-                   </div>
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white z-10">
+                 <div>
+                    <h2 className="text-2xl font-bold text-[#1c2938] flex items-center gap-2">
+                       <Sparkles className="w-6 h-6 text-[#27bea5]" /> Deep Dive AI
+                    </h2>
+                    <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Análisis Profundo de Datos</p>
                  </div>
-                 <button 
-                    onClick={() => {
-                        setDeepDiveReport(null);
-                        setDeepDiveVisual(null);
-                        setIsDeepDiving(null);
-                        setDeepDiveError(false);
-                    }} 
-                    className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-[#1c2938]"
-                 >
-                   <X className="w-6 h-6" />
+                 <button onClick={() => setIsDeepDiving(null)} className="p-2 hover:bg-slate-50 rounded-full text-slate-400 transition-colors">
+                    <X className="w-6 h-6" />
                  </button>
               </div>
 
-              {/* Scrollable Content */}
-              <div ref={deepDiveRef} className="p-8 md:p-12 overflow-y-auto custom-scrollbar flex-1 bg-white rounded-b-[2.5rem]">
-                 
-                 {/* 1. VISUALIZATION (Chart Copy or Data) - ALWAYS VISIBLE */}
-                 {deepDiveVisual && (
-                    <div className="mb-10 animate-in slide-in-from-bottom-4">
-                       <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                          <Table className="w-4 h-4" /> Datos del Reporte
-                       </h4>
-                       {renderDeepDiveTable()}
-                    </div>
-                 )}
+              <div className="p-8 overflow-y-auto custom-scrollbar">
+                 {/* Visual Data Representation */}
+                 {renderDeepDiveTable()}
 
-                 {/* 2. AI ANALYSIS CONTENT (Enhanced) */}
+                 {/* Report Content */}
                  {deepDiveReport ? (
-                    <div className="prose prose-slate max-w-none animate-in slide-in-from-bottom-4 border-t border-slate-100 pt-8">
-                        <div className="bg-slate-50 p-6 rounded-2xl mb-8 border border-slate-100 relative overflow-hidden">
-                           <div className="absolute top-0 right-0 p-4 opacity-10">
-                              <BrainCircuit className="w-24 h-24 text-[#27bea5]" />
-                           </div>
-                           <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2 relative z-10">
-                              <Sparkles className="w-4 h-4 text-[#27bea5]" /> Interpretación Inteligente
-                           </h4>
-                           <p className="text-[#1c2938] font-medium leading-relaxed relative z-10">{deepDiveReport.executiveSummary}</p>
-                        </div>
+                    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
+                       <div>
+                          <h3 className="text-3xl font-bold text-[#1c2938] mb-4 leading-tight">{deepDiveReport.executiveSummary}</h3>
+                       </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                           {deepDiveReport.keyMetrics.map((metric, idx) => (
-                              <div key={idx} className="p-4 border border-slate-100 rounded-2xl hover:border-[#27bea5] transition-colors group bg-white shadow-sm">
-                                 <p className="text-xs text-slate-400 mb-1">{metric.label}</p>
-                                 <div className="flex items-center gap-2">
-                                    <span className="text-2xl font-bold text-[#1c2938]">{metric.value}</span>
-                                    {metric.trend === 'up' && <TrendingUp className="w-4 h-4 text-green-500" />}
-                                    {metric.trend === 'down' && <TrendingDown className="w-4 h-4 text-red-500" />}
-                                 </div>
-                              </div>
-                           ))}
-                        </div>
+                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          {deepDiveReport.keyMetrics.map((metric, idx) => (
+                             <div key={idx} className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                <p className="text-xs font-bold text-slate-400 uppercase mb-1">{metric.label}</p>
+                                <div className="flex items-center gap-2">
+                                   <span className="text-xl font-bold text-[#1c2938]">{metric.value}</span>
+                                   {metric.trend !== 'neutral' && (
+                                      <span className={`text-xs px-2 py-0.5 rounded-full ${metric.trend === 'up' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                         {metric.trend === 'up' ? '↗' : '↘'}
+                                      </span>
+                                   )}
+                                </div>
+                             </div>
+                          ))}
+                       </div>
 
-                        <h4 className="text-xl font-bold text-[#1c2938] mb-4">Hallazgos Clave</h4>
-                        <p className="text-slate-600 leading-relaxed mb-8 whitespace-pre-wrap">{deepDiveReport.strategicInsight}</p>
-
-                        <div className="bg-[#1c2938] text-white p-8 rounded-[2rem] relative overflow-hidden shadow-lg">
-                           <div className="absolute top-0 right-0 w-32 h-32 bg-[#27bea5] rounded-full blur-[50px] opacity-20 -translate-y-1/2 translate-x-1/2"></div>
-                           <div className="relative z-10">
-                              <h4 className="font-bold text-[#27bea5] mb-3 flex items-center gap-2">
-                                 <Lightbulb className="w-5 h-5" /> Recomendación Táctica
-                              </h4>
-                              <p className="text-lg font-light leading-relaxed">{deepDiveReport.recommendation}</p>
-                           </div>
-                        </div>
+                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                          <div>
+                             <h4 className="font-bold text-[#1c2938] flex items-center gap-2 mb-3">
+                                <BrainCircuit className="w-5 h-5 text-purple-500" /> Insight Estratégico
+                             </h4>
+                             <p className="text-slate-600 leading-relaxed text-sm bg-purple-50/50 p-4 rounded-2xl border border-purple-50">
+                                {deepDiveReport.strategicInsight}
+                             </p>
+                          </div>
+                          <div>
+                             <h4 className="font-bold text-[#1c2938] flex items-center gap-2 mb-3">
+                                <Target className="w-5 h-5 text-blue-500" /> Recomendación Táctica
+                             </h4>
+                             <p className="text-slate-600 leading-relaxed text-sm bg-blue-50/50 p-4 rounded-2xl border border-blue-50">
+                                {deepDiveReport.recommendation}
+                             </p>
+                          </div>
+                       </div>
+                    </div>
+                 ) : deepDiveError ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                       <AlertCircle className="w-16 h-16 text-rose-300 mb-4" />
+                       <h3 className="text-xl font-bold text-slate-700">Error de Análisis</h3>
+                       <p className="text-slate-500 max-w-sm mx-auto mt-2 mb-6">No pudimos conectar con la IA para analizar este gráfico.</p>
+                       <button onClick={handleRetryDeepDive} className="px-6 py-3 bg-[#1c2938] text-white rounded-xl font-bold hover:bg-[#27bea5] transition-colors flex items-center gap-2">
+                          <RefreshCw className="w-4 h-4" /> Reintentar
+                       </button>
                     </div>
                  ) : (
-                    // LOADING OR ERROR STATE
-                    hasAiAccess && (
-                        <div className="flex flex-col items-center justify-center py-8 text-center border-t border-slate-100 mt-4">
-                            {deepDiveError ? (
-                                <div className="animate-in fade-in flex flex-col items-center gap-3">
-                                    <div className="p-3 bg-amber-50 text-amber-600 rounded-full">
-                                      <BrainCircuit className="w-6 h-6" />
-                                    </div>
-                                    <div>
-                                      <p className="font-bold text-slate-600">Análisis de IA no disponible</p>
-                                      <p className="text-xs text-slate-400 max-w-xs mx-auto mt-1">
-                                        No se pudo generar la interpretación automática. Puedes reintentar o usar los datos de la tabla superior.
-                                      </p>
-                                    </div>
-                                    <button 
-                                      onClick={() => handleRetryDeepDive()}
-                                      className="mt-2 text-xs font-bold text-[#27bea5] hover:underline flex items-center gap-1"
-                                    >
-                                      <RefreshCw className="w-3 h-3" /> Reintentar Análisis
-                                    </button>
-                                </div>
-                            ) : (
-                                <div className="text-slate-400 flex flex-col items-center gap-2">
-                                    <Loader2 className="w-6 h-6 animate-spin text-[#27bea5]" />
-                                    <p className="font-medium text-sm">El Analista Virtual está revisando los datos...</p>
-                                </div>
-                            )}
-                        </div>
-                    )
+                    <div className="flex flex-col items-center justify-center py-20 text-center">
+                       <Loader2 className="w-16 h-16 text-[#27bea5] animate-spin mb-6" />
+                       <h3 className="text-xl font-bold text-[#1c2938]">Analizando Patrones...</h3>
+                       <p className="text-slate-500 max-w-xs mx-auto mt-2">Nuestros algoritmos están buscando correlaciones y anomalías en tus datos.</p>
+                    </div>
                  )}
               </div>
-
-              {/* Footer Actions */}
-              <div className="p-6 border-t border-slate-100 flex justify-end gap-3 bg-white rounded-b-[2.5rem]">
-                  <button 
-                    onClick={() => handleExportPdf(deepDiveRef, `Reporte_${deepDiveVisual?.title || 'Detalle'}`)}
-                    className="px-6 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 flex items-center gap-2"
-                  >
-                    <Download className="w-4 h-4" /> Exportar PDF
-                  </button>
-                  <button 
-                    onClick={() => {
-                        setDeepDiveReport(null);
-                        setDeepDiveVisual(null);
-                        setIsDeepDiving(null);
-                        setDeepDiveError(false);
-                    }}
-                    className="px-6 py-3 rounded-xl bg-[#1c2938] text-white font-bold hover:bg-[#27bea5] transition-colors"
-                  >
-                    Cerrar
-                  </button>
-              </div>
            </div>
-        </div>,
-        document.body
+        </div>
       )}
 
     </div>
