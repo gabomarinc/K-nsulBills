@@ -10,7 +10,7 @@ import {
   BrainCircuit, Activity, Target, Lightbulb,
   X, TrendingDown, Wallet,
   LayoutDashboard, FileBarChart, Users, Filter, Calendar, Download, Mail, Smartphone, CheckCircle2,
-  Clock, AlertTriangle, Trophy, FileText, Lock, ArrowRight, Table, Scale, Landmark, Calculator, PiggyBank, Briefcase, ShieldCheck, AlertCircle, FileWarning, XCircle // Added XCircle
+  Clock, AlertTriangle, Trophy, FileText, Lock, ArrowRight, Table, Scale, Landmark, Calculator, PiggyBank, Briefcase, ShieldCheck, AlertCircle, FileWarning, XCircle 
 } from 'lucide-react';
 import { Invoice, FinancialAnalysisResult, DeepDiveReport, UserProfile } from '../types';
 import { generateFinancialAnalysis, generateDeepDiveReport, AI_ERROR_BLOCKED } from '../services/geminiService';
@@ -65,7 +65,8 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
   // Deep Dive Report State
   const [deepDiveReport, setDeepDiveReport] = useState<DeepDiveReport | null>(null);
   const [deepDiveVisual, setDeepDiveVisual] = useState<{ type: string, data: any } | null>(null);
-  const [isDeepDiving, setIsDeepDiving] = useState<string | null>(null);
+  const [isDeepDiving, setIsDeepDiving] = useState<string | null>(null); // Holds the Chart ID being analyzed
+  const [deepDiveError, setDeepDiveError] = useState(false); // New: Explicit error state for modal
 
   // --- HELPER: Number Formatter for Charts (Anti-Overlap) ---
   const compactNumber = (num: number) => {
@@ -421,34 +422,66 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
     if (!hasAiAccess) return;
     setIsAnalyzing(true);
     setAiError(null);
-    const { kpis } = data;
+    
+    // Destructure rich data
+    const { kpis, monthlyData, ltvData } = data;
+    
+    // Prepare Trend String
+    const trendString = monthlyData
+        .map(m => `${m.name}: Ingreso $${m.ingresos.toFixed(0)}, Gasto $${m.gastos.toFixed(0)}`)
+        .join(' | ');
+
+    // Prepare Fiscal Context
+    const fiscalContext = currentUser?.fiscalConfig ? `
+        Entidad: ${currentUser.fiscalConfig.entityType}
+        Ingreso Anual Est.: $${currentUser.fiscalConfig.annualRevenue}
+        Régimen: ${currentUser.fiscalConfig.specialRegime}
+    ` : 'Perfil Fiscal no configurado (Asumir General)';
+
+    // Construct Detailed Context Prompt
     const summary = `
-      Reporte Financiero Real (${timeRange}):
-      - Ingresos Cobrados: ${currencySymbol}${kpis.totalRevenue.toFixed(2)}
-      - Gastos Operativos: ${currencySymbol}${kpis.totalExpenses.toFixed(2)}
-      - Margen Neto: ${kpis.marginPercent.toFixed(1)}%
-      - Tiempo Promedio Cobro (DSO): ${kpis.avgPaymentDays} días
-      - Tasa Conversión Cotizaciones: ${kpis.conversionRate.toFixed(1)}%
-      - Clientes en Riesgo (Inactivos >90d): ${kpis.churnRiskCount}
-      - Total Clientes Activos: ${kpis.activeClientsCount}
+      PERFIL DEL NEGOCIO:
+      Nombre: ${currentUser?.name || 'Usuario'}
+      Tipo: ${currentUser?.type || 'N/A'}
+      ${fiscalContext}
+      País: ${currentUser?.country || 'Panamá'}
+
+      RESULTADOS (${timeRange}):
+      - Facturación Total: ${currencySymbol}${kpis.totalRevenue.toFixed(2)}
+      - Gastos Totales: ${currencySymbol}${kpis.totalExpenses.toFixed(2)}
+      - Margen Neto: ${kpis.marginPercent.toFixed(1)}% (${kpis.netMargin > 0 ? 'Positivo' : 'Negativo'})
+      - Ciclo de Cobro (DSO): ${kpis.avgPaymentDays} días
+      
+      CLIENTES:
+      - Activos: ${kpis.activeClientsCount}
+      - En Riesgo: ${kpis.churnRiskCount}
+      - Top Cliente: ${ltvData[0]?.name || 'N/A'} ($${ltvData[0]?.revenue || 0})
+
+      TENDENCIA MENSUAL:
+      ${trendString}
     `;
+    
     try {
         const result = await generateFinancialAnalysis(summary, apiKey);
+        if (!result) throw new Error("Respuesta vacía o inválida de la IA");
         setAnalysis(result);
     } catch (e: any) {
+        console.error(e);
         if (e.message === AI_ERROR_BLOCKED) {
             setAiError("Función bloqueada: Configura tus API Keys.");
         } else {
-            setAiError("Error al generar análisis.");
+            setAiError(e.message || "Error al generar el análisis.");
         }
+    } finally {
+        setIsAnalyzing(false);
     }
-    setIsAnalyzing(false);
   };
 
   const handleDeepDive = async (chartId: string, chartTitle: string, chartData: any) => {
     // Show Modal with Data immediately
     setIsDeepDiving(chartId);
     setDeepDiveReport(null);
+    setDeepDiveError(false);
     setDeepDiveVisual({ type: chartId, data: chartData }); // Set visual context
     
     if (hasAiAccess) {
@@ -456,12 +489,22 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
         const context = `Periodo: ${timeRange}. Datos Reales: ${JSON.stringify(chartData)}. Contexto KPI: Margen ${data.kpis.marginPercent}%, Conversión ${data.kpis.conversionRate}%. Analiza como experto contable.`;
         try {
             const report = await generateDeepDiveReport(chartTitle, context, apiKey);
-            setDeepDiveReport(report);
+            if (report) {
+                setDeepDiveReport(report);
+            } else {
+                setDeepDiveError(true);
+            }
         } catch (e) {
             console.error("Deep Dive Error", e);
+            setDeepDiveError(true);
+        } finally {
+            // CRITICAL: Ensure we stop loading state
+            setIsDeepDiving(null);
         }
+    } else {
+        // No AI access, stop loading immediately
+        setIsDeepDiving(null);
     }
-    setIsDeepDiving(null);
   };
 
   // --- HELPER: RENDER TABLE IN DEEP DIVE ---
@@ -1171,6 +1214,15 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#27bea5]/20 text-[#27bea5] text-xs font-bold uppercase tracking-wider mb-4 border border-[#27bea5]/20">
                         <Sparkles className="w-3 h-3" /> Inteligencia Artificial
                      </div>
+                     
+                     {/* ERROR FEEDBACK */}
+                     {aiError && (
+                        <div className="mb-4 p-3 bg-red-500/20 border border-red-500/30 text-red-200 rounded-xl text-sm flex items-center gap-2 animate-in fade-in">
+                           <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                           {aiError}
+                        </div>
+                     )}
+
                      <h2 className="text-3xl md:text-4xl font-bold mb-4 tracking-tight">CFO Virtual</h2>
                      <p className="text-slate-300 text-lg leading-relaxed">
                         Analiza tus tendencias financieras, detecta riesgos de fuga y encuentra oportunidades de crecimiento ocultas en tus datos.
@@ -1323,7 +1375,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
       </div>
 
       {/* MODAL: DEEP DIVE REPORT (PORTAL) */}
-      {(deepDiveVisual || deepDiveReport) && createPortal(
+      {(deepDiveVisual || deepDiveReport || isDeepDiving || deepDiveError) && createPortal(
         <div className="fixed inset-0 z-[99] flex items-center justify-center p-4 bg-[#1c2938]/60 backdrop-blur-md animate-in fade-in">
            <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col relative animate-in zoom-in-95 duration-300">
               
@@ -1342,6 +1394,8 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                     onClick={() => {
                         setDeepDiveReport(null);
                         setDeepDiveVisual(null);
+                        setIsDeepDiving(null);
+                        setDeepDiveError(false);
                     }} 
                     className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-[#1c2938]"
                  >
@@ -1362,7 +1416,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                     </div>
                  )}
 
-                 {/* 2. AI ANALYSIS CONTENT (If Available) */}
+                 {/* 2. AI ANALYSIS CONTENT (Wait for Load) */}
                  {deepDiveReport ? (
                     <div className="prose prose-slate max-w-none animate-in slide-in-from-bottom-4">
                         <div className="bg-slate-50 p-6 rounded-2xl mb-8 border border-slate-100">
@@ -1399,10 +1453,21 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                         </div>
                     </div>
                  ) : (
+                    // LOADING OR ERROR STATE
                     hasAiAccess && (
-                        <div className="flex flex-col items-center justify-center py-12 text-center text-slate-400">
-                            <Loader2 className="w-8 h-8 animate-spin mb-4 text-[#27bea5]" />
-                            <p className="font-medium">El Analista Virtual está revisando los datos...</p>
+                        <div className="flex flex-col items-center justify-center py-12 text-center">
+                            {deepDiveError ? (
+                                <div className="text-rose-500 animate-in fade-in">
+                                    <AlertCircle className="w-8 h-8 mb-4 mx-auto" />
+                                    <p className="font-medium">No se pudo generar el análisis detallado.</p>
+                                    <p className="text-sm opacity-80 mt-1">Intenta nuevamente en unos momentos.</p>
+                                </div>
+                            ) : (
+                                <div className="text-slate-400">
+                                    <Loader2 className="w-8 h-8 animate-spin mb-4 mx-auto text-[#27bea5]" />
+                                    <p className="font-medium">El Analista Virtual está revisando los datos...</p>
+                                </div>
+                            )}
                         </div>
                     )
                  )}
@@ -1420,6 +1485,8 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                     onClick={() => {
                         setDeepDiveReport(null);
                         setDeepDiveVisual(null);
+                        setIsDeepDiving(null);
+                        setDeepDiveError(false);
                     }}
                     className="px-6 py-3 rounded-xl bg-[#1c2938] text-white font-bold hover:bg-[#27bea5] transition-colors"
                   >

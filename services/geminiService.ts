@@ -1,17 +1,28 @@
 
-import { GoogleGenAI, Type, Schema } from "@google/genai";
+import { GoogleGenAI, Type, Schema, GenerateContentResponse } from "@google/genai";
 import { CatalogItem, FinancialAnalysisResult, DeepDiveReport, ParsedInvoiceData, PriceAnalysisResult, UserProfile } from "../types";
 
 export const AI_ERROR_BLOCKED = 'AI_BLOCKED_MISSING_KEYS';
 const GEMINI_MODEL_ID = 'gemini-2.5-flash';
-// FIXED: Use 'gemini-2.5-flash' for vision/multimodal tasks. 
-// 'gemini-2.5-flash-image' is typically for generation/editing and may not support analysis inputs correctly.
 const GEMINI_VISION_MODEL_ID = 'gemini-2.5-flash';
+const TIMEOUT_MS = 25000; // 25 seconds timeout
 
 export interface AiKeys {
   gemini?: string;
   openai?: string;
 }
+
+// --- UTILS ---
+
+// Wrapper to enforce timeout on AI calls
+const withTimeout = <T>(promise: Promise<T>, timeoutMs: number = TIMEOUT_MS): Promise<T> => {
+    return Promise.race([
+        promise,
+        new Promise<T>((_, reject) => 
+            setTimeout(() => reject(new Error("Tiempo de espera agotado. La IA tardó demasiado en responder.")), timeoutMs)
+        )
+    ]);
+};
 
 // Modified to accept a permission flag for using the system/env key
 const getAiClient = (keys?: AiKeys, allowSystemFallback: boolean = false) => {
@@ -20,34 +31,43 @@ const getAiClient = (keys?: AiKeys, allowSystemFallback: boolean = false) => {
       return new GoogleGenAI({ apiKey: keys.gemini });
   }
 
-  // Priority 2: System Key (ONLY if explicitly allowed, e.g. for Onboarding Wizard)
+  // Priority 2: System Key (ONLY if explicitly allowed)
   if (allowSystemFallback) {
-      // Check multiple sources for the API key to ensure Vercel/Vite compatibility
       let systemKey = process.env.API_KEY || process.env.VITE_API_KEY;
-      
-      // Try import.meta.env if available (Client-side Vite)
       if (!systemKey && typeof import.meta !== 'undefined' && (import.meta as any).env) {
           systemKey = (import.meta as any).env.VITE_API_KEY;
       }
-
       if (systemKey) {
           return new GoogleGenAI({ apiKey: systemKey });
       }
   }
   
-  // If no user key and (system key not allowed OR system key missing)
-  console.error("Gemini AI Error: Missing User API Key. System fallback is " + (allowSystemFallback ? "enabled but key missing" : "disabled") + ".");
+  console.error("Gemini AI Error: Missing User API Key.");
   throw new Error(AI_ERROR_BLOCKED);
 };
 
 // Helper to sanitize JSON response from LLM
 const cleanJson = (text: string) => {
   if (!text) return "{}";
-  // Remove markdown code blocks if present
+  
+  // 1. Try to extract JSON from Markdown code blocks first
+  const jsonBlockMatch = text.match(/```json\s*([\s\S]*?)\s*```/i);
+  if (jsonBlockMatch && jsonBlockMatch[1]) {
+      return jsonBlockMatch[1].trim();
+  }
+
+  // 2. Fallback: Cleanup common markdown artifacts
   let cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '');
-  // Remove any leading/trailing whitespace
-  cleaned = cleaned.trim();
-  return cleaned;
+  
+  // 3. Find brackets to strip introductory text
+  const firstOpen = cleaned.indexOf('{');
+  const lastClose = cleaned.lastIndexOf('}');
+  
+  if (firstOpen !== -1 && lastClose !== -1) {
+      cleaned = cleaned.substring(firstOpen, lastClose + 1);
+  }
+
+  return cleaned.trim();
 };
 
 // --- APP FEATURES (Strict Mode: User Key Only) ---
@@ -59,40 +79,30 @@ export const parseExpenseImage = async (
 ): Promise<ParsedInvoiceData | null> => {
   
   try {
-    const ai = getAiClient(keys, false); // Strict: No System Key
+    const ai = getAiClient(keys, false);
 
     const schema: Schema = {
       type: Type.OBJECT,
       properties: {
-        clientName: { type: Type.STRING, description: "Nombre comercial o razón social del proveedor. NO incluyas 'Factura' o 'Recibo' en el nombre." },
-        amount: { type: Type.NUMBER, description: "Monto total a pagar final." },
-        currency: { type: Type.STRING, description: "Código de moneda ej. USD, EUR, PAB" },
-        date: { type: Type.STRING, description: "Fecha de emisión en formato YYYY-MM-DD. Si no hay año, asume el actual." },
-        concept: { type: Type.STRING, description: "Descripción breve de QUÉ se compró (ej. 'Almuerzo de negocios', 'Laptop', 'Uber'). NO repetir el nombre del proveedor." }
+        clientName: { type: Type.STRING },
+        amount: { type: Type.NUMBER },
+        currency: { type: Type.STRING },
+        date: { type: Type.STRING },
+        concept: { type: Type.STRING }
       },
       required: ["clientName", "amount", "currency", "concept"]
     };
 
-    const prompt = `Analiza este documento (imagen o PDF) y actúa como un asistente contable preciso.
-    
-    Tus objetivos:
-    1. **Proveedor**: Identifica quién emite la factura (ej. "Doit Center", "Uber", "Restaurante El Trapiche").
-    2. **Concepto**: Resume la lista de ítems o el servicio prestado. Sé conciso. (ej. "Materiales de construcción", "Transporte", "Cena con cliente").
-    3. **Fecha**: Busca la fecha de la transacción.
-    4. **Total**: El monto final pagado.
-    
-    Si el documento es ilegible o no es una factura, devuelve null.`;
-
-    const response = await ai.models.generateContent({
+    const response: GenerateContentResponse = await withTimeout(ai.models.generateContent({
       model: GEMINI_VISION_MODEL_ID,
       contents: {
         parts: [
           { inlineData: { data: imageBase64, mimeType: mimeType } },
-          { text: prompt }
+          { text: "Extrae: Proveedor (clientName), Total (amount), Moneda (currency), Fecha YYYY-MM-DD (date), Concepto breve (concept)." }
         ]
       },
       config: { responseMimeType: "application/json", responseSchema: schema }
-    });
+    }));
 
     if (response.text) {
        const cleaned = cleanJson(response.text);
@@ -109,7 +119,7 @@ export const parseExpenseImage = async (
 
 export const parseInvoiceRequest = async (input: string, keys?: AiKeys): Promise<ParsedInvoiceData | null> => {
     try {
-        const ai = getAiClient(keys, false); // Strict: No System Key
+        const ai = getAiClient(keys, false);
         const schema: Schema = {
             type: Type.OBJECT,
             properties: {
@@ -122,11 +132,11 @@ export const parseInvoiceRequest = async (input: string, keys?: AiKeys): Promise
             required: ['clientName', 'amount', 'currency', 'concept', 'detectedType']
         };
 
-        const response = await ai.models.generateContent({
+        const response: GenerateContentResponse = await withTimeout(ai.models.generateContent({
             model: GEMINI_MODEL_ID,
             contents: input,
             config: { responseMimeType: "application/json", responseSchema: schema }
-        });
+        }));
 
         if (response.text) {
             const cleaned = cleanJson(response.text);
@@ -134,7 +144,6 @@ export const parseInvoiceRequest = async (input: string, keys?: AiKeys): Promise
         }
         return null;
     } catch (e) {
-        console.error("Parse Invoice Request Error:", e);
         if ((e as Error).message === AI_ERROR_BLOCKED) throw e;
         return null;
     }
@@ -142,16 +151,16 @@ export const parseInvoiceRequest = async (input: string, keys?: AiKeys): Promise
 
 export const askSupportBot = async (message: string, keys?: AiKeys): Promise<string> => {
     try {
-        const ai = getAiClient(keys, false); // Strict: No System Key
-        const response = await ai.models.generateContent({
+        const ai = getAiClient(keys, false);
+        const response: GenerateContentResponse = await withTimeout(ai.models.generateContent({
             model: GEMINI_MODEL_ID,
             contents: message,
             config: { systemInstruction: "Eres un asistente de soporte técnico amigable y servicial para la plataforma Kônsul Bills." }
-        });
+        }));
         return response.text || "No entendí, ¿puedes repetir?";
     } catch(e) {
         if ((e as Error).message === AI_ERROR_BLOCKED) return "Por favor configura tu API Key de IA en Ajustes para hablar conmigo.";
-        return "Lo siento, no puedo responder ahora mismo. (Error de conexión IA)";
+        return "Lo siento, estoy teniendo problemas de conexión. Intenta más tarde.";
     }
 };
 
@@ -159,7 +168,6 @@ export const askSupportBot = async (message: string, keys?: AiKeys): Promise<str
 
 export const suggestCatalogItems = async (businessDescription: string, keys?: AiKeys, useSystemKey: boolean = false): Promise<CatalogItem[]> => {
     try {
-        // ALLOW System Key fallback here
         const ai = getAiClient(keys, useSystemKey);
         
         const schema: Schema = {
@@ -174,11 +182,11 @@ export const suggestCatalogItems = async (businessDescription: string, keys?: Ai
                 required: ['name', 'price', 'description']
             }
         };
-        const response = await ai.models.generateContent({
+        const response: GenerateContentResponse = await withTimeout(ai.models.generateContent({
             model: GEMINI_MODEL_ID,
-            contents: `Sugiere 3-5 servicios o productos con precios estimados para este negocio: ${businessDescription}. Precios realistas en USD.`,
+            contents: `Sugiere 3-5 servicios o productos con precios estimados para: ${businessDescription}. Precios en USD.`,
             config: { responseMimeType: "application/json", responseSchema: schema }
-        });
+        }));
         
         const text = response.text || "[]";
         const cleaned = cleanJson(text);
@@ -193,17 +201,14 @@ export const suggestCatalogItems = async (businessDescription: string, keys?: Ai
 
 export const generateEmailTemplate = async (tone: 'Formal' | 'Casual', keys?: AiKeys, useSystemKey: boolean = false): Promise<string> => {
     try {
-        // ALLOW System Key fallback here
         const ai = getAiClient(keys, useSystemKey);
-        
-        const response = await ai.models.generateContent({
+        const response: GenerateContentResponse = await withTimeout(ai.models.generateContent({
             model: GEMINI_MODEL_ID,
-            contents: `Genera una plantilla de correo ${tone} para enviar una factura a un cliente. Solo el cuerpo del correo, sin asunto. Manténlo breve y profesional.`,
-        });
+            contents: `Genera una plantilla de correo ${tone} para enviar una factura a un cliente. Solo el cuerpo del correo.`,
+        }));
         return response.text || "";
     } catch(e) {
-        console.error("Generate Email Error:", e);
-        return tone === 'Formal' ? "Estimado cliente, adjunto encontrará su factura. Saludos cordiales." : "Hola! Aquí tienes tu factura. Gracias!";
+        return tone === 'Formal' ? "Estimado cliente, adjunto su factura." : "Hola! Aquí tienes tu factura.";
     }
 };
 
@@ -212,19 +217,17 @@ export const generateEmailTemplate = async (tone: 'Formal' | 'Casual', keys?: Ai
 export const testAiConnection = async (provider: 'gemini' | 'openai', key: string): Promise<boolean> => {
     if (provider === 'gemini') {
         try {
-            // Direct instantiation to test the specific key provided
             const ai = new GoogleGenAI({ apiKey: key });
-            await ai.models.generateContent({ model: GEMINI_MODEL_ID, contents: "Hi" });
+            await withTimeout(ai.models.generateContent({ model: GEMINI_MODEL_ID, contents: "Hi" }), 5000);
             return true;
         } catch { return false; }
     }
-    // OpenAI mock implementation
     return true; 
 };
 
 export const generateFinancialAnalysis = async (summary: string, keys?: AiKeys): Promise<FinancialAnalysisResult | null> => {
     try {
-        const ai = getAiClient(keys, false); // Strict: No System Key
+        const ai = getAiClient(keys, false);
         const schema: Schema = {
             type: Type.OBJECT,
             properties: {
@@ -236,11 +239,20 @@ export const generateFinancialAnalysis = async (summary: string, keys?: AiKeys):
             },
             required: ['healthScore', 'healthStatus', 'diagnosis', 'actionableTips', 'projection']
         };
-        const response = await ai.models.generateContent({
+        const response: GenerateContentResponse = await withTimeout(ai.models.generateContent({
             model: GEMINI_MODEL_ID,
-            contents: `Analiza este resumen financiero y actúa como un CFO experto: ${summary}`,
+            contents: `Eres un CFO Virtual experto para PYMES en Panamá.
+            Analiza los siguientes datos financieros de la empresa y genera un reporte diagnóstico.
+            
+            DATOS:
+            ${summary}
+            
+            REGLAS DE ANÁLISIS:
+            1. Sé crudo y directo en el 'diagnosis'.
+            2. En 'actionableTips', da 3 pasos concretos.
+            3. Idioma: Español.`,
             config: { responseMimeType: "application/json", responseSchema: schema }
-        });
+        }));
         
         const cleaned = cleanJson(response.text || "{}");
         return JSON.parse(cleaned);
@@ -253,7 +265,7 @@ export const generateFinancialAnalysis = async (summary: string, keys?: AiKeys):
 
 export const generateDeepDiveReport = async (title: string, context: string, keys?: AiKeys): Promise<DeepDiveReport | null> => {
     try {
-        const ai = getAiClient(keys, false); // Strict: No System Key
+        const ai = getAiClient(keys, false);
         const schema: Schema = {
             type: Type.OBJECT,
             properties: {
@@ -275,61 +287,64 @@ export const generateDeepDiveReport = async (title: string, context: string, key
             },
             required: ['chartTitle', 'executiveSummary', 'keyMetrics', 'strategicInsight', 'recommendation']
         };
-        const response = await ai.models.generateContent({
+
+        const response: GenerateContentResponse = await withTimeout(ai.models.generateContent({
             model: GEMINI_MODEL_ID,
-            contents: `Generate a deep dive analysis report for the chart titled "${title}". Context data: ${context}`,
+            contents: `Actúa como Analista Financiero Senior. Genera un reporte profundo para el gráfico: "${title}".
+            
+            CONTEXTO DE DATOS:
+            ${context}
+            
+            INSTRUCCIONES:
+            - 'executiveSummary': Resumen de 1 párrafo.
+            - 'keyMetrics': 3 métricas clave.
+            - 'strategicInsight': Análisis de tendencias.
+            - 'recommendation': Acción táctica.
+            - Idioma: Español.`,
             config: { responseMimeType: "application/json", responseSchema: schema }
-        });
+        }));
+        
         const cleaned = cleanJson(response.text || "{}");
-        return JSON.parse(cleaned);
-    } catch { return null; }
+        const parsed = JSON.parse(cleaned);
+        if (!parsed.chartTitle) return null;
+        return parsed;
+    } catch (e) {
+        console.error("Deep Dive Error:", e);
+        return null; 
+    }
 };
 
 export const analyzePriceMarket = async (
     itemName: string, 
     country: string, 
     keys?: AiKeys,
-    userContext?: UserProfile // NEW: Context-aware pricing
+    userContext?: UserProfile
 ): Promise<PriceAnalysisResult | null> => {
     try {
-        const ai = getAiClient(keys, false); // Strict: No System Key
+        const ai = getAiClient(keys, false);
         
-        // Build User Context String
         let contextPrompt = `Ubicación: ${country}.`;
         if (userContext) {
-            const isCompany = userContext.type.includes('Empresa') || userContext.fiscalConfig?.entityType === 'JURIDICA';
-            const annualRevenue = userContext.fiscalConfig?.annualRevenue || 0;
-            
-            contextPrompt += ` El vendedor es un perfil ${isCompany ? 'Empresarial/Corporativo' : 'Freelance/Independiente'}. `;
-            contextPrompt += `Nivel de facturación anual aprox: $${annualRevenue.toLocaleString()}. `;
-            
-            if (!isCompany || annualRevenue < 20000) {
-                contextPrompt += "ESTRATEGIA: Sugiere precios competitivos y accesibles para ganar mercado.";
-            } else {
-                contextPrompt += "ESTRATEGIA: Sugiere precios de mercado estándar o premium según calidad.";
-            }
+            contextPrompt += ` Perfil: ${userContext.type}.`;
         }
 
         const schema: Schema = {
             type: Type.OBJECT,
             properties: {
-                minPrice: { type: Type.NUMBER, description: "Precio mínimo viable en el mercado local" },
-                maxPrice: { type: Type.NUMBER, description: "Precio máximo (premium)" },
-                avgPrice: { type: Type.NUMBER, description: "Precio recomendado para este perfil específico" },
-                currency: { type: Type.STRING, description: "Moneda (USD para Panamá)" },
-                reasoning: { type: Type.STRING, description: "Breve explicación del precio sugerido basada en el perfil del usuario." }
+                minPrice: { type: Type.NUMBER },
+                maxPrice: { type: Type.NUMBER },
+                avgPrice: { type: Type.NUMBER },
+                currency: { type: Type.STRING },
+                reasoning: { type: Type.STRING }
             },
             required: ['minPrice', 'maxPrice', 'avgPrice', 'currency', 'reasoning']
         };
 
-        const response = await ai.models.generateContent({
+        const response: GenerateContentResponse = await withTimeout(ai.models.generateContent({
             model: GEMINI_MODEL_ID,
-            contents: `Actúa como un experto en precios para el mercado de ${country}. ${contextPrompt}
-            
-            Analiza el precio de mercado para el servicio/producto: "${itemName}".
-            Devuelve un rango realista en USD.`,
+            contents: `Actúa como experto en precios. ${contextPrompt} Analiza: "${itemName}". Devuelve rangos en USD.`,
             config: { responseMimeType: "application/json", responseSchema: schema }
-        });
+        }));
 
         const cleaned = cleanJson(response.text || "{}");
         return JSON.parse(cleaned);
@@ -341,14 +356,13 @@ export const analyzePriceMarket = async (
 
 export const enhanceProductDescription = async (desc: string, name: string, format: 'paragraph' | 'bullets', keys?: AiKeys): Promise<string> => {
     try {
-        const ai = getAiClient(keys, false); // Strict: No System Key
-        const response = await ai.models.generateContent({
+        const ai = getAiClient(keys, false);
+        const response: GenerateContentResponse = await withTimeout(ai.models.generateContent({
             model: GEMINI_MODEL_ID,
-            contents: `Improve and expand the sales description for product "${name}". Original description: "${desc}". Format as ${format}. Language: Spanish.`,
-        });
+            contents: `Mejora esta descripción de venta para "${name}": "${desc}". Formato: ${format}. Idioma: Español.`,
+        }));
         return response.text || desc;
     } catch (e) {
-        if ((e as Error).message === AI_ERROR_BLOCKED) throw e;
         return desc; 
     }
 };
@@ -359,35 +373,29 @@ export const getDiscountRecommendation = async (
     keys?: AiKeys
 ): Promise<{ recommendedRate: number, reasoning: string } | null> => {
     try {
-        const ai = getAiClient(keys, false); // Strict: No System Key
+        const ai = getAiClient(keys, false);
         const schema: Schema = {
             type: Type.OBJECT,
             properties: {
-                recommendedRate: { type: Type.NUMBER, description: "Porcentaje recomendado (0-100)" },
-                reasoning: { type: Type.STRING, description: "Breve justificación en Español (max 15 palabras)" }
+                recommendedRate: { type: Type.NUMBER },
+                reasoning: { type: Type.STRING }
             },
             required: ['recommendedRate', 'reasoning']
         };
         
-        const response = await ai.models.generateContent({
+        const response: GenerateContentResponse = await withTimeout(ai.models.generateContent({
             model: GEMINI_MODEL_ID,
-            contents: `Actúa como asesor de ventas. Recomienda un descuento prudente para cerrar una venta de $${amount} con el cliente "${clientName}".
-            Reglas:
-            - Si el monto es bajo (<$500), sugiere 0% o 5%.
-            - Si es alto, puedes sugerir hasta 10-15%.
-            - Prioriza la rentabilidad.`,
+            contents: `Recomienda un descuento para venta de $${amount} a "${clientName}". Prioriza rentabilidad.`,
             config: { responseMimeType: "application/json", responseSchema: schema }
-        });
+        }));
         
         const cleaned = cleanJson(response.text || "{}");
         return JSON.parse(cleaned);
     } catch (e) {
-        if ((e as Error).message === AI_ERROR_BLOCKED) throw e;
         return null;
     }
 };
 
-// NEW: Short Strategic Insight for Dashboard
 export const generateRevenueInsight = async (
     currentRevenue: number, 
     prevRevenue: number, 
@@ -395,23 +403,14 @@ export const generateRevenueInsight = async (
     keys?: AiKeys
 ): Promise<string | null> => {
     try {
-        const ai = getAiClient(keys, false); // Strict: No System Key
-        
-        const trend = percentChange > 0 ? "positiva" : (percentChange < 0 ? "negativa" : "neutral");
-        const context = `Mes Actual: $${currentRevenue}. Mes Anterior: $${prevRevenue}. Variación: ${percentChange.toFixed(1)}%.`;
-
-        const response = await ai.models.generateContent({
+        const ai = getAiClient(keys, false);
+        const response: GenerateContentResponse = await withTimeout(ai.models.generateContent({
             model: GEMINI_MODEL_ID,
-            contents: `Eres un CFO. Dados estos datos: ${context}.
-            Genera una frase ESTRATÉGICA y CORTA (máximo 10 palabras) sobre la tendencia ${trend}.
-            Ejemplo positivo: "Crecimiento sólido, reinvierte en captación."
-            Ejemplo negativo: "Caída leve, activa promociones para cerrar mes."
-            NO digas "Basado en los datos". Sé directo.`,
-        });
-        
+            contents: `Eres un CFO. Datos: Mes Actual $${currentRevenue}, Anterior $${prevRevenue}, Var ${percentChange}%.
+            Genera una frase ESTRATÉGICA y CORTA (max 10 palabras).`,
+        }));
         return response.text?.trim() || null;
     } catch (e) {
-        if ((e as Error).message === AI_ERROR_BLOCKED) return null;
         return null;
     }
 };
