@@ -102,16 +102,33 @@ export const comparePassword = async (plain: string, hashed: string): Promise<bo
 const mapUserRowToProfile = (row: any): UserProfile => {
   const profileSettings = row.profile_data || {};
   
+  // Ensure fiscalConfig structure exists with defaults if missing in DB
+  const fiscalConfig = profileSettings.fiscalConfig || {
+      entityType: row.type === 'COMPANY' ? 'JURIDICA' : 'NATURAL',
+      specialRegime: 'NONE',
+      annualRevenue: 0,
+      declaredCapital: 0,
+      hasEmployees: false,
+      itbmsRegistered: false,
+      companyForm: 'SA'
+  };
+
   return {
     id: row.id,
     name: row.name,
     email: row.email,
     type: row.type === 'COMPANY' ? 'Empresa (SAS/SL)' : 'Autónomo',
+    
+    // Explicitly map bank info and fiscal config from JSON to ensure visibility
+    bankAccountType: profileSettings.bankAccountType || 'Ahorro', 
+    fiscalConfig: fiscalConfig,
+
     // Map specific columns over generic profile data if they exist
     stripeCustomerId: row.stripe_customer_id || profileSettings.stripeCustomerId,
     plan: row.plan_name || profileSettings.plan || 'Free',
     renewalDate: row.renewal_date || profileSettings.renewalDate,
-    ...profileSettings,
+    
+    ...profileSettings, // Spread the rest (branding, apiKeys, etc.)
     isOnboardingComplete: true
   } as UserProfile;
 };
@@ -132,8 +149,17 @@ export const getUserById = async (userId: string): Promise<UserProfile | null> =
          defaultCurrency: 'USD',
          plan: 'Emprendedor Pro',
          country: 'Panamá',
+         bankAccountType: 'Ahorro', // Default demo
          branding: { primaryColor: '#27bea5', templateStyle: 'Modern' },
-         apiKeys: { gemini: '', openai: '' } 
+         apiKeys: { gemini: '', openai: '' },
+         fiscalConfig: {
+            entityType: 'NATURAL',
+            specialRegime: 'NONE',
+            annualRevenue: 0,
+            declaredCapital: 0,
+            hasEmployees: false,
+            itbmsRegistered: false
+         }
        } as UserProfile;
   }
 
@@ -217,8 +243,17 @@ export const authenticateUser = async (email: string, password: string): Promise
          defaultCurrency: 'USD',
          plan: 'Emprendedor Pro',
          country: 'Panamá',
+         bankAccountType: 'Ahorro',
          branding: { primaryColor: '#27bea5', templateStyle: 'Modern' },
-         apiKeys: { gemini: '', openai: '' } 
+         apiKeys: { gemini: '', openai: '' },
+         fiscalConfig: {
+            entityType: 'NATURAL',
+            specialRegime: 'NONE',
+            annualRevenue: 0,
+            declaredCapital: 0,
+            hasEmployees: false,
+            itbmsRegistered: false
+         }
        } as UserProfile;
   }
   return null;
@@ -256,6 +291,8 @@ export const createUserInDb = async (profile: Partial<UserProfile>, password: st
     delete (profileData as any).plan;
     delete (profileData as any).renewalDate;
 
+    // Ensure we keep bankAccountType and fiscalConfig inside profileData JSON
+    
     const dbType = (profile.type || '').includes('Empresa') ? 'COMPANY' : 'FREELANCE';
 
     // Insert into new columns as well
@@ -295,7 +332,7 @@ export const updateUserProfileInDb = async (profile: UserProfile): Promise<boole
     await client.connect();
     const profileData = { ...profile };
     
-    // Clean JSON blob
+    // Clean JSON blob - Remove top-level columns to avoid redundancy
     delete (profileData as any).id;
     delete (profileData as any).name;
     delete (profileData as any).email;
@@ -304,6 +341,14 @@ export const updateUserProfileInDb = async (profile: UserProfile): Promise<boole
     delete (profileData as any).stripeCustomerId;
     delete (profileData as any).plan;
     delete (profileData as any).renewalDate;
+
+    // CRITICAL: Ensure bankAccountType and fiscalConfig remain in profileData for stringification
+    // profileData.bankAccountType should be present if it was in 'profile'
+    // profileData.fiscalConfig should be present if it was in 'profile'
+
+    if (!profile.fiscalConfig) {
+        console.warn("Saving profile without fiscalConfig - checks might fail later.");
+    }
 
     const dbType = (profile.type || '').includes('Empresa') ? 'COMPANY' : 'FREELANCE';
 
@@ -362,7 +407,6 @@ export const fetchCatalogItemsFromDb = async (userId: string): Promise<CatalogIt
         await client.query(`ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS sku TEXT;`);
         await client.query(`ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS is_recurring BOOLEAN DEFAULT FALSE;`);
         await client.query(`ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS description TEXT;`);
-        // FIXED: ADD MISSING COLUMN MIGRATION
         await client.query(`ALTER TABLE catalog_items ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();`);
     } catch (migError) {
         // Ignore errors if columns already exist or generic warnings
@@ -393,9 +437,6 @@ export const saveCatalogItemToDb = async (item: CatalogItem, userId: string): Pr
 
   try {
     await client.connect();
-
-    // REMOVED REPETITIVE SCHEMA MIGRATION FROM HERE
-    // Schema is handled in fetchCatalogItemsFromDb
 
     const query = `
       INSERT INTO catalog_items (id, user_id, name, price, description, is_recurring, sku, updated_at)

@@ -339,7 +339,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
       if (isQuote || !remainingBalance || remainingBalance <= 0) return null;
       
       const hasPaguelo = !!issuer.paymentIntegration?.cclw;
-      const hasYappy = !!issuer.paymentIntegration?.yappyMerchantId || !!issuer.paymentIntegration?.yappySecretKey; // Check simplified config presence or advanced
+      const hasYappy = !!issuer.paymentIntegration?.yappyMerchantId || !!issuer.paymentIntegration?.yappySecretKey; 
 
       if (!hasPaguelo && !hasYappy) return null;
 
@@ -390,7 +390,13 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                 )}
               </div>
               <div className="text-sm text-slate-500 space-y-1">
-                {logo && <p className="font-bold text-[#1c2938] text-lg mb-1">{issuer.legalName || issuer.name}</p>}
+                {/* Modified Header: Commercial Name then Legal Name */}
+                {logo && (
+                   <>
+                     <p className="font-bold text-[#1c2938] text-lg leading-tight">{issuer.name}</p>
+                     {issuer.legalName && <p className="text-xs font-medium text-slate-400 mb-2">{issuer.legalName}</p>}
+                   </>
+                )}
                 <p>{issuer.address}</p>
                 <p>{issuer.country}</p>
                 <p className="text-xs mt-2">{issuer.fiscalRegime}</p>
@@ -475,8 +481,12 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
               ) : (
                 <div className="bg-slate-50 p-6 rounded-xl text-slate-700 text-sm">
                   <p className="font-bold mb-2 text-lg">Datos Bancarios</p>
-                  {issuer.bankName && <p className="font-medium text-[#1c2938]">{issuer.bankName}</p>}
-                  <p className="font-mono text-base mb-1">{issuer.bankAccountType} - {issuer.bankAccount || 'No configurado'}</p>
+                  <p className="font-bold text-[#1c2938]">{issuer.legalName || issuer.name}</p>
+                  {issuer.bankName && <p className="font-medium text-slate-600">{issuer.bankName}</p>}
+                  <p className="font-mono text-base mb-1">
+                     <span className="text-xs font-bold text-slate-400 uppercase mr-1">{issuer.bankAccountType || 'Cuenta'}:</span> 
+                     {issuer.bankAccount || 'No configurado'}
+                  </p>
                   
                   {/* Payment Buttons (PagueloFacil / Yappy) */}
                   {renderPaymentButtons()}
@@ -536,7 +546,8 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
   const renderClassic = () => (
     <div className="bg-white shadow-xl min-h-[800px] flex flex-col relative print:shadow-none p-12 md:p-16 border-t-[12px]" style={{ borderColor: color }}>
        <div className="text-center border-b-4 border-slate-100 pb-8 mb-8">
-          <h1 className="text-3xl font-serif font-bold text-slate-800 uppercase tracking-widest mb-2">{issuer.name}</h1>
+          <h1 className="text-3xl font-serif font-bold text-slate-800 uppercase tracking-widest mb-1">{issuer.name}</h1>
+          {issuer.legalName && <p className="text-slate-600 font-serif font-bold text-sm mb-1">{issuer.legalName}</p>}
           <p className="text-slate-500 font-serif italic text-sm">{issuer.address} • {issuer.country}</p>
        </div>
 
@@ -611,8 +622,9 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
        {!isQuote && (
            <div className="mb-8 p-4 border border-slate-200 rounded text-center">
                <p className="font-serif font-bold text-sm text-slate-800">Métodos de Pago</p>
-               <p className="font-serif text-sm text-slate-600">{issuer.bankName} - {issuer.bankAccountType}</p>
-               <p className="font-serif text-sm text-slate-600">{issuer.bankAccount}</p>
+               <p className="font-serif text-sm font-bold text-slate-900">{issuer.legalName || issuer.name}</p>
+               <p className="font-serif text-sm text-slate-600">{issuer.bankName}</p>
+               <p className="font-serif text-sm text-slate-600 font-bold">{issuer.bankAccountType}: {issuer.bankAccount}</p>
                {renderPaymentButtons()}
            </div>
        )}
@@ -628,7 +640,10 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
        <div className="flex justify-between items-center mb-16">
           <div className="flex items-center gap-3">
              <div className="w-4 h-4 rounded-full" style={{ backgroundColor: color }}></div>
-             <h1 className="font-bold text-slate-900 text-xl tracking-tight">{issuer.name}</h1>
+             <div>
+                <h1 className="font-bold text-slate-900 text-xl tracking-tight">{issuer.name}</h1>
+                {issuer.legalName && <p className="text-xs text-slate-500">{issuer.legalName}</p>}
+             </div>
           </div>
           <div className="text-right">
              <p className="text-sm font-bold text-slate-900">{isQuote ? 'Cotización' : 'Factura'} {invoice.id}</p>
@@ -691,8 +706,9 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                <div className="flex flex-col md:flex-row justify-between items-end">
                    <div className="text-sm text-slate-500">
                        <p className="font-bold mb-1">Información de Pago</p>
-                       <p>{issuer.bankName} - {issuer.bankAccountType}</p>
-                       <p>{issuer.bankAccount}</p>
+                       <p className="font-medium text-slate-800">{issuer.legalName || issuer.name}</p>
+                       <p>{issuer.bankName}</p>
+                       <p><span className="font-bold uppercase text-xs">{issuer.bankAccountType}</span>: {issuer.bankAccount}</p>
                    </div>
                    <div className="mt-4 md:mt-0">
                        {renderPaymentButtons()}

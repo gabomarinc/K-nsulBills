@@ -210,7 +210,7 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
     let avisoOp = 0;
     if (isNatural) {
         // Personas naturales solo pagan si capital > 10k usualmente, pero simplificado:
-        avisoOp = 0; // Often exempt unless substantial
+        avisoOp = capital > 10000 ? capital * 0.02 : 0; // Simplified for individuals
     } else {
         if (config.specialRegime === 'MICRO' && capital < 10000) {
             avisoOp = 0;
@@ -436,22 +436,24 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                             <span className="absolute left-3 top-3 text-slate-400">$</span>
                             <input 
                               type="number"
-                              value={profile.fiscalConfig?.annualRevenue || 0}
-                              onChange={(e) => handleFiscalChange('annualRevenue', parseFloat(e.target.value))}
+                              value={profile.fiscalConfig?.annualRevenue || ''}
+                              onChange={(e) => handleFiscalChange('annualRevenue', e.target.value === '' ? 0 : parseFloat(e.target.value))}
                               className="w-full pl-6 p-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-600 outline-none focus:border-indigo-500"
                             />
                          </div>
                       </div>
                       
-                      {/* Capital only relevant for Corporations mostly */}
-                      <div className={`space-y-2 ${profile.fiscalConfig?.entityType === 'NATURAL' ? 'opacity-50 pointer-events-none' : ''}`}>
-                         <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Capital Suscrito</label>
+                      {/* Capital Field - Enabled for all */}
+                      <div className="space-y-2">
+                         <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                            {profile.fiscalConfig?.entityType === 'NATURAL' ? 'Capital Invertido' : 'Capital Suscrito'}
+                         </label>
                          <div className="relative">
                             <span className="absolute left-3 top-3 text-slate-400">$</span>
                             <input 
                               type="number"
-                              value={profile.fiscalConfig?.declaredCapital || 0}
-                              onChange={(e) => handleFiscalChange('declaredCapital', parseFloat(e.target.value))}
+                              value={profile.fiscalConfig?.declaredCapital || ''}
+                              onChange={(e) => handleFiscalChange('declaredCapital', e.target.value === '' ? 0 : parseFloat(e.target.value))}
                               className="w-full pl-6 p-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-600 outline-none focus:border-indigo-500"
                             />
                          </div>
