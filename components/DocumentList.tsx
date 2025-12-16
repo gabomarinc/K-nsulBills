@@ -222,7 +222,10 @@ const DocumentList: React.FC<DocumentListProps> = ({
                           doc.id.toLowerCase().includes(searchTerm.toLowerCase());
     if (!matchesSearch) return false;
     
-    // 4. Stage Filtering (Tabs)
+    // NEW: If user is searching, ignore currentStage (Tabs) and search across ALL docs of this type
+    if (searchTerm.trim() !== '') return true;
+
+    // 4. Stage Filtering (Tabs) - Only apply if NOT searching
     const isTechnicallyPaid = doc.status === 'Pagada' || doc.status === 'Aceptada' || (doc.type === 'Invoice' && (doc.amountPaid || 0) >= (doc.total - 0.01));
 
     if (docTypeFilter === 'INVOICE') {

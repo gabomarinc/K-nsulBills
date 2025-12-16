@@ -39,6 +39,7 @@ const AppContent: React.FC = () => {
   const [activeView, setActiveView] = useState<AppView>(AppView.DASHBOARD);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [dbClients, setDbClients] = useState<DbClient[]>([]); 
+  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]); // NEW: Separate state for Catalog
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [selectedClientName, setSelectedClientName] = useState<string | null>(null);
   const [documentToEdit, setDocumentToEdit] = useState<Invoice | null>(null);
@@ -112,11 +113,7 @@ const AppContent: React.FC = () => {
             try {
                 const user = await getUserById(storedUserId);
                 if (user) {
-                    // If we have a fresh user from DB, it might be more up to date than cache
-                    // But if we just did a stripe sync in this very session, cache might be newer for a split second
-                    // Generally, prefer DB if available and online
                     setCurrentUser(prev => {
-                        // Keep Stripe ID if DB doesn't have it yet (race condition safety)
                         if (prev?.stripeCustomerId && !user.stripeCustomerId) {
                             return prev;
                         }
@@ -150,18 +147,21 @@ const AppContent: React.FC = () => {
             setIsOffline(true);
         }
 
-        // Fetch Clients (NEW)
+        // Fetch Clients
         const clients = await fetchClientsFromDb(currentUser.id);
         if (clients) {
             setDbClients(clients);
         }
 
-        // Fetch Catalog Items (NEW) and sync into current user profile for legacy compatibility
+        // Fetch Catalog Items (NEW)
+        // We now load this into its own state variable for reliable rendering
         const items = await fetchCatalogItemsFromDb(currentUser.id);
         if (items) {
+            setCatalogItems(items);
+            
+            // Legacy sync: Keep profile updated just in case older logic uses it
             setCurrentUser(prev => {
                 if (!prev) return null;
-                // Only update if actually different to avoid render loops, or just update silently
                 if (JSON.stringify(prev.defaultServices) !== JSON.stringify(items)) {
                     return { ...prev, defaultServices: items };
                 }
@@ -186,18 +186,16 @@ const AppContent: React.FC = () => {
     setCurrentUser(null);
     setInvoices([]);
     setDbClients([]);
+    setCatalogItems([]);
     setActiveView(AppView.DASHBOARD);
   };
 
   const handleOnboardingComplete = async (data: Partial<UserProfile> & { password?: string, email?: string }) => {
     if (data.password && data.email) {
-       // Create User
        const success = await createUserInDb(data, data.password, data.email);
        if (success) {
          const user = await authenticateUser(data.email, data.password);
          if (user) {
-             // If plan is paid, user object will have it, but we might redirect after this function returns
-             // So we log them in locally first.
              handleLoginSuccess(user);
          }
        } else {
@@ -214,18 +212,14 @@ const AppContent: React.FC = () => {
   const handleSaveInvoice = async (invoice: Invoice) => {
     if (!currentUser) return;
     
-    // Check if this ID already exists in our invoices list
     const exists = invoices.find(i => i.id === invoice.id);
     let newInvoices = [];
     
     if (exists) {
-      // UPDATE EXISTING
       newInvoices = invoices.map(i => i.id === invoice.id ? invoice : i);
     } else {
-      // CREATE NEW
       newInvoices = [invoice, ...invoices];
 
-      // Update sequence if needed based on the new ID number
       const currentSequences = currentUser.documentSequences || {
         invoicePrefix: 'FAC', invoiceNextNumber: 1,
         quotePrefix: 'COT', quoteNextNumber: 1
@@ -234,13 +228,11 @@ const AppContent: React.FC = () => {
       let updatedSequences = { ...currentSequences };
       let profileUpdated = false;
 
-      // Extract number from ID (e.g., "FAC-0005" -> 5)
       const idParts = invoice.id.split('-');
       const idNum = parseInt(idParts[idParts.length - 1] || '0', 10);
 
       if (!isNaN(idNum)) {
           if (invoice.type === 'Invoice') {
-              // Ensure next number is greater than current ID
               if (idNum >= updatedSequences.invoiceNextNumber) {
                   updatedSequences.invoiceNextNumber = idNum + 1;
                   profileUpdated = true;
@@ -252,7 +244,6 @@ const AppContent: React.FC = () => {
               }
           }
       } else {
-          // Fallback if ID parsing fails (shouldn't happen with standard IDs)
           if (invoice.type === 'Invoice') { updatedSequences.invoiceNextNumber += 1; profileUpdated = true; }
           if (invoice.type === 'Quote') { updatedSequences.quoteNextNumber += 1; profileUpdated = true; }
       }
@@ -266,26 +257,18 @@ const AppContent: React.FC = () => {
     }
     
     setInvoices(newInvoices);
-    
-    // Save Document
     await saveInvoiceToDb({ ...invoice, userId: currentUser.id });
     
-    // Entity Management: Client vs Provider
     if (invoice.clientName) {
        const cleanName = invoice.clientName.trim();
        
        if (invoice.type === 'Expense') {
-           // --- SAVE AS PROVIDER ---
            await saveProviderToDb({
                name: cleanName,
-               // Expenses usually don't have taxId in basic form, but we pass if available later
                category: invoice.items[0]?.description || 'General' 
            }, currentUser.id);
-           
        } else {
-           // --- SAVE AS CLIENT OR PROSPECT ---
            const existingClient = dbClients.find(c => c.name.toLowerCase() === cleanName.toLowerCase());
-           
            let clientStatus: 'CLIENT' | 'PROSPECT' = 'PROSPECT';
 
            if (invoice.type === 'Invoice') {
@@ -311,7 +294,6 @@ const AppContent: React.FC = () => {
                alert.addToast('error', 'Error Base de Datos', 'No se pudo guardar el cliente en el directorio.');
            }
 
-           // Refresh clients regardless to get updated list
            const updatedClients = await fetchClientsFromDb(currentUser.id);
            setDbClients(updatedClients);
        }
@@ -337,12 +319,9 @@ const AppContent: React.FC = () => {
 
         if(confirmed) {
             const sequences = currentUser.documentSequences || { invoicePrefix: 'FAC', invoiceNextNumber: 1, quotePrefix: 'COT', quoteNextNumber: 1 };
-            
-            // Generate unique invoice ID
             let nextNum = sequences.invoiceNextNumber;
             let newInvoiceId = `${sequences.invoicePrefix}-${String(nextNum).padStart(4, '0')}`;
             
-            // Collision detection
             while(invoices.some(i => i.id === newInvoiceId)) {
                 nextNum++;
                 newInvoiceId = `${sequences.invoicePrefix}-${String(nextNum).padStart(4, '0')}`;
@@ -395,12 +374,9 @@ const AppContent: React.FC = () => {
 
     await saveInvoiceToDb({ ...updatedInvoice, userId: currentUser.id });
     
-    // Update Client Status if invoice becomes Paid
     if (updatedInvoice.type === 'Invoice' && (newStatus === 'Pagada' || newStatus === 'Aceptada')) {
         const clientName = updatedInvoice.clientName.trim();
         const existing = dbClients.find(c => c.name.toLowerCase() === clientName.toLowerCase());
-        
-        // Ensure they are moved to CLIENT table if not already there
         if (existing) {
              await saveClientToDb({ ...existing, name: clientName }, currentUser.id, 'CLIENT');
              const updated = await fetchClientsFromDb(currentUser.id);
@@ -497,9 +473,13 @@ const AppContent: React.FC = () => {
     
     const res = await saveCatalogItemToDb(item, currentUser.id);
     if (res.success) {
-        // Refresh local state by fetching (to handle ID generation or DB triggers if any) or optimistic update
+        // Fetch fresh list from DB to ensure consistency
         const updatedList = await fetchCatalogItemsFromDb(currentUser.id);
+        setCatalogItems(updatedList);
+        
+        // Also update user profile just in case (legacy)
         setCurrentUser(prev => prev ? ({ ...prev, defaultServices: updatedList }) : null);
+        
         alert.addToast('success', 'Ítem Guardado', `${item.name} se ha guardado en tu catálogo.`);
     } else {
         alert.addToast('error', 'Error al Guardar', res.error || 'No se pudo conectar con la base de datos.');
@@ -511,8 +491,12 @@ const AppContent: React.FC = () => {
     
     const success = await deleteCatalogItemFromDb(itemId, currentUser.id);
     if (success) {
-        const updatedList = (currentUser.defaultServices || []).filter(i => i.id !== itemId);
+        const updatedList = catalogItems.filter(i => i.id !== itemId);
+        setCatalogItems(updatedList);
+        
+        // Also update user profile (legacy)
         setCurrentUser(prev => prev ? ({ ...prev, defaultServices: updatedList }) : null);
+        
         alert.addToast('info', 'Ítem Eliminado', 'El producto ha sido removido del catálogo.');
     } else {
         alert.addToast('error', 'Error al Eliminar', 'Intenta nuevamente.');
@@ -589,6 +573,7 @@ const AppContent: React.FC = () => {
           initialData={documentToEdit}
           dbClients={dbClients}
           invoices={invoices}
+          catalogItems={catalogItems} // Pass the fresh catalog state
         />
       )}
 
@@ -668,11 +653,8 @@ const AppContent: React.FC = () => {
                   alert.addToast('error', 'Error', res.error);
               }
            }}
-           onCreateDocument={(type) => {
-              const client = dbClients.find(c => c.name === selectedClientName);
-              if (client) {
-                 handleCreateDocumentForClient(client, type);
-              }
+           onCreateDocument={(type, clientData) => {
+              handleCreateDocumentForClient(clientData, type);
            }}
          />
       )}
@@ -697,7 +679,7 @@ const AppContent: React.FC = () => {
 
       {activeView === AppView.CATALOG && (
         <CatalogDashboard 
-          items={currentUser.defaultServices || []}
+          items={catalogItems} // Use the new reliable state
           userCountry={currentUser.country || 'Global'}
           apiKey={currentUser.apiKeys}
           onSaveItem={handleSaveCatalogItem}

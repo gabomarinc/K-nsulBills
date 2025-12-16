@@ -6,7 +6,7 @@ import {
   ShoppingBag, Calculator, ChevronDown, Building2, Eye,
   Coins, Lock, AlertTriangle, Settings, Save, Archive, Percent, DollarSign, BrainCircuit
 } from 'lucide-react';
-import { Invoice, ParsedInvoiceData, UserProfile, InvoiceItem, InvoiceStatus } from '../types';
+import { Invoice, ParsedInvoiceData, UserProfile, InvoiceItem, InvoiceStatus, CatalogItem } from '../types';
 import { parseInvoiceRequest, getDiscountRecommendation, AI_ERROR_BLOCKED } from '../services/geminiService';
 
 interface InvoiceWizardProps {
@@ -19,13 +19,28 @@ interface InvoiceWizardProps {
   initialData?: Invoice | null; 
   dbClients?: any[]; 
   invoices: Invoice[]; 
+  catalogItems?: CatalogItem[]; // NEW Prop
 }
 
 type Step = 'TYPE_SELECT' | 'AI_INPUT' | 'SMART_EDITOR' | 'SUCCESS';
 
-const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, onSave, onCancel, onViewDetail, onSelectInvoiceForDetail, initialData, dbClients = [], invoices = [] }) => {
+const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ 
+  currentUser, 
+  isOffline, 
+  onSave, 
+  onCancel, 
+  onViewDetail, 
+  onSelectInvoiceForDetail, 
+  initialData, 
+  dbClients = [], 
+  invoices = [],
+  catalogItems // New Prop usage
+}) => {
   const isTemplateMode = initialData && !initialData.id;
   const isEditMode = initialData && !!initialData.id;
+
+  // Prioritize passed items, fallback to user profile legacy array
+  const availableServices = catalogItems || currentUser.defaultServices || [];
 
   const [step, setStep] = useState<Step>(initialData ? 'SMART_EDITOR' : 'TYPE_SELECT');
   const [docType, setDocType] = useState<'Invoice' | 'Quote'>(initialData?.type as 'Invoice' | 'Quote' || 'Invoice');
@@ -518,12 +533,16 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({ currentUser, isOffline, o
               </div>
               {showCatalog && (
                 <div className="mb-4 bg-slate-50 p-3 rounded-xl border border-slate-200 animate-in slide-in-from-top-2">
-                  {currentUser.defaultServices?.map(svc => (
-                      <button key={svc.id} onClick={() => addItem(svc)} className="flex justify-between items-center p-2 bg-white rounded-lg border border-slate-100 hover:border-[#27bea5] text-left w-full mb-2">
-                        <span className="text-sm font-medium text-slate-700">{svc.name}</span>
-                        <span className="text-sm font-bold text-[#1c2938]">${svc.price}</span>
-                      </button>
-                  ))}
+                  {availableServices.length > 0 ? (
+                      availableServices.map(svc => (
+                          <button key={svc.id} onClick={() => addItem(svc)} className="flex justify-between items-center p-2 bg-white rounded-lg border border-slate-100 hover:border-[#27bea5] text-left w-full mb-2">
+                            <span className="text-sm font-medium text-slate-700">{svc.name}</span>
+                            <span className="text-sm font-bold text-[#1c2938]">${svc.price}</span>
+                          </button>
+                      ))
+                  ) : (
+                      <p className="text-center text-xs text-slate-400 py-2">Tu catálogo está vacío.</p>
+                  )}
                   <button onClick={() => addItem()} className="text-center p-2 text-sm text-[#27bea5] font-medium hover:underline w-full">+ En blanco</button>
                 </div>
               )}

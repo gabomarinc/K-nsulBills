@@ -15,7 +15,7 @@ interface ClientDetailProps {
   onBack: () => void;
   onSelectInvoice: (invoice: Invoice) => void;
   onUpdateClientContact: (oldName: string, newContact: DbClient) => void;
-  onCreateDocument?: (type: 'Invoice' | 'Quote') => void; // New prop for direct creation
+  onCreateDocument?: (type: 'Invoice' | 'Quote', clientData: DbClient) => void; // Updated prop signature
   currencySymbol: string;
 }
 
@@ -38,6 +38,21 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [tempNote, setTempNote] = useState('');
 
+  // OPTIMISTIC STATE: To show changes immediately before DB refresh
+  const [optimisticOverrides, setOptimisticOverrides] = useState<{
+      tags?: string;
+      notes?: string;
+      email?: string;
+      phone?: string;
+      address?: string;
+      taxId?: string;
+  }>({});
+
+  // Reset optimistic state when dbClientData actually updates from parent
+  useEffect(() => {
+      setOptimisticOverrides({});
+  }, [dbClientData]);
+
   // Aggregate Client Data
   const { clientData, activeDocs, historyDocs, stats } = useMemo(() => {
     const clientDocs = invoices.filter(i => i.clientName === clientName);
@@ -49,7 +64,6 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
     const latestDoc: Partial<Invoice> = clientDocs[0] || {};
     
     // Stats: Total Invoiced Value (LTV based on Issued Invoices)
-    // Changing from "Collected" to "Total Invoiced" as per user request
     const totalRevenue = clientDocs
       .filter(i => i.type === 'Invoice' && i.status !== 'Borrador' && i.status !== 'Rechazada')
       .reduce((acc, curr) => acc + curr.total, 0);
@@ -59,29 +73,28 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
       .filter(i => i.type === 'Quote' && i.status !== 'Rechazada')
       .reduce((acc, curr) => acc + curr.total, 0);
       
-    const openQuotes = clientDocs.filter(i => i.type === 'Quote' && (i.status === 'Enviada' || i.status === 'Negociacion'));
+    const openQuotes = clientDocs.filter(i => i.type === 'Quote' && (i.status === 'Enviada' || i.status === 'Seguimiento' || i.status === 'Negociacion'));
     const pendingInvoices = clientDocs.filter(i => i.type === 'Invoice' && (i.status === 'Enviada' || i.status === 'Seguimiento'));
     
     const active = [...openQuotes, ...pendingInvoices].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     const history = clientDocs.filter(d => !active.includes(d));
 
     // Determine status
-    // If dbClientData.status exists, use it. Otherwise guess based on invoices.
     const isProspect = dbClientData?.status === 'PROSPECT' || (!dbClientData && clientDocs.length > 0 && !clientDocs.some(i => i.type === 'Invoice'));
 
     // VIP Logic
     const isVip = totalRevenue > 5000 || clientDocs.length > 10;
 
+    // MERGE: Optimistic > DB > Invoices > Default
     return {
       clientData: {
         name: clientName,
-        // Priority to DB Data, fallback to invoices
-        email: dbClientData?.email || latestDoc.clientEmail || '',
-        taxId: dbClientData?.taxId || latestDoc.clientTaxId || '',
-        address: dbClientData?.address || latestDoc.clientAddress || '',
-        phone: dbClientData?.phone || '',
-        tags: dbClientData?.tags || '',
-        notes: dbClientData?.notes || '',
+        email: optimisticOverrides.email ?? (dbClientData?.email || latestDoc.clientEmail || ''),
+        taxId: optimisticOverrides.taxId ?? (dbClientData?.taxId || latestDoc.clientTaxId || ''),
+        address: optimisticOverrides.address ?? (dbClientData?.address || latestDoc.clientAddress || ''),
+        phone: optimisticOverrides.phone ?? (dbClientData?.phone || ''),
+        tags: optimisticOverrides.tags ?? (dbClientData?.tags || ''),
+        notes: optimisticOverrides.notes ?? (dbClientData?.notes || ''),
       },
       activeDocs: active,
       historyDocs: history,
@@ -94,32 +107,46 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
         lastInteraction: latestDoc.date || new Date().toISOString()
       }
     };
-  }, [invoices, clientName, dbClientData]);
+  }, [invoices, clientName, dbClientData, optimisticOverrides]);
 
   // Edit State for Profile
   const [editForm, setEditForm] = useState(clientData);
 
-  // Sync form when client changes
+  // Sync form when client changes (only if not editing)
   useEffect(() => {
-    setEditForm(clientData);
-    setTempNote(clientData.notes || '');
-  }, [clientData]);
+    if (!isEditingProfile) {
+        setEditForm(clientData);
+    }
+    if (!isEditingNote) {
+        setTempNote(clientData.notes || '');
+    }
+  }, [clientData, isEditingProfile, isEditingNote]);
 
   // --- HANDLERS ---
 
   // 1. General Profile Save
   const handleProfileSave = () => {
-    onUpdateClientContact(clientName, {
+    const updatedProfile = {
       ...dbClientData, 
       name: clientName,
       email: editForm.email,
       address: editForm.address,
       taxId: editForm.taxId,
       phone: editForm.phone,
-      // Keep existing tags/notes when saving profile info
       tags: clientData.tags,
       notes: clientData.notes
-    });
+    };
+
+    // Optimistic Update
+    setOptimisticOverrides(prev => ({
+        ...prev,
+        email: editForm.email,
+        address: editForm.address,
+        taxId: editForm.taxId,
+        phone: editForm.phone
+    }));
+
+    onUpdateClientContact(clientName, updatedProfile);
     setIsEditingProfile(false);
   };
 
@@ -133,9 +160,18 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
     if (!currentTags.includes(newTag.trim())) {
         const updatedTags = [...currentTags, newTag.trim()].join(',');
         
+        // Optimistic Update
+        setOptimisticOverrides(prev => ({ ...prev, tags: updatedTags }));
+
         onUpdateClientContact(clientName, {
             ...dbClientData,
             name: clientName,
+            // Ensure we include existing fields so we don't overwrite them with blanks if dbClientData is partial
+            email: clientData.email,
+            address: clientData.address,
+            phone: clientData.phone,
+            taxId: clientData.taxId,
+            notes: clientData.notes,
             tags: updatedTags
         });
     }
@@ -147,18 +183,34 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
     const currentTags = clientData.tags ? clientData.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
     const updatedTags = currentTags.filter(t => t !== tagToRemove).join(',');
     
+    // Optimistic Update
+    setOptimisticOverrides(prev => ({ ...prev, tags: updatedTags }));
+
     onUpdateClientContact(clientName, {
         ...dbClientData,
         name: clientName,
+        email: clientData.email,
+        address: clientData.address,
+        phone: clientData.phone,
+        taxId: clientData.taxId,
+        notes: clientData.notes,
         tags: updatedTags
     });
   };
 
   // 3. Note Logic
   const handleNoteSave = () => {
+    // Optimistic Update
+    setOptimisticOverrides(prev => ({ ...prev, notes: tempNote }));
+
     onUpdateClientContact(clientName, {
         ...dbClientData,
         name: clientName,
+        email: clientData.email,
+        address: clientData.address,
+        phone: clientData.phone,
+        taxId: clientData.taxId,
+        tags: clientData.tags,
         notes: tempNote
     });
     setIsEditingNote(false);
@@ -423,14 +475,14 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                <h3 className="font-bold text-[#1c2938] mb-4 text-sm uppercase tracking-wider">Acciones Rápidas</h3>
                <div className="grid grid-cols-2 gap-3">
                   <button 
-                    onClick={() => onCreateDocument && onCreateDocument('Quote')} 
+                    onClick={() => onCreateDocument && onCreateDocument('Quote', clientData as DbClient)} 
                     className="bg-white p-3 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all text-left group"
                   >
                      <div className="p-2 bg-purple-50 text-purple-600 rounded-lg w-fit mb-2 group-hover:bg-purple-600 group-hover:text-white transition-colors"><FileBadge className="w-4 h-4" /></div>
                      <span className="text-xs font-bold text-slate-600 block">Nueva Cotización</span>
                   </button>
                   <button 
-                    onClick={() => onCreateDocument && onCreateDocument('Invoice')} 
+                    onClick={() => onCreateDocument && onCreateDocument('Invoice', clientData as DbClient)} 
                     className="bg-white p-3 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all text-left group"
                   >
                      <div className="p-2 bg-blue-50 text-blue-600 rounded-lg w-fit mb-2 group-hover:bg-blue-600 group-hover:text-white transition-colors"><FileText className="w-4 h-4" /></div>
