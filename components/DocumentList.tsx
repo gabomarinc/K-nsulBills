@@ -132,25 +132,57 @@ const DocumentList: React.FC<DocumentListProps> = ({
       return { currentRevenue, prevRevenue, percentageChange };
   }, [invoices]);
 
-  // --- TRIGGER AI INSIGHT ---
+  // --- TRIGGER AI INSIGHT (CACHED) ---
   useEffect(() => {
       const fetchInsight = async () => {
           if (!hasAiAccess || invoices.length === 0) return;
-          if (aiInsight) return; 
 
+          // Generate a fingerprint for the current financial state
+          // We use revenue numbers and invoice count. If these change (new invoice, status change), we need a new insight.
+          const dataSignature = `${revenueTrend.currentRevenue.toFixed(2)}_${revenueTrend.prevRevenue.toFixed(2)}_${invoices.length}`;
+          const cacheKey = `konsul_ai_insight_${currentUser?.id}_${dataSignature}`;
+          
+          // 1. Try to load from cache
+          const cachedInsight = localStorage.getItem(cacheKey);
+          
+          if (cachedInsight) {
+              setAiInsight(cachedInsight);
+              return;
+          }
+
+          // 2. If no cache and not currently loading, fetch from AI
           setIsLoadingInsight(true);
-          const result = await generateRevenueInsight(
-              revenueTrend.currentRevenue, 
-              revenueTrend.prevRevenue, 
-              revenueTrend.percentageChange, 
-              currentUser?.apiKeys
-          );
-          if (result) setAiInsight(result);
-          setIsLoadingInsight(false);
+          
+          try {
+            const result = await generateRevenueInsight(
+                revenueTrend.currentRevenue, 
+                revenueTrend.prevRevenue, 
+                revenueTrend.percentageChange, 
+                currentUser?.apiKeys
+            );
+            
+            if (result) {
+                setAiInsight(result);
+                // 3. Save to cache
+                localStorage.setItem(cacheKey, result);
+                
+                // 4. Cleanup old cache entries to prevent storage bloat
+                // Remove any key starting with 'konsul_ai_insight_' that isn't the current one for this user
+                Object.keys(localStorage).forEach(key => {
+                    if (key.startsWith(`konsul_ai_insight_${currentUser?.id}_`) && key !== cacheKey) {
+                        localStorage.removeItem(key);
+                    }
+                });
+            }
+          } catch (e) {
+            console.error("AI Insight Error", e);
+          } finally {
+            setIsLoadingInsight(false);
+          }
       };
 
       fetchInsight();
-  }, [hasAiAccess, revenueTrend, invoices.length]); 
+  }, [hasAiAccess, revenueTrend, invoices.length, currentUser?.id]); 
 
   // --- FISCAL REALITY ENGINE ---
   const fiscalReality = useMemo(() => {

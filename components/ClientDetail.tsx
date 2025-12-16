@@ -117,6 +117,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
     if (!isEditingProfile) {
         setEditForm(clientData);
     }
+    // Fix: Only update tempNote if we are not currently editing it to avoid overwriting user input
     if (!isEditingNote) {
         setTempNote(clientData.notes || '');
     }

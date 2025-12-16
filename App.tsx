@@ -268,7 +268,8 @@ const AppContent: React.FC = () => {
                category: invoice.items[0]?.description || 'General' 
            }, currentUser.id);
        } else {
-           const existingClient = dbClients.find(c => c.name.toLowerCase() === cleanName.toLowerCase());
+           // Improved Matching Logic: Normalize strings
+           const existingClient = dbClients.find(c => c.name.trim().toLowerCase() === cleanName.toLowerCase());
            let clientStatus: 'CLIENT' | 'PROSPECT' = 'PROSPECT';
 
            if (invoice.type === 'Invoice') {
@@ -376,7 +377,8 @@ const AppContent: React.FC = () => {
     
     if (updatedInvoice.type === 'Invoice' && (newStatus === 'Pagada' || newStatus === 'Aceptada')) {
         const clientName = updatedInvoice.clientName.trim();
-        const existing = dbClients.find(c => c.name.toLowerCase() === clientName.toLowerCase());
+        // Improved Matching
+        const existing = dbClients.find(c => c.name.trim().toLowerCase() === clientName.toLowerCase());
         if (existing) {
              await saveClientToDb({ ...existing, name: clientName }, currentUser.id, 'CLIENT');
              const updated = await fetchClientsFromDb(currentUser.id);
@@ -636,18 +638,24 @@ const AppContent: React.FC = () => {
          <ClientDetail 
            clientName={selectedClientName}
            invoices={invoices}
-           dbClientData={dbClients.find(c => c.name === selectedClientName)}
+           // Use flexible matching (trim + lowercase) to find DB data even if invoice name varies slightly
+           dbClientData={dbClients.find(c => c.name.trim().toLowerCase() === selectedClientName.trim().toLowerCase())}
            onBack={() => setActiveView(AppView.CLIENTS)}
            onSelectInvoice={(inv) => { setSelectedInvoice(inv); setActiveView(AppView.INVOICE_DETAIL); }}
            currencySymbol={currentUser.defaultCurrency === 'EUR' ? '€' : '$'}
            onUpdateClientContact={async (oldName, updatedClient) => {
-              const existing = dbClients.find(c => c.name === oldName);
+              // Same loose matching logic for updates
+              const existing = dbClients.find(c => c.name.trim().toLowerCase() === oldName.trim().toLowerCase());
               const currentStatus = existing?.status || 'PROSPECT';
               
               const res = await saveClientToDb(updatedClient, currentUser.id, currentStatus);
               if (res.success) {
                   const updated = await fetchClientsFromDb(currentUser.id);
                   setDbClients(updated);
+                  // Ensure we update the selected name if the user edited the name itself
+                  if (updatedClient.name !== selectedClientName) {
+                      setSelectedClientName(updatedClient.name);
+                  }
                   alert.addToast('success', 'Cliente Actualizado');
               } else {
                   alert.addToast('error', 'Error', res.error);
