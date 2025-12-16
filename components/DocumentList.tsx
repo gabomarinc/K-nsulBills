@@ -248,7 +248,6 @@ const DocumentList: React.FC<DocumentListProps> = ({
        
        if (galleryStage === 'ALL_ACTIVE') {
            // STRICT: Only explicitly Sent or Viewed.
-           // Removed 'Negociacion' and 'Abonada' from here to clean up the view.
            const isActiveStatus = doc.status === 'Enviada' || doc.status === 'Seguimiento';
            return matchesSearch && isActiveStatus && !isTechnicallyPaid;
        }
@@ -260,8 +259,8 @@ const DocumentList: React.FC<DocumentListProps> = ({
        }
 
        if (galleryStage === 'NEGOTIATION') {
-           // Quotes only - Includes explicit negotiation status + active sent quotes
-           return matchesSearch && doc.type === 'Quote' && (doc.status === 'Negociacion' || doc.status === 'Enviada' || doc.status === 'Seguimiento') && !isTechnicallyPaid;
+           // Quotes only - Includes explicit negotiation status + viewed quotes
+           return matchesSearch && doc.type === 'Quote' && (doc.status === 'Negociacion' || doc.status === 'Seguimiento') && !isTechnicallyPaid;
        }
 
        if (galleryStage === 'DONE') {
@@ -363,35 +362,8 @@ const DocumentList: React.FC<DocumentListProps> = ({
   };
 
   const renderGalleryView = () => {
-    const tabs: { id: GalleryStage; label: string; icon: React.ReactNode }[] = [
-      { id: 'DRAFT', label: 'Borradores', icon: <Sparkles className="w-4 h-4" /> },
-      { id: 'ALL_ACTIVE', label: 'En Movimiento', icon: <Activity className="w-4 h-4" /> },
-      { id: 'TO_COLLECT', label: 'Por Cobrar', icon: <Wallet className="w-4 h-4" /> },
-      { id: 'NEGOTIATION', label: 'En Negociación', icon: <MessageCircle className="w-4 h-4" /> },
-      { id: 'DONE', label: 'Histórico', icon: <Archive className="w-4 h-4" /> },
-    ];
-
     return (
       <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-         <div className="flex justify-center w-full">
-            <div className="bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 flex overflow-x-auto max-w-full custom-scrollbar">
-               {tabs.map(tab => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setGalleryStage(tab.id)}
-                    className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 whitespace-nowrap flex items-center gap-2 ${
-                      galleryStage === tab.id 
-                        ? 'text-white bg-[#1c2938] shadow-md' 
-                        : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    {tab.icon}
-                    {tab.label}
-                  </button>
-               ))}
-            </div>
-         </div>
-
          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {filteredDocs.length > 0 ? filteredDocs.map(doc => (
                <div 
@@ -496,6 +468,20 @@ const DocumentList: React.FC<DocumentListProps> = ({
       </div>
     );
   };
+
+  const galleryTabs: { id: GalleryStage; label: string }[] = [
+    { id: 'DRAFT', label: 'Borradores' },
+    { id: 'ALL_ACTIVE', label: 'En Movimiento' },
+    { id: 'TO_COLLECT', label: 'Por Cobrar' },
+    { id: 'NEGOTIATION', label: 'Negociación' }, 
+    { id: 'DONE', label: 'Histórico' },
+  ];
+
+  const listTabs: { id: 'ALL' | 'INVOICE' | 'QUOTE'; label: string }[] = [
+      { id: 'ALL', label: 'Todos' },
+      { id: 'INVOICE', label: 'Facturas' },
+      { id: 'QUOTE', label: 'Cotizaciones' }
+  ];
 
   return (
     <div className="max-w-7xl mx-auto space-y-10 animate-in fade-in pb-12">
@@ -661,19 +647,52 @@ const DocumentList: React.FC<DocumentListProps> = ({
           </div>
       </div>
 
-      {/* SEARCH BAR */}
-      <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-50 overflow-hidden flex flex-col md:flex-row p-2 gap-4">
-        {viewMode === 'LIST' && (
-           <div className="hidden md:flex bg-slate-100 p-1.5 rounded-2xl md:w-auto w-full">
-             <button onClick={() => setFilterType('ALL')} className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${filterType === 'ALL' ? 'bg-white text-[#1c2938] shadow-sm' : 'text-slate-400'}`}>Todos</button>
-             <button onClick={() => setFilterType('INVOICE')} className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${filterType === 'INVOICE' ? 'bg-white text-[#1c2938] shadow-sm' : 'text-slate-400'}`}>Facturas</button>
-             <button onClick={() => setFilterType('QUOTE')} className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${filterType === 'QUOTE' ? 'bg-white text-[#1c2938] shadow-sm' : 'text-slate-400'}`}>Cotizaciones</button>
-           </div>
-        )}
-        <div className="flex-1 relative group">
-           <Search className="absolute left-4 top-3.5 w-5 h-5 text-slate-400 group-focus-within:text-[#27bea5] transition-colors" />
-           <input type="text" placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full h-full pl-12 pr-6 py-3 bg-transparent border-none rounded-2xl text-sm font-medium text-[#1c2938] focus:bg-slate-50 focus:ring-0 outline-none" />
-        </div>
+      {/* UNIFIED FILTERS & SEARCH */}
+      <div className="flex flex-col md:flex-row gap-4 items-center bg-white p-2 rounded-[2rem] border border-slate-50 shadow-sm">
+          {/* TABS SCROLL CONTAINER */}
+          <div className="flex bg-slate-100 p-1.5 rounded-2xl w-full md:w-auto overflow-x-auto custom-scrollbar">
+             {viewMode === 'GALLERY' ? (
+                galleryTabs.map(tab => (
+                   <button
+                     key={tab.id}
+                     onClick={() => setGalleryStage(tab.id)}
+                     className={`flex-1 md:flex-none px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide transition-all whitespace-nowrap ${
+                       galleryStage === tab.id 
+                         ? 'bg-white text-[#1c2938] shadow-sm' 
+                         : 'text-slate-400 hover:text-slate-600'
+                     }`}
+                   >
+                     {tab.label}
+                   </button>
+                ))
+             ) : (
+                listTabs.map(tab => (
+                   <button
+                     key={tab.id}
+                     onClick={() => setFilterType(tab.id as any)}
+                     className={`flex-1 md:flex-none px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide transition-all whitespace-nowrap ${
+                       filterType === tab.id 
+                         ? 'bg-white text-[#1c2938] shadow-sm' 
+                         : 'text-slate-400 hover:text-slate-600'
+                     }`}
+                   >
+                     {tab.label}
+                   </button>
+                ))
+             )}
+          </div>
+
+          {/* SEARCH INPUT */}
+          <div className="flex-1 relative group w-full">
+             <Search className="absolute left-4 top-3.5 w-5 h-5 text-slate-400 group-focus-within:text-[#27bea5] transition-colors" />
+             <input 
+               type="text" 
+               placeholder={viewMode === 'GALLERY' ? "Buscar por cliente o ID..." : "Filtrar lista..."} 
+               value={searchTerm} 
+               onChange={(e) => setSearchTerm(e.target.value)} 
+               className="w-full h-full pl-12 pr-6 py-3 bg-transparent border-none rounded-2xl text-sm font-medium text-[#1c2938] focus:bg-slate-50 focus:ring-0 outline-none" 
+             />
+          </div>
       </div>
 
       {/* VIEWS */}
