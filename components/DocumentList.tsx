@@ -1,8 +1,9 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
-  Search, Plus, Filter, LayoutGrid, List, FileText, FileBadge, 
-  Clock, CheckCircle2, ChevronRight, AlertCircle, Ban, ArrowRight, Eye, MoreHorizontal, Trash2
+  Search, Plus, LayoutGrid, List, FileText, FileBadge, 
+  Clock, CheckCircle2, ChevronRight, AlertCircle, Ban, ArrowRight, Eye, MoreHorizontal, Trash2,
+  Wallet, Hourglass, Target, Archive, RefreshCcw
 } from 'lucide-react';
 import { Invoice, InvoiceStatus, UserProfile } from '../types';
 
@@ -35,8 +36,25 @@ const DocumentList: React.FC<DocumentListProps> = ({
   const [viewMode, setViewMode] = useState<ViewMode>('GALLERY');
   const [galleryStage, setGalleryStage] = useState<GalleryStage>('ALL_ACTIVE');
 
+  // --- STATS CALCULATION (Restored) ---
+  const stats = useMemo(() => {
+    const activeInvoices = invoices.filter(i => i.type === 'Invoice' && i.status !== 'Borrador' && i.status !== 'Rechazada');
+    const totalVolume = activeInvoices.reduce((acc, curr) => acc + curr.total, 0);
+    
+    const pendingInvoices = invoices.filter(i => i.type === 'Invoice' && (i.status === 'Enviada' || i.status === 'Seguimiento' || i.status === 'Abonada'));
+    const pendingAmount = pendingInvoices.reduce((acc, curr) => acc + (curr.total - (curr.amountPaid || 0)), 0);
+
+    const activeQuotes = invoices.filter(i => i.type === 'Quote' && (i.status === 'Enviada' || i.status === 'Seguimiento' || i.status === 'Negociacion'));
+    const quotePipeline = activeQuotes.reduce((acc, curr) => acc + curr.total, 0);
+
+    const draftCount = invoices.filter(i => i.status === 'Borrador').length;
+
+    return { totalVolume, pendingAmount, quotePipeline, draftCount };
+  }, [invoices]);
+
+  // --- FILTERING LOGIC (Strict as requested) ---
   const filteredDocs = invoices.filter(doc => {
-    // 1. Exclude Expenses from this view (handled in ExpenseTracker)
+    // 1. Exclude Expenses
     if (doc.type === 'Expense') return false;
 
     const matchesSearch = doc.clientName.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -48,35 +66,32 @@ const DocumentList: React.FC<DocumentListProps> = ({
         ? doc.type === 'Invoice' 
         : doc.type === 'Quote';
     
-    // Helper: Check if document is effectively finished/paid
-    // Covers explicitly 'Pagada'/'Aceptada' OR Invoices where amountPaid covers the total
+    // Check if technically paid
     const isTechnicallyPaid = doc.status === 'Pagada' || doc.status === 'Aceptada' || (doc.type === 'Invoice' && (doc.amountPaid || 0) >= (doc.total - 0.05));
 
     if (viewMode === 'GALLERY') {
        if (galleryStage === 'DRAFT') return matchesSearch && (doc.status === 'Borrador' || doc.status === 'PendingSync');
        
        if (galleryStage === 'ALL_ACTIVE') {
-           // STRICT FILTER: "En Movimiento" only shows Sent documents.
-           // We include 'Seguimiento' because implies it was Sent and Opened.
+           // STRICT FILTER: Only 'Enviada' or 'Seguimiento'. Exclude 'Creada', 'Abonada', 'Negociacion'.
+           // Must NOT be paid.
            const isActiveStatus = doc.status === 'Enviada' || doc.status === 'Seguimiento';
            return matchesSearch && isActiveStatus && !isTechnicallyPaid;
        }
 
        if (galleryStage === 'TO_COLLECT') {
-           // To Collect: Invoices only, Active Status
-           // MUST EXCLUDE: Technically Paid items
+           // Invoices only. Active status + Abonada.
            const isCollectableStatus = doc.status === 'Enviada' || doc.status === 'Seguimiento' || doc.status === 'Abonada';
            return matchesSearch && doc.type === 'Invoice' && isCollectableStatus && !isTechnicallyPaid;
        }
 
        if (galleryStage === 'NEGOTIATION') {
-           // Quotes in progress
-           // Explicitly checks for 'Negociacion', plus 'Enviada'/'Seguimiento' as part of the process.
-           return matchesSearch && doc.type === 'Quote' && (doc.status === 'Negociacion' || doc.status === 'Enviada' || doc.status === 'Seguimiento');
+           // Quotes only. Must include 'Negociacion' explicitly, plus standard active quote states.
+           return matchesSearch && doc.type === 'Quote' && (doc.status === 'Negociacion' || doc.status === 'Enviada' || doc.status === 'Seguimiento') && !isTechnicallyPaid;
        }
 
        if (galleryStage === 'DONE') {
-           // History: Paid, Accepted, Rejected, Uncollectible OR Technically Paid
+           // History: Paid, Rejected, or Technically Paid items
            const isDoneStatus = doc.status === 'Rechazada' || doc.status === 'Incobrable';
            return matchesSearch && (isDoneStatus || isTechnicallyPaid);
        }
@@ -101,7 +116,8 @@ const DocumentList: React.FC<DocumentListProps> = ({
   };
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6 animate-in fade-in pb-12">
+    <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in pb-12">
+      
       {/* HEADER & CONTROLS */}
       <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-6">
         <div>
@@ -110,7 +126,6 @@ const DocumentList: React.FC<DocumentListProps> = ({
         </div>
         
         <div className="flex gap-3 w-full md:w-auto">
-           {/* SEARCH */}
            <div className="flex-1 md:w-64 bg-white p-1.5 pl-4 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-3 focus-within:ring-2 focus-within:ring-[#27bea5] transition-all">
              <Search className="w-5 h-5 text-slate-400" />
              <input 
@@ -132,8 +147,40 @@ const DocumentList: React.FC<DocumentListProps> = ({
         </div>
       </div>
 
+      {/* KPI CARDS (Restored) */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+         <div className="bg-white p-5 rounded-[2rem] border border-slate-50 shadow-sm flex flex-col justify-between h-32 hover:shadow-md transition-shadow">
+            <div className="flex items-center gap-3">
+               <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl"><Wallet className="w-5 h-5" /></div>
+               <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Total Volumen</span>
+            </div>
+            <p className="text-2xl font-bold text-[#1c2938]">{currencySymbol}{stats.totalVolume.toLocaleString()}</p>
+         </div>
+         <div className="bg-white p-5 rounded-[2rem] border border-slate-50 shadow-sm flex flex-col justify-between h-32 hover:shadow-md transition-shadow">
+            <div className="flex items-center gap-3">
+               <div className="p-2 bg-amber-50 text-amber-600 rounded-xl"><Hourglass className="w-5 h-5" /></div>
+               <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Por Cobrar</span>
+            </div>
+            <p className="text-2xl font-bold text-[#1c2938]">{currencySymbol}{stats.pendingAmount.toLocaleString()}</p>
+         </div>
+         <div className="bg-white p-5 rounded-[2rem] border border-slate-50 shadow-sm flex flex-col justify-between h-32 hover:shadow-md transition-shadow">
+            <div className="flex items-center gap-3">
+               <div className="p-2 bg-purple-50 text-purple-600 rounded-xl"><Target className="w-5 h-5" /></div>
+               <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">En Juego</span>
+            </div>
+            <p className="text-2xl font-bold text-[#1c2938]">{currencySymbol}{stats.quotePipeline.toLocaleString()}</p>
+         </div>
+         <div className="bg-white p-5 rounded-[2rem] border border-slate-50 shadow-sm flex flex-col justify-between h-32 hover:shadow-md transition-shadow">
+            <div className="flex items-center gap-3">
+               <div className="p-2 bg-slate-100 text-slate-500 rounded-xl"><Archive className="w-5 h-5" /></div>
+               <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Borradores</span>
+            </div>
+            <p className="text-2xl font-bold text-[#1c2938]">{stats.draftCount}</p>
+         </div>
+      </div>
+
       {/* VIEW TOGGLES & FILTERS */}
-      <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-2 rounded-[2rem] border border-slate-50 shadow-sm">
+      <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-2 rounded-[2rem] border border-slate-50 shadow-sm sticky top-4 z-20">
          <div className="flex bg-slate-100 p-1 rounded-xl w-full md:w-auto overflow-x-auto">
             {viewMode === 'GALLERY' ? (
                 <>
@@ -141,7 +188,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
                         <button
                             key={stage}
                             onClick={() => setGalleryStage(stage)}
-                            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                            className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
                                 galleryStage === stage ? 'bg-white text-[#1c2938] shadow-sm' : 'text-slate-400 hover:text-slate-600'
                             }`}
                         >
@@ -158,7 +205,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
                         <button
                             key={f}
                             onClick={() => setFilterType(f)}
-                            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                            className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
                                 filterType === f ? 'bg-white text-[#1c2938] shadow-sm' : 'text-slate-400 hover:text-slate-600'
                             }`}
                         >
@@ -214,7 +261,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
                             <div className="flex items-center gap-2 text-xs text-slate-500">
                                 <Clock className="w-3 h-3" /> {new Date(doc.date).toLocaleDateString()}
                             </div>
-                            <div className="flex items-center gap-2 text-xs font-bold text-[#1c2938]">
+                            <div className="flex items-center gap-2 text-xl font-bold text-[#1c2938]">
                                 {currencySymbol} {doc.total.toLocaleString()}
                             </div>
                         </div>
@@ -238,7 +285,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
             ))}
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center py-20 text-center border-2 border-dashed border-slate-200 rounded-[3rem] bg-slate-50/50">
+        <div className="flex flex-col items-center justify-center py-24 text-center border-2 border-dashed border-slate-200 rounded-[3rem] bg-slate-50/50">
             <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-6 shadow-sm">
                 <FileText className="w-8 h-8 text-slate-300" />
             </div>
