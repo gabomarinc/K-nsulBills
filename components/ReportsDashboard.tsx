@@ -509,25 +509,24 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
       let context = '';
       
       if (type === 'cashflow') {
-          // Special Logic for P&L Deep Dive
-          // Pass the breakdown to the AI for specific advice
+          // Optimization: Only send top expenses if there are too many to prevent token overflow
+          const topExpenses = chartData.breakdown
+              .slice(0, 8) // Limit to top 8 items
+              .map((b: any) => `- ${b.category}: ${currencySymbol}${b.amount.toFixed(2)}`);
+          
           context = `
             ESTADO DE RESULTADOS (P&L) - ${timeRange}
-            ------------------------------------------
             INGRESOS TOTALES: ${currencySymbol}${chartData.income.toFixed(2)}
-            
-            DESGLOSE DE GASTOS:
-            ${chartData.breakdown.map((b: any) => `- ${b.category}: ${currencySymbol}${b.amount.toFixed(2)}`).join('\n')}
-            
             TOTAL GASTOS: ${currencySymbol}${chartData.expenses.toFixed(2)}
-            
             UTILIDAD NETA: ${currencySymbol}${(chartData.income - chartData.expenses).toFixed(2)}
-            ------------------------------------------
+            
+            PRINCIPALES GASTOS (Muestra):
+            ${topExpenses.join('\n')}
+            ${chartData.breakdown.length > 8 ? `... y otros ${chartData.breakdown.length - 8} ítems menores.` : ''}
             
             INSTRUCCIÓN ESPECIAL PARA IA:
-            Analiza estos gastos categoría por categoría.
-            En 'strategicInsight', identifica qué categoría de gasto es desproporcionada.
-            En 'recommendation', da 3 'Puntos a Mejorar' específicos para reducir esos gastos concretos y una 'Buena Práctica' financiera.
+            En 'strategicInsight', identifica qué categoría de gasto principal es desproporcionada.
+            En 'recommendation', da 3 'Puntos a Mejorar' específicos.
           `;
       } else {
           // Standard Logic for other charts
@@ -572,15 +571,28 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
             if (inv.type === 'Invoice' && (inv.status === 'Pagada' || inv.status === 'Aceptada' || (inv.amountPaid || 0) > 0)) {
                 totalIncome += (inv.amountPaid || inv.total);
             } else if (inv.type === 'Expense') {
-                const category = inv.items[0]?.description || 'Gastos Varios';
-                expenseBreakdown.set(category, (expenseBreakdown.get(category) || 0) + inv.total);
+                const providerName = inv.clientName || 'Proveedor';
+                const description = inv.items[0]?.description || 'Varios';
+                // Composite key for granular tracking: Provider + Category
+                // Separator '|||' allows clean splitting later
+                const key = `${providerName}|||${description}`;
+                
+                expenseBreakdown.set(key, (expenseBreakdown.get(key) || 0) + inv.total);
                 totalExpenses += inv.total;
             }
         });
 
         // Convert map to sorted array
         const expensesArray = Array.from(expenseBreakdown.entries())
-            .map(([category, amount]) => ({ category, amount }))
+            .map(([key, amount]) => {
+                const [provider, desc] = key.split('|||');
+                return { 
+                    category: `${provider} - ${desc}`, // Friendly label for AI
+                    rawProvider: provider,
+                    rawDesc: desc,
+                    amount 
+                };
+            })
             .sort((a, b) => b.amount - a.amount);
 
         const pnlData = {
@@ -662,9 +674,12 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                                   breakdown.map((item: any, idx: number) => (
                                       <div key={idx} className="flex justify-between items-center text-sm group">
                                           <div className="flex items-center gap-2">
-                                              <span className="text-slate-500 group-hover:text-[#1c2938] transition-colors">{item.category}</span>
+                                              <div className="flex flex-col">
+                                                  <span className="font-bold text-[#1c2938]">{item.rawProvider || item.category}</span>
+                                                  {item.rawDesc && <span className="text-xs text-slate-400">{item.rawDesc}</span>}
+                                              </div>
                                               {/* Visual bar for relative size */}
-                                              <div className="h-1.5 bg-rose-100 rounded-full" style={{ width: `${Math.min(100, (item.amount / expenses) * 50)}px` }}></div>
+                                              <div className="h-1.5 bg-rose-100 rounded-full ml-2 hidden sm:block" style={{ width: `${Math.min(100, (item.amount / expenses) * 50)}px` }}></div>
                                           </div>
                                           <span className="text-slate-700">{currencySymbol}{item.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
                                       </div>
@@ -800,9 +815,12 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
       }
   };
 
+  // --- RENDERERS ---
+
   const renderOverview = () => (
     <div ref={overviewRef} className="p-4 bg-slate-50/50 rounded-[3rem] -m-4">
       <div className="p-4">
+        {/* KPI CARDS - REAL DATA FIRST */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
            <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-50">
               <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Ingreso Neto</p>
@@ -829,6 +847,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4">
+            {/* Card: Cash Flow */}
             <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-slate-50 hover:shadow-md transition-shadow">
               <div className="flex justify-between items-start mb-6">
                   <div>
@@ -877,6 +896,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
               </div>
             </div>
 
+            {/* Card: Profit Trends */}
             <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-slate-50 hover:shadow-md transition-shadow">
               <div className="flex justify-between items-start mb-6">
                   <div>
@@ -933,6 +953,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
   const renderDocumentsView = () => (
     <div ref={documentsRef} className="p-4 bg-slate-50/50 rounded-[3rem] -m-4">
       <div className="p-4">
+        {/* OPERATIONAL KPIs */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
            <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-50 flex items-center justify-between">
               <div>
@@ -957,6 +978,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4">
+            {/* Funnel Chart */}
             <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-slate-50 hover:shadow-md transition-shadow">
               <div className="flex justify-between items-start mb-6">
                   <div>
@@ -996,6 +1018,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
               </div>
             </div>
 
+            {/* Scatter Plot */}
             <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-slate-50 hover:shadow-md transition-shadow">
               <div className="flex justify-between items-start mb-6">
                   <div>
@@ -1042,6 +1065,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
   const renderClientsView = () => (
     <div ref={clientsRef} className="p-4 bg-slate-50/50 rounded-[3rem] -m-4">
       <div className="p-4">
+        {/* CLIENT KPIs */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
            <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-50 flex items-center justify-between">
               <div>
@@ -1066,6 +1090,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4">
+          {/* LTV Chart */}
           <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-slate-50 hover:shadow-md transition-shadow">
               <div className="flex justify-between items-start mb-6">
                 <div>
@@ -1105,6 +1130,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
               </div>
           </div>
 
+          {/* Retention Pie - FIXED ALIGNMENT */}
           <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-slate-50 hover:shadow-md transition-shadow relative overflow-hidden">
               <div className="flex justify-between items-start mb-2">
                 <div>
@@ -1140,6 +1166,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                       <Legend verticalAlign="bottom" align="center" iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
                     </PieChart>
                 </ResponsiveContainer>
+                {/* ABSOLUTE CENTERED TEXT */}
                 <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
                     <p className="text-3xl font-bold text-[#1c2938]">{data.ltvData.length}</p>
                     <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Total</p>
@@ -1163,6 +1190,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
       <div ref={fiscalRef} className="p-4 bg-slate-50/50 rounded-[3rem] -m-4">
          <div className="p-4">
             
+            {/* Top: Estimated Tax Liability (LIQUIDACIÓN ITBMS) */}
             <div className={`rounded-[2.5rem] p-8 text-white relative overflow-hidden shadow-xl mb-8 ${fiscalData.isCreditBalance ? 'bg-gradient-to-r from-emerald-600 to-teal-500' : 'bg-gradient-to-r from-amber-600 to-orange-500'}`}>
                <div className="absolute top-0 right-0 w-96 h-96 bg-white rounded-full blur-[120px] opacity-10 -translate-y-1/2 translate-x-1/2"></div>
                <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
@@ -1178,6 +1206,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                      </p>
                   </div>
                   
+                  {/* The Fiscal Formula Visualization */}
                   <div className="flex-1 w-full max-w-lg bg-white/10 p-6 rounded-2xl border border-white/20">
                      <div className="flex justify-between items-center text-sm mb-2 opacity-80">
                         <span>Débito (Ventas)</span>
@@ -1201,6 +1230,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                
+               {/* LEFT: AUDITOR VIRTUAL ALERTS */}
                <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-50 hover:shadow-md transition-shadow">
                   <div className="flex items-center gap-3 mb-6">
                      <div className="p-2 bg-purple-50 text-purple-600 rounded-xl">
@@ -1241,6 +1271,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                   </div>
                </div>
 
+               {/* RIGHT: DEDUCTIBILITY BREAKDOWN */}
                <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-50 hover:shadow-md transition-shadow">
                   <div className="flex items-center gap-3 mb-6">
                      <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
@@ -1304,6 +1335,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
       
       {/* HEADER WITH ACTIONS (Date Filters) */}
       <div className="flex flex-col xl:flex-row justify-between items-end xl:items-center gap-6 pb-2">
+        {/* Title */}
         <div>
            <h1 className="text-3xl font-bold text-[#1c2938] tracking-tight">Centro de Inteligencia</h1>
            <p className="text-slate-500 mt-1 text-lg font-light">
@@ -1311,12 +1343,51 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
            </p>
         </div>
 
+        {/* Filters */}
         <div className="flex flex-col sm:flex-row items-center gap-4">
+           {/* Date Filter Buttons */}
            <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 overflow-x-auto max-w-full">
-             <button onClick={() => setTimeRange('THIS_MONTH')} className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 ${timeRange === 'THIS_MONTH' ? 'bg-[#1c2938] text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>Mes Actual</button>
-             <button onClick={() => setTimeRange('LAST_QUARTER')} className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 ${timeRange === 'LAST_QUARTER' ? 'bg-[#1c2938] text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>Último Trimestre</button>
-             <button onClick={() => setTimeRange('THIS_YEAR')} className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 ${timeRange === 'THIS_YEAR' ? 'bg-[#1c2938] text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>Todo el Año</button>
-             <button onClick={() => setTimeRange('CUSTOM')} className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 flex items-center gap-1 ${timeRange === 'CUSTOM' ? 'bg-[#1c2938] text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}><Calendar className="w-3 h-3" />Personalizado</button>
+             <button
+                 onClick={() => setTimeRange('THIS_MONTH')}
+                 className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 ${
+                   timeRange === 'THIS_MONTH' 
+                     ? 'bg-[#1c2938] text-white shadow-md' 
+                     : 'text-slate-400 hover:text-slate-600'
+                 }`}
+               >
+                 Mes Actual
+             </button>
+             <button
+                 onClick={() => setTimeRange('LAST_QUARTER')}
+                 className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 ${
+                   timeRange === 'LAST_QUARTER' 
+                     ? 'bg-[#1c2938] text-white shadow-md' 
+                     : 'text-slate-400 hover:text-slate-600'
+                 }`}
+               >
+                 Último Trimestre
+             </button>
+             <button
+                 onClick={() => setTimeRange('THIS_YEAR')}
+                 className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 ${
+                   timeRange === 'THIS_YEAR' 
+                     ? 'bg-[#1c2938] text-white shadow-md' 
+                     : 'text-slate-400 hover:text-slate-600'
+                 }`}
+               >
+                 Todo el Año
+             </button>
+             <button
+               onClick={() => setTimeRange('CUSTOM')}
+               className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 flex items-center gap-1 ${
+                 timeRange === 'CUSTOM'
+                   ? 'bg-[#1c2938] text-white shadow-md' 
+                   : 'text-slate-400 hover:text-slate-600'
+               }`}
+             >
+               <Calendar className="w-3 h-3" />
+               Personalizado
+             </button>
            </div>
         </div>
       </div>
@@ -1325,31 +1396,46 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
       {timeRange === 'CUSTOM' && (
          <div className="flex justify-end -mt-6 mb-2">
             <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-4 bg-white p-1 rounded-xl border border-slate-100 shadow-sm">
-                <input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} className="px-3 py-2 bg-slate-50 rounded-lg text-xs font-bold text-[#1c2938] outline-none focus:ring-1 focus:ring-[#27bea5]" />
+                <input 
+                  type="date" 
+                  value={customStart}
+                  onChange={(e) => setCustomStart(e.target.value)}
+                  className="px-3 py-2 bg-slate-50 rounded-lg text-xs font-bold text-[#1c2938] outline-none focus:ring-1 focus:ring-[#27bea5]"
+                />
                 <span className="text-slate-400 text-xs font-bold">a</span>
-                <input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} className="px-3 py-2 bg-slate-50 rounded-lg text-xs font-bold text-[#1c2938] outline-none focus:ring-1 focus:ring-[#27bea5]" />
+                <input 
+                  type="date" 
+                  value={customEnd}
+                  onChange={(e) => setCustomEnd(e.target.value)}
+                  className="px-3 py-2 bg-slate-50 rounded-lg text-xs font-bold text-[#1c2938] outline-none focus:ring-1 focus:ring-[#27bea5]"
+                />
             </div>
          </div>
       )}
 
-      {/* CFO VIRTUAL IA SECTION */}
+      {/* CFO VIRTUAL IA SECTION (Prominent & Top) */}
       <div className="bg-[#1c2938] rounded-[2.5rem] p-8 md:p-10 shadow-2xl relative overflow-hidden text-white transition-all duration-500">
+         {/* Abstract Background */}
          <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-[#27bea5] rounded-full blur-[120px] opacity-10 -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
          <div className="absolute bottom-0 left-0 w-64 h-64 bg-blue-600 rounded-full blur-[80px] opacity-10 translate-y-1/2 -translate-x-1/2 pointer-events-none"></div>
 
          <div className="relative z-10">
+            {/* IDLE STATE */}
             {!analysis && (
                <div className="flex flex-col md:flex-row items-center justify-between gap-8">
                   <div className="max-w-2xl">
                      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#27bea5]/20 text-[#27bea5] text-xs font-bold uppercase tracking-wider mb-4 border border-[#27bea5]/20">
                         <Sparkles className="w-3 h-3" /> Inteligencia Artificial
                      </div>
+                     
+                     {/* ERROR FEEDBACK */}
                      {aiError && (
                         <div className="mb-4 p-3 bg-red-500/20 border border-red-500/30 text-red-200 rounded-xl text-sm flex items-center gap-2 animate-in fade-in">
                            <AlertCircle className="w-4 h-4 flex-shrink-0" />
                            {aiError}
                         </div>
                      )}
+
                      <h2 className="text-3xl md:text-4xl font-bold mb-4 tracking-tight">CFO Virtual</h2>
                      <p className="text-slate-300 text-lg leading-relaxed">
                         Analiza tus tendencias financieras, detecta riesgos de fuga y encuentra oportunidades de crecimiento ocultas en tus datos.
@@ -1357,13 +1443,20 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                   </div>
                   
                   {hasAiAccess ? (
-                    <button onClick={handleAnalyze} disabled={isAnalyzing || invoices.length === 0} className="group bg-white text-[#1c2938] px-8 py-4 rounded-2xl font-bold hover:bg-[#27bea5] hover:text-white transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(39,190,165,0.4)] hover:-translate-y-1 active:translate-y-0 disabled:opacity-50 disabled:transform-none flex-shrink-0 flex items-center gap-3">
+                    <button 
+                        onClick={handleAnalyze}
+                        disabled={isAnalyzing || invoices.length === 0}
+                        className="group bg-white text-[#1c2938] px-8 py-4 rounded-2xl font-bold hover:bg-[#27bea5] hover:text-white transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(39,190,165,0.4)] hover:-translate-y-1 active:translate-y-0 disabled:opacity-50 disabled:transform-none flex-shrink-0 flex items-center gap-3"
+                    >
                         {isAnalyzing ? <Loader2 className="w-6 h-6 animate-spin" /> : <BrainCircuit className="w-6 h-6" />}
                         <span className="text-lg">Generar Análisis</span>
                         {!isAnalyzing && <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />}
                     </button>
                   ) : (
-                    <button disabled className="group bg-slate-700 text-slate-400 px-8 py-4 rounded-2xl font-bold flex-shrink-0 flex items-center gap-3 border border-slate-600 cursor-not-allowed">
+                    <button 
+                        disabled
+                        className="group bg-slate-700 text-slate-400 px-8 py-4 rounded-2xl font-bold flex-shrink-0 flex items-center gap-3 border border-slate-600 cursor-not-allowed"
+                    >
                         <Lock className="w-6 h-6" />
                         <span className="text-lg">Configura tu API Key</span>
                     </button>
@@ -1371,6 +1464,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                </div>
             )}
 
+            {/* ANALYZED STATE */}
             {analysis && (
                <div className="animate-in fade-in slide-in-from-bottom-4">
                   <div className="flex justify-between items-start mb-8 border-b border-white/10 pb-6">
@@ -1387,26 +1481,34 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-10 mb-8">
+                     {/* Score Card */}
                      <div className="lg:col-span-1 bg-white/5 p-6 rounded-3xl border border-white/10 backdrop-blur-sm">
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Salud Financiera</p>
                         <div className="flex items-center gap-4 mb-4">
                            <span className={`text-6xl font-bold ${analysis.healthScore >= 80 ? 'text-[#27bea5]' : analysis.healthScore >= 50 ? 'text-amber-400' : 'text-rose-400'}`}>
                               {analysis.healthScore}
                            </span>
-                           <span className="text-sm text-slate-400 font-medium bg-white/5 px-3 py-1 rounded-lg">/ 100</span>
+                           <span className="text-sm text-slate-400 font-medium bg-white/5 px-3 py-1 rounded-lg">
+                              / 100
+                           </span>
                         </div>
                         <div className="w-full bg-black/20 h-2 rounded-full overflow-hidden mb-4">
-                           <div className={`h-full rounded-full ${analysis.healthScore >= 80 ? 'bg-[#27bea5]' : analysis.healthScore >= 50 ? 'bg-amber-400' : 'bg-rose-400'}`} style={{width: `${analysis.healthScore}%`}}></div>
+                           <div 
+                              className={`h-full rounded-full ${analysis.healthScore >= 80 ? 'bg-[#27bea5]' : analysis.healthScore >= 50 ? 'bg-amber-400' : 'bg-rose-400'}`} 
+                              style={{width: `${analysis.healthScore}%`}}
+                           ></div>
                         </div>
                         <p className="font-bold text-lg text-white mb-1">{analysis.healthStatus}</p>
                         <p className="text-sm text-slate-400">{analysis.projection}</p>
                      </div>
 
+                     {/* Diagnosis Text */}
                      <div className="lg:col-span-2 space-y-6">
                         <div>
                            <h3 className="text-xl font-bold text-[#27bea5] mb-3">Resumen Estratégico</h3>
                            <p className="text-lg text-slate-200 leading-relaxed">"{analysis.diagnosis}"</p>
                         </div>
+                        
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                            {analysis.actionableTips.map((tip, idx) => (
                               <div key={idx} className="flex gap-3 bg-white/5 p-4 rounded-2xl border border-white/5 hover:bg-white/10 transition-colors">
@@ -1420,15 +1522,30 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                      </div>
                   </div>
 
+                  {/* ACTION BUTTONS (Revealed on Generation) */}
                   <div className="flex flex-wrap gap-4 pt-4 border-t border-white/10">
-                     <button onClick={() => handleExportPdf(overviewRef, 'Reporte_CFO_IA')} disabled={!!isExporting} className="bg-white text-[#1c2938] px-6 py-3 rounded-xl font-bold hover:bg-[#27bea5] hover:text-white transition-all flex items-center gap-2 shadow-lg disabled:opacity-50">
-                        {isExporting === 'pdf' ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />} Descargar Reporte PDF
+                     <button 
+                        onClick={() => handleExportPdf(overviewRef, 'Reporte_CFO_IA')}
+                        disabled={!!isExporting}
+                        className="bg-white text-[#1c2938] px-6 py-3 rounded-xl font-bold hover:bg-[#27bea5] hover:text-white transition-all flex items-center gap-2 shadow-lg disabled:opacity-50"
+                     >
+                        {isExporting === 'pdf' ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+                        Descargar Reporte PDF
                      </button>
-                     <button onClick={() => handleSendEmail(overviewRef, `Reporte CFO ${new Date().toLocaleDateString()}`)} disabled={emailStatus === 'SENDING'} className="bg-white/10 text-white px-6 py-3 rounded-xl font-bold hover:bg-white/20 transition-all flex items-center gap-2 border border-white/10 disabled:opacity-50">
-                        {emailStatus === 'SENDING' ? <Loader2 className="w-5 h-5 animate-spin" /> : <Mail className="w-5 h-5" />} Enviar por Email
+                     <button 
+                        onClick={() => handleSendEmail(overviewRef, `Reporte CFO ${new Date().toLocaleDateString()}`)}
+                        disabled={emailStatus === 'SENDING'}
+                        className="bg-white/10 text-white px-6 py-3 rounded-xl font-bold hover:bg-white/20 transition-all flex items-center gap-2 border border-white/10 disabled:opacity-50"
+                     >
+                        {emailStatus === 'SENDING' ? <Loader2 className="w-5 h-5 animate-spin" /> : <Mail className="w-5 h-5" />}
+                        Enviar por Email
                      </button>
-                     <button onClick={() => handleShareWhatsapp(`CFO Diagnosis: ${analysis.diagnosis}`)} className="bg-[#25D366] text-white px-6 py-3 rounded-xl font-bold hover:bg-[#20bd5a] transition-all flex items-center gap-2 shadow-lg">
-                        <Smartphone className="w-5 h-5" /> WhatsApp
+                     <button 
+                        onClick={() => handleShareWhatsapp(`CFO Diagnosis: ${analysis.diagnosis}`)}
+                        className="bg-[#25D366] text-white px-6 py-3 rounded-xl font-bold hover:bg-[#20bd5a] transition-all flex items-center gap-2 shadow-lg"
+                     >
+                        <Smartphone className="w-5 h-5" />
+                        WhatsApp
                      </button>
                   </div>
                </div>
@@ -1440,9 +1557,23 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
       <div id="no-print" className="flex justify-center w-full sticky top-4 z-30">
          <div className="bg-white/80 backdrop-blur-md p-1.5 rounded-2xl shadow-lg border border-slate-100 flex overflow-x-auto max-w-full custom-scrollbar">
             {(['OVERVIEW', 'DOCUMENTS', 'CLIENTS', 'FISCAL'] as const).map(tab => (
-               <button key={tab} onClick={() => setActiveTab(tab)} className={`px-6 py-3 rounded-xl text-sm font-bold transition-all duration-300 whitespace-nowrap flex items-center gap-2 ${activeTab === tab ? 'bg-[#1c2938] text-white shadow-md' : 'text-slate-500 hover:text-[#1c2938] hover:bg-slate-100'}`}>
-                 {tab === 'OVERVIEW' ? <LayoutDashboard className="w-4 h-4" /> : tab === 'DOCUMENTS' ? <FileBarChart className="w-4 h-4" /> : tab === 'CLIENTS' ? <Users className="w-4 h-4" /> : <Landmark className="w-4 h-4" />}
-                 {tab === 'OVERVIEW' ? 'Finanzas' : tab === 'DOCUMENTS' ? 'Operatividad' : tab === 'CLIENTS' ? 'Clientes' : 'Reporte Fiscal'}
+               <button
+                 key={tab}
+                 onClick={() => setActiveTab(tab)}
+                 className={`px-6 py-3 rounded-xl text-sm font-bold transition-all duration-300 whitespace-nowrap flex items-center gap-2 ${
+                   activeTab === tab
+                     ? 'bg-[#1c2938] text-white shadow-md' 
+                     : 'text-slate-500 hover:text-[#1c2938] hover:bg-slate-100'
+                 }`}
+               >
+                 {tab === 'OVERVIEW' ? <LayoutDashboard className="w-4 h-4" /> : 
+                  tab === 'DOCUMENTS' ? <FileBarChart className="w-4 h-4" /> : 
+                  tab === 'CLIENTS' ? <Users className="w-4 h-4" /> : 
+                  <Landmark className="w-4 h-4" />}
+                 {tab === 'OVERVIEW' ? 'Finanzas' : 
+                  tab === 'DOCUMENTS' ? 'Operatividad' : 
+                  tab === 'CLIENTS' ? 'Clientes' : 
+                  'Reporte Fiscal'}
                </button>
             ))}
          </div>
@@ -1461,30 +1592,55 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
         <div className="fixed inset-0 z-[99] flex items-center justify-center p-4 bg-[#1c2938]/60 backdrop-blur-md animate-in fade-in">
            <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col relative animate-in zoom-in-95 duration-300">
               
+              {/* Header */}
               <div className="px-8 py-6 border-b border-slate-50 flex justify-between items-center bg-white rounded-t-[2.5rem]">
                  <div className="flex items-center gap-3">
-                   <div className="p-2 bg-[#27bea5]/10 rounded-xl text-[#27bea5]"><FileText className="w-6 h-6" /></div>
+                   <div className="p-2 bg-[#27bea5]/10 rounded-xl text-[#27bea5]">
+                     <FileText className="w-6 h-6" />
+                   </div>
                    <div>
                      <h3 className="font-bold text-[#1c2938] text-xl">Reporte Detallado</h3>
-                     <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">{deepDiveVisual?.title || deepDiveReport?.chartTitle || 'Análisis de Datos'}</p>
+                     <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">
+                        {deepDiveVisual?.title || deepDiveReport?.chartTitle || 'Análisis de Datos'}
+                     </p>
                    </div>
                  </div>
-                 <button onClick={() => { setDeepDiveReport(null); setDeepDiveVisual(null); setIsDeepDiving(null); setDeepDiveError(false); }} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-[#1c2938]"><X className="w-6 h-6" /></button>
+                 <button 
+                    onClick={() => {
+                        setDeepDiveReport(null);
+                        setDeepDiveVisual(null);
+                        setIsDeepDiving(null);
+                        setDeepDiveError(false);
+                    }} 
+                    className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-[#1c2938]"
+                 >
+                   <X className="w-6 h-6" />
+                 </button>
               </div>
 
+              {/* Scrollable Content */}
               <div ref={deepDiveRef} className="p-8 md:p-12 overflow-y-auto custom-scrollbar flex-1 bg-white rounded-b-[2.5rem]">
+                 
+                 {/* 1. VISUALIZATION (Chart Copy or Data) - ALWAYS VISIBLE */}
                  {deepDiveVisual && (
                     <div className="mb-10 animate-in slide-in-from-bottom-4">
-                       <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2"><Table className="w-4 h-4" /> Datos del Reporte</h4>
+                       <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                          <Table className="w-4 h-4" /> Datos del Reporte
+                       </h4>
                        {renderDeepDiveTable()}
                     </div>
                  )}
 
+                 {/* 2. AI ANALYSIS CONTENT (Enhanced) */}
                  {deepDiveReport ? (
                     <div className="prose prose-slate max-w-none animate-in slide-in-from-bottom-4 border-t border-slate-100 pt-8">
                         <div className="bg-slate-50 p-6 rounded-2xl mb-8 border border-slate-100 relative overflow-hidden">
-                           <div className="absolute top-0 right-0 p-4 opacity-10"><BrainCircuit className="w-24 h-24 text-[#27bea5]" /></div>
-                           <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2 relative z-10"><Sparkles className="w-4 h-4 text-[#27bea5]" /> Interpretación Inteligente</h4>
+                           <div className="absolute top-0 right-0 p-4 opacity-10">
+                              <BrainCircuit className="w-24 h-24 text-[#27bea5]" />
+                           </div>
+                           <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2 relative z-10">
+                              <Sparkles className="w-4 h-4 text-[#27bea5]" /> Interpretación Inteligente
+                           </h4>
                            <p className="text-[#1c2938] font-medium leading-relaxed relative z-10">{deepDiveReport.executiveSummary}</p>
                         </div>
 
@@ -1507,22 +1663,34 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                         <div className="bg-[#1c2938] text-white p-8 rounded-[2rem] relative overflow-hidden shadow-lg">
                            <div className="absolute top-0 right-0 w-32 h-32 bg-[#27bea5] rounded-full blur-[50px] opacity-20 -translate-y-1/2 translate-x-1/2"></div>
                            <div className="relative z-10">
-                              <h4 className="font-bold text-[#27bea5] mb-3 flex items-center gap-2"><Lightbulb className="w-5 h-5" /> Recomendación Táctica</h4>
+                              <h4 className="font-bold text-[#27bea5] mb-3 flex items-center gap-2">
+                                 <Lightbulb className="w-5 h-5" /> Recomendación Táctica
+                              </h4>
                               <p className="text-lg font-light leading-relaxed">{deepDiveReport.recommendation}</p>
                            </div>
                         </div>
                     </div>
                  ) : (
+                    // LOADING OR ERROR STATE
                     hasAiAccess && (
                         <div className="flex flex-col items-center justify-center py-8 text-center border-t border-slate-100 mt-4">
                             {deepDiveError ? (
                                 <div className="animate-in fade-in flex flex-col items-center gap-3">
-                                    <div className="p-3 bg-amber-50 text-amber-600 rounded-full"><BrainCircuit className="w-6 h-6" /></div>
+                                    <div className="p-3 bg-amber-50 text-amber-600 rounded-full">
+                                      <BrainCircuit className="w-6 h-6" />
+                                    </div>
                                     <div>
                                       <p className="font-bold text-slate-600">Análisis de IA no disponible</p>
-                                      <p className="text-xs text-slate-400 max-w-xs mx-auto mt-1">No se pudo generar la interpretación automática. Puedes reintentar o usar los datos de la tabla superior.</p>
+                                      <p className="text-xs text-slate-400 max-w-xs mx-auto mt-1">
+                                        No se pudo generar la interpretación automática. Puedes reintentar o usar los datos de la tabla superior.
+                                      </p>
                                     </div>
-                                    <button onClick={() => handleRetryDeepDive()} className="mt-2 text-xs font-bold text-[#27bea5] hover:underline flex items-center gap-1"><RefreshCw className="w-3 h-3" /> Reintentar Análisis</button>
+                                    <button 
+                                      onClick={() => handleRetryDeepDive()}
+                                      className="mt-2 text-xs font-bold text-[#27bea5] hover:underline flex items-center gap-1"
+                                    >
+                                      <RefreshCw className="w-3 h-3" /> Reintentar Análisis
+                                    </button>
                                 </div>
                             ) : (
                                 <div className="text-slate-400 flex flex-col items-center gap-2">
@@ -1535,9 +1703,25 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                  )}
               </div>
 
+              {/* Footer Actions */}
               <div className="p-6 border-t border-slate-100 flex justify-end gap-3 bg-white rounded-b-[2.5rem]">
-                  <button onClick={() => handleExportPdf(deepDiveRef, `Reporte_${deepDiveVisual?.title || 'Detalle'}`)} className="px-6 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 flex items-center gap-2"><Download className="w-4 h-4" /> Exportar PDF</button>
-                  <button onClick={() => { setDeepDiveReport(null); setDeepDiveVisual(null); setIsDeepDiving(null); setDeepDiveError(false); }} className="px-6 py-3 rounded-xl bg-[#1c2938] text-white font-bold hover:bg-[#27bea5] transition-colors">Cerrar</button>
+                  <button 
+                    onClick={() => handleExportPdf(deepDiveRef, `Reporte_${deepDiveVisual?.title || 'Detalle'}`)}
+                    className="px-6 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 flex items-center gap-2"
+                  >
+                    <Download className="w-4 h-4" /> Exportar PDF
+                  </button>
+                  <button 
+                    onClick={() => {
+                        setDeepDiveReport(null);
+                        setDeepDiveVisual(null);
+                        setIsDeepDiving(null);
+                        setDeepDiveError(false);
+                    }}
+                    className="px-6 py-3 rounded-xl bg-[#1c2938] text-white font-bold hover:bg-[#27bea5] transition-colors"
+                  >
+                    Cerrar
+                  </button>
               </div>
            </div>
         </div>,
