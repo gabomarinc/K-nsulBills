@@ -10,7 +10,7 @@ import {
   BrainCircuit, Activity, Target, Lightbulb,
   X, TrendingDown, Wallet,
   LayoutDashboard, FileBarChart, Users, Filter, Calendar, Download, Mail, Smartphone, CheckCircle2,
-  Clock, AlertTriangle, Trophy, FileText, Lock, ArrowRight, Table, Scale, Landmark, Calculator, PiggyBank, Briefcase, ShieldCheck
+  Clock, AlertTriangle, Trophy, FileText, Lock, ArrowRight, Table, Scale, Landmark, Calculator, PiggyBank, Briefcase, ShieldCheck, AlertCircle, FileWarning, XCircle // Added XCircle
 } from 'lucide-react';
 import { Invoice, FinancialAnalysisResult, DeepDiveReport, UserProfile } from '../types';
 import { generateFinancialAnalysis, generateDeepDiveReport, AI_ERROR_BLOCKED } from '../services/geminiService';
@@ -289,103 +289,128 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
     return { monthlyData, funnelData, scatterData, ltvData, clientActivityData, kpis: { totalRevenue, totalExpenses, netMargin, marginPercent, avgPaymentDays, conversionRate, churnRiskCount, activeClientsCount } };
   }, [filteredInvoices]);
 
-  // --- 3. FISCAL REPORT ENGINE ---
+  // --- 3. FISCAL REPORT ENGINE (DGI PANAMA LOGIC) ---
   const fiscalData = useMemo(() => {
+    // Requires User Config
     if (!currentUser?.fiscalConfig) return null;
+    
+    // Config Extraction
     const config = currentUser.fiscalConfig;
     const isNatural = config.entityType === 'NATURAL';
-    const isJuridica = config.entityType === 'JURIDICA';
-
-    // 3.1 Base Calculations
-    const taxableIncome = data.kpis.netMargin; // Net Profit (Revenue - Expense)
     
-    // ITBMS Logic: 
-    // We assume expense items with 'ITBMS' or 'Impuesto' in their name OR we estimate 7% of expenses if registered
-    // For invoices, we calculate 7% if items have tax.
-    let itbmsCollected = 0;
-    let itbmsPaid = 0;
+    // Variables Accumulators
+    let debitFiscal = 0; // ITBMS on Sales (Collected)
+    let creditFiscal = 0; // ITBMS on Deductible Expenses (Paid)
+    let totalWithholding = 0; // Retentions suffered (ITBMS Retained by Clients)
+    let nonDeductibleExpenses = 0; // Expenses marked as non-deductible or vouchers
+    let voucherCount = 0; // Count of invalid docs
 
-    // Approximate ITBMS collected - UPDATED LOGIC TO HANDLE ALL COLLECTED AMOUNTS
+    // A. CALCULATE DEBIT FISCAL (SALES)
+    // Rule: ITBMS is due on invoicing (Devengo), usually.
     filteredInvoices.filter(i => i.type === 'Invoice').forEach(inv => {
-        let collected = 0;
-        if (inv.amountPaid && inv.amountPaid > 0) {
-            collected = inv.amountPaid;
-        } else if (inv.status === 'Pagada' || inv.status === 'Aceptada') {
-            collected = inv.total;
-        }
+        // We sum the tax of all invoices issued in the period, regardless of payment status
+        // Exception: Drafts/Rejected/Void
+        if (inv.status === 'Borrador' || inv.status === 'Rechazada' || inv.status === 'Incobrable') return;
 
-        if (collected > 0) {
-            // Calculate effective tax ratio for this specific invoice
-            // Tax part = collected * (totalTax / totalInvoice)
-            const subtotal = inv.items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-            const totalTax = inv.items.reduce((acc, item) => acc + (item.price * item.quantity * (item.tax / 100)), 0);
-            const total = subtotal + totalTax;
-            
-            const taxRatio = total > 0 ? totalTax / total : 0;
-            itbmsCollected += collected * taxRatio;
+        const taxAmount = inv.items.reduce((sum, item) => {
+            const itemTotal = item.price * item.quantity;
+            // Apply discount logic if present
+            const discount = inv.discountRate ? (itemTotal * (inv.discountRate / 100)) : 0;
+            const taxableBase = itemTotal - discount;
+            return sum + (taxableBase * (item.tax / 100));
+        }, 0);
+
+        debitFiscal += taxAmount;
+
+        // C. CALCULATE WITHHOLDINGS (RETENCIONES)
+        if (inv.withholdingAmount) {
+            totalWithholding += inv.withholdingAmount;
         }
     });
 
-    // Approximate ITBMS paid (Expenses)
+    // B. CALCULATE CREDIT FISCAL (EXPENSES)
     filteredInvoices.filter(i => i.type === 'Expense').forEach(exp => {
-        // If it's an expense, we assume 7% included if provider is formal. 
-        // This is an estimation for the report.
-        itbmsPaid += exp.total * 0.07; // Rough estimate of tax credit
+        // Filter: Is it a valid fiscal document?
+        // Default to true for legacy data, but respect 'isValidFiscalDoc' if present (false = Voucher)
+        const isValidDoc = exp.isValidFiscalDoc !== false; 
+        const isDeductible = exp.expenseDeductibility !== 'NONE';
+
+        if (!isValidDoc || !isDeductible) {
+            nonDeductibleExpenses += exp.total;
+            if (!isValidDoc) voucherCount++;
+            return; // Do not add to credit fiscal
+        }
+
+        // Calculate tax based on items (or rough estimate if legacy)
+        const expTax = exp.items.reduce((sum, item) => {
+             // If tax is explicitly set on item (e.g. 7, 10, 0)
+             if (item.tax !== undefined) {
+                 const base = item.price * item.quantity;
+                 return sum + (base * (item.tax / 100));
+             }
+             // Legacy fallback: Assume 7% included in total if no specific data
+             // Math: Total / 1.07 * 0.07
+             return sum + (exp.total - (exp.total / 1.07));
+        }, 0);
+
+        creditFiscal += expTax;
     });
 
-    const netItbmsPosition = itbmsCollected - itbmsPaid;
+    // FINAL FORMULA: Debit - Credit - Withholdings
+    const taxPayable = debitFiscal - creditFiscal - totalWithholding;
+    const isCreditBalance = taxPayable < 0;
 
-    // 3.2 ISR Projection (Annualized)
-    // Project annual income based on current period average
-    const monthsInPeriod = timeRange === '30D' ? 1 : (timeRange === '90D' ? 3 : 12);
-    const projectedAnnualNet = (taxableIncome / monthsInPeriod) * 12;
+    // ALERTS & INSIGHTS
+    const insights = [];
     
-    let projectedISR = 0;
-    let taxBracket = '';
-    let nextBracketThreshold = 0;
-
-    if (isNatural) {
-        if (projectedAnnualNet <= 11000) {
-            projectedISR = 0;
-            taxBracket = 'Exento (0%)';
-            nextBracketThreshold = 11000;
-        } else if (projectedAnnualNet <= 50000) {
-            projectedISR = (projectedAnnualNet - 11000) * 0.15;
-            taxBracket = 'Tramo 15%';
-            nextBracketThreshold = 50000;
-        } else {
-            projectedISR = ((projectedAnnualNet - 50000) * 0.25) + 5850;
-            taxBracket = 'Tramo 25%';
-            nextBracketThreshold = 0; // Top bracket
-        }
-    } else {
-        // Juridica (Simple 25% or CAIR)
-        const projectedAnnualRevenue = (data.kpis.totalRevenue / monthsInPeriod) * 12;
-        const isCair = projectedAnnualRevenue > 1500000;
-        
-        if (isCair) {
-            // CAIR: Greater of 25% on Net OR 4.67% on Gross (simplified)
-            const taxOnNet = projectedAnnualNet * 0.25;
-            const taxOnGross = projectedAnnualRevenue * 0.0467;
-            projectedISR = Math.max(taxOnNet, taxOnGross);
-            taxBracket = 'CAIR Aplicable';
-        } else {
-            projectedISR = projectedAnnualNet * 0.25;
-            taxBracket = 'Tasa Corporativa 25%';
-        }
+    // 1. Voucher Alert
+    if (voucherCount > 0) {
+        insights.push({ 
+            type: 'alert', 
+            title: 'Fuga de Crédito Fiscal',
+            text: `Detectamos ${voucherCount} gastos registrados como "Voucher" o sin factura fiscal. Esto representa dinero que no puedes deducir.` 
+        });
     }
 
-    // 3.3 Recommendations
-    const insights = [];
-    if (netItbmsPosition > 500) insights.push({ type: 'alert', text: `Tienes un saldo de ITBMS por pagar de ${currencySymbol}${netItbmsPosition.toFixed(0)}. Busca facturas de gastos para deducir.` });
-    if (isNatural && projectedAnnualNet > 45000 && projectedAnnualNet < 50000) insights.push({ type: 'warning', text: `Estás cerca del tramo del 25% (>$50k). Considera reinvertir beneficios.` });
-    if (data.kpis.marginPercent > 60) insights.push({ type: 'info', text: 'Tu margen es alto (>60%). Tienes espacio para aumentar gastos operativos deducibles.' });
-    if (itbmsPaid < (itbmsCollected * 0.1)) insights.push({ type: 'tip', text: 'Tus créditos de ITBMS son muy bajos. ¿Estás pidiendo factura fiscal en todas tus compras?' });
+    // 2. Retention Alert (Heuristic)
+    // If we have high sales to a client but 0 retention recorded, warn user.
+    const bigSalesNoRetention = filteredInvoices.some(inv => 
+        inv.type === 'Invoice' && inv.total > 1000 && !inv.withholdingAmount && (inv.status === 'Pagada' || inv.status === 'Aceptada')
+    );
+    if (bigSalesNoRetention) {
+        insights.push({
+            type: 'warning',
+            title: 'Verifica Retenciones',
+            text: 'Tienes facturas grandes (> $1,000) sin retención registrada. Si tu cliente es Agente de Retención (ej. Estado, Grandes Empresas), debes registrar el 50% de ITBMS retenido o pagarás de más.'
+        });
+    }
+
+    // 3. Credit Balance Explanation
+    if (isCreditBalance) {
+        insights.push({
+            type: 'info',
+            title: 'Saldo a Favor',
+            text: `No tienes que pagar ITBMS este periodo. Tienes un crédito de ${currencySymbol}${Math.abs(taxPayable).toFixed(2)} acumulable para el próximo mes.`
+        });
+    }
+
+    // 4. Devengo Reminder
+    const unpaidInvoices = filteredInvoices.filter(i => i.type === 'Invoice' && i.status === 'Enviada' && i.items.some(it => it.tax > 0));
+    if (unpaidInvoices.length > 0) {
+        insights.push({
+            type: 'tip',
+            title: 'Obligación por Devengo',
+            text: `Recuerda: El ITBMS de las facturas emitidas (${unpaidInvoices.length}) se debe declarar este mes, aunque aún no las hayas cobrado.`
+        });
+    }
 
     return {
-        itbms: { collected: itbmsCollected, paid: itbmsPaid, net: netItbmsPosition },
-        isr: { projectedAnnual: projectedISR, currentPeriodEstimated: projectedISR * (monthsInPeriod/12), bracket: taxBracket, nextThreshold: nextBracketThreshold },
-        projectedAnnualNet,
+        debitFiscal,
+        creditFiscal,
+        withholdings: totalWithholding,
+        payable: taxPayable,
+        isCreditBalance,
+        nonDeductibleTotal: nonDeductibleExpenses,
         insights
     };
   }, [data, currentUser, timeRange, filteredInvoices]);
@@ -926,91 +951,55 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
       <div ref={fiscalRef} className="p-4 bg-slate-50/50 rounded-[3rem] -m-4">
          <div className="p-4">
             
-            {/* Top: Estimated Tax Liability */}
-            <div className="bg-[#1c2938] rounded-[2.5rem] p-8 text-white relative overflow-hidden shadow-xl mb-8">
-               <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500 rounded-full blur-[120px] opacity-20 -translate-y-1/2 translate-x-1/2"></div>
+            {/* Top: Estimated Tax Liability (LIQUIDACIÓN ITBMS) */}
+            <div className={`rounded-[2.5rem] p-8 text-white relative overflow-hidden shadow-xl mb-8 ${fiscalData.isCreditBalance ? 'bg-gradient-to-r from-emerald-600 to-teal-500' : 'bg-gradient-to-r from-amber-600 to-orange-500'}`}>
+               <div className="absolute top-0 right-0 w-96 h-96 bg-white rounded-full blur-[120px] opacity-10 -translate-y-1/2 translate-x-1/2"></div>
                <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
                   <div>
-                     <div className="flex items-center gap-2 text-amber-400 font-bold mb-2 uppercase tracking-widest text-xs">
-                        <Scale className="w-4 h-4" /> Previsión Fiscal
+                     <div className="flex items-center gap-2 text-white/80 font-bold mb-2 uppercase tracking-widest text-xs">
+                        <Scale className="w-4 h-4" /> Liquidación ITBMS Estimada
                      </div>
                      <h2 className="text-5xl font-bold mb-2">
-                        {currencySymbol}{fiscalData.isr.currentPeriodEstimated.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        {currencySymbol}{Math.abs(fiscalData.payable).toLocaleString(undefined, {maximumFractionDigits: 2})}
                      </h2>
-                     <p className="text-slate-400">Estimado de ISR a pagar (Periodo Actual)</p>
+                     <p className="text-white/90 font-medium">
+                        {fiscalData.isCreditBalance ? 'Crédito a Favor (Saldo para el próximo mes)' : 'A Pagar a la DGI este periodo'}
+                     </p>
                   </div>
                   
-                  {/* Visual Gauge for Tax Bracket */}
-                  <div className="flex-1 w-full max-w-md bg-white/5 p-6 rounded-2xl border border-white/10">
-                     <div className="flex justify-between text-sm mb-2">
-                        <span className="text-slate-300">Tramo Actual</span>
-                        <span className="font-bold text-[#27bea5]">{fiscalData.isr.bracket}</span>
+                  {/* The Fiscal Formula Visualization */}
+                  <div className="flex-1 w-full max-w-lg bg-white/10 p-6 rounded-2xl border border-white/20">
+                     <div className="flex justify-between items-center text-sm mb-2 opacity-80">
+                        <span>Débito (Ventas)</span>
+                        <span className="font-mono">{currencySymbol}{fiscalData.debitFiscal.toFixed(2)}</span>
                      </div>
-                     <div className="w-full h-3 bg-white/10 rounded-full overflow-hidden mb-2">
-                        <div 
-                           className="h-full bg-gradient-to-r from-[#27bea5] to-amber-400 rounded-full"
-                           style={{ width: fiscalData.isr.nextThreshold > 0 ? `${Math.min(100, (fiscalData.projectedAnnualNet / fiscalData.isr.nextThreshold) * 100)}%` : '100%' }}
-                        ></div>
+                     <div className="flex justify-between items-center text-sm mb-2 opacity-80">
+                        <span>(-) Crédito (Compras)</span>
+                        <span className="font-mono">{currencySymbol}{fiscalData.creditFiscal.toFixed(2)}</span>
                      </div>
-                     {fiscalData.isr.nextThreshold > 0 && (
-                        <p className="text-xs text-slate-400 text-right">
-                           {currencySymbol}{fiscalData.projectedAnnualNet.toLocaleString()} / {currencySymbol}{fiscalData.isr.nextThreshold.toLocaleString()} (Proyectado Anual)
-                        </p>
-                     )}
+                     <div className="flex justify-between items-center text-sm mb-3 opacity-80 border-b border-white/20 pb-2">
+                        <span>(-) Retenciones Sufridas</span>
+                        <span className="font-mono">{currencySymbol}{fiscalData.withholdings.toFixed(2)}</span>
+                     </div>
+                     <div className="flex justify-between items-center font-bold text-lg">
+                        <span>Resultado Neto</span>
+                        <span>{currencySymbol}{fiscalData.payable.toFixed(2)}</span>
+                     </div>
                   </div>
                </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                
-               {/* LEFT: TAX SHIELD (ITBMS) */}
-               <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-50 hover:shadow-md transition-shadow">
-                  <div className="flex items-center gap-3 mb-6">
-                     <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
-                        <ShieldCheck className="w-6 h-6" />
-                     </div>
-                     <div>
-                        <h3 className="text-xl font-bold text-[#1c2938]">Escudo Fiscal (ITBMS)</h3>
-                        <p className="text-xs text-slate-400">Balance entre impuestos cobrados y créditos fiscales por gastos.</p>
-                     </div>
-                  </div>
-
-                  <div className="space-y-6">
-                     <div className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl">
-                        <div className="flex items-center gap-3">
-                           <ArrowRight className="w-5 h-5 text-green-500 rotate-45" />
-                           <span className="font-bold text-slate-600">Cobrado (Ventas)</span>
-                        </div>
-                        <span className="font-bold text-[#1c2938]">{currencySymbol}{fiscalData.itbms.collected.toLocaleString()}</span>
-                     </div>
-                     <div className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl">
-                        <div className="flex items-center gap-3">
-                           <ArrowRight className="w-5 h-5 text-red-500 -rotate-45" />
-                           <span className="font-bold text-slate-600">Pagado (Compras)</span>
-                        </div>
-                        <span className="font-bold text-[#1c2938]">{currencySymbol}{fiscalData.itbms.paid.toLocaleString()}</span>
-                     </div>
-                     
-                     <div className="pt-4 border-t border-slate-100">
-                        <div className="flex justify-between items-center">
-                           <span className="font-bold text-lg text-[#1c2938]">Posición Neta</span>
-                           <span className={`font-bold text-xl ${fiscalData.itbms.net > 0 ? 'text-amber-500' : 'text-green-500'}`}>
-                              {fiscalData.itbms.net > 0 ? 'A Pagar' : 'Crédito'} {currencySymbol}{Math.abs(fiscalData.itbms.net).toLocaleString()}
-                           </span>
-                        </div>
-                     </div>
-                  </div>
-               </div>
-
-               {/* RIGHT: TACTICAL ADVISOR */}
+               {/* LEFT: AUDITOR VIRTUAL ALERTS */}
                <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-50 hover:shadow-md transition-shadow">
                   <div className="flex items-center gap-3 mb-6">
                      <div className="p-2 bg-purple-50 text-purple-600 rounded-xl">
-                        <Lightbulb className="w-6 h-6" />
+                        <ShieldCheck className="w-6 h-6" />
                      </div>
                      <div>
-                        <h3 className="text-xl font-bold text-[#1c2938]">Recomendaciones Tácticas</h3>
-                        <p className="text-xs text-slate-400">Acciones estratégicas sugeridas según tu perfil fiscal actual.</p>
+                        <h3 className="text-xl font-bold text-[#1c2938]">Auditor Virtual</h3>
+                        <p className="text-xs text-slate-400">Análisis de cumplimiento y riesgos detectados.</p>
                      </div>
                   </div>
 
@@ -1018,23 +1007,81 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                      {fiscalData.insights.length > 0 ? (
                         fiscalData.insights.map((insight, idx) => (
                            <div key={idx} className={`p-4 rounded-2xl border flex gap-3 ${
-                              insight.type === 'alert' ? 'bg-amber-50 border-amber-100 text-amber-800' :
-                              insight.type === 'warning' ? 'bg-orange-50 border-orange-100 text-orange-800' :
+                              insight.type === 'alert' ? 'bg-red-50 border-red-100 text-red-800' :
+                              insight.type === 'warning' ? 'bg-amber-50 border-amber-100 text-amber-800' :
+                              insight.type === 'info' ? 'bg-emerald-50 border-emerald-100 text-emerald-800' :
                               'bg-blue-50 border-blue-100 text-blue-800'
                            }`}>
-                              {insight.type === 'alert' && <AlertTriangle className="w-5 h-5 flex-shrink-0" />}
-                              {insight.type === 'warning' && <Activity className="w-5 h-5 flex-shrink-0" />}
-                              {insight.type === 'tip' && <Sparkles className="w-5 h-5 flex-shrink-0" />}
-                              {insight.type === 'info' && <TrendingUp className="w-5 h-5 flex-shrink-0" />}
-                              <p className="text-sm font-medium">{insight.text}</p>
+                              {insight.type === 'alert' && <FileWarning className="w-5 h-5 flex-shrink-0" />}
+                              {insight.type === 'warning' && <AlertTriangle className="w-5 h-5 flex-shrink-0" />}
+                              {insight.type === 'info' && <PiggyBank className="w-5 h-5 flex-shrink-0" />}
+                              {insight.type === 'tip' && <Lightbulb className="w-5 h-5 flex-shrink-0" />}
+                              
+                              <div>
+                                  <p className="text-sm font-bold mb-0.5">{insight.title}</p>
+                                  <p className="text-xs opacity-90 leading-relaxed">{insight.text}</p>
+                              </div>
                            </div>
                         ))
                      ) : (
                         <div className="text-center py-8 text-slate-400">
                            <CheckCircle2 className="w-12 h-12 mx-auto mb-2 text-green-200" />
-                           <p>Todo parece estar en orden.</p>
+                           <p>Todo en orden. No se detectaron anomalías.</p>
                         </div>
                      )}
+                  </div>
+               </div>
+
+               {/* RIGHT: DEDUCTIBILITY BREAKDOWN */}
+               <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-50 hover:shadow-md transition-shadow">
+                  <div className="flex items-center gap-3 mb-6">
+                     <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
+                        <FileText className="w-6 h-6" />
+                     </div>
+                     <div>
+                        <h3 className="text-xl font-bold text-[#1c2938]">Calidad del Gasto</h3>
+                        <p className="text-xs text-slate-400">¿Qué tanto de lo que gastas es deducible?</p>
+                     </div>
+                  </div>
+
+                  <div className="flex items-center justify-center py-4">
+                      {fiscalData.creditFiscal > 0 || fiscalData.nonDeductibleTotal > 0 ? (
+                          <div className="relative w-40 h-40">
+                              <ResponsiveContainer width="100%" height="100%">
+                                  <PieChart>
+                                      <Pie
+                                          data={[
+                                              { name: 'Deducible', value: fiscalData.creditFiscal, color: '#27bea5' },
+                                              { name: 'No Deducible', value: fiscalData.nonDeductibleTotal * 0.07, color: '#ef4444' } // Approx tax lost
+                                          ]}
+                                          innerRadius={35}
+                                          outerRadius={55}
+                                          dataKey="value"
+                                      >
+                                          <Cell fill="#27bea5" />
+                                          <Cell fill="#ef4444" />
+                                      </Pie>
+                                  </PieChart>
+                              </ResponsiveContainer>
+                              <div className="absolute inset-0 flex items-center justify-center flex-col pointer-events-none">
+                                  <span className="text-2xl font-bold text-slate-700">{Math.round((fiscalData.creditFiscal / (fiscalData.creditFiscal + (fiscalData.nonDeductibleTotal * 0.07))) * 100)}%</span>
+                                  <span className="text-[8px] uppercase font-bold text-slate-400">Eficiencia</span>
+                              </div>
+                          </div>
+                      ) : (
+                          <p className="text-sm text-slate-400 py-10">No hay gastos registrados.</p>
+                      )}
+                  </div>
+
+                  <div className="space-y-3 mt-2">
+                      <div className="flex justify-between items-center text-sm p-3 bg-slate-50 rounded-xl">
+                          <span className="flex items-center gap-2 text-slate-600"><CheckCircle2 className="w-4 h-4 text-green-500" /> Crédito Fiscal Usado</span>
+                          <span className="font-bold text-[#1c2938]">{currencySymbol}{fiscalData.creditFiscal.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-sm p-3 bg-red-50 rounded-xl border border-red-100">
+                          <span className="flex items-center gap-2 text-red-800"><XCircle className="w-4 h-4 text-red-500" /> Crédito Perdido (Vouchers)</span>
+                          <span className="font-bold text-red-800">~{currencySymbol}{(fiscalData.nonDeductibleTotal * 0.07).toFixed(2)}</span>
+                      </div>
                   </div>
                </div>
 

@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { 
   Mail, Lock, Eye, EyeOff, ArrowRight, 
@@ -168,12 +169,6 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onRegisterCli
                     Crear cuenta gratis
                  </button>
               </p>
-           </div>
-           
-           {/* Mock Credentials Hint for Demo */}
-           <div className="mt-8 p-4 bg-slate-100 rounded-xl border border-slate-200 text-xs text-slate-500 text-center">
-              <p className="font-bold mb-1 uppercase tracking-wider">Credenciales Demo:</p>
-              <p>juan@konsulbills.com / password123</p>
            </div>
         </div>
       </div>

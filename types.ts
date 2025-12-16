@@ -216,6 +216,11 @@ export interface Invoice {
   currency: string;
   type: 'Invoice' | 'Quote' | 'Expense'; 
   
+  // Fiscal Logic (DGI Panama)
+  withholdingAmount?: number; // Retención sufrida (ITBMS) por agentes retenedores
+  expenseDeductibility?: 'FULL' | 'NONE' | 'PARTIAL'; // Full (Factura Fiscal), None (Voucher/Personal)
+  isValidFiscalDoc?: boolean; // True = Factura Electrónica/Fiscal, False = Voucher/Recibo simple
+
   // Vital Signs
   timeline?: TimelineEvent[];
   successProbability?: number; // 0-100 (Only for Quotes)

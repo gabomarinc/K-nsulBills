@@ -1,5 +1,6 @@
+
 import React, { useState } from 'react';
-import { UploadCloud, Loader2, ArrowLeft, Check, X, Camera } from 'lucide-react';
+import { UploadCloud, Loader2, ArrowLeft, Check, X, Camera, FileText } from 'lucide-react';
 import { UserProfile, Invoice } from '../types';
 import { parseExpenseImage, AI_ERROR_BLOCKED } from '../services/geminiService';
 
@@ -22,12 +23,17 @@ const ExpenseWizard: React.FC<ExpenseWizardProps> = ({ currentUser, onSave, onCa
     currency: string;
     concept: string;
     date: string;
+    // New Fields
+    isDeductible: boolean; 
+    isValidDoc: boolean; // Has fiscal invoice?
   }>({
     clientName: '',
     amount: 0,
     currency: currentUser.defaultCurrency || 'USD',
     concept: '',
-    date: new Date().toISOString().split('T')[0]
+    date: new Date().toISOString().split('T')[0],
+    isDeductible: true,
+    isValidDoc: true
   });
 
   const hasAiAccess = !!currentUser.apiKeys?.gemini || !!currentUser.apiKeys?.openai;
@@ -59,7 +65,9 @@ const ExpenseWizard: React.FC<ExpenseWizardProps> = ({ currentUser, onSave, onCa
                         amount: result.amount || 0,
                         currency: result.currency || 'USD',
                         concept: result.concept || 'Gasto Varios',
-                        date: result.date || new Date().toISOString().split('T')[0]
+                        date: result.date || new Date().toISOString().split('T')[0],
+                        isDeductible: true,
+                        isValidDoc: true
                     });
                 }
             } catch (err) {
@@ -90,6 +98,11 @@ const ExpenseWizard: React.FC<ExpenseWizardProps> = ({ currentUser, onSave, onCa
         currency: expenseData.currency,
         total: expenseData.amount,
         status: 'Pagada', // Expenses are usually paid
+        
+        // NEW FISCAL FIELDS
+        expenseDeductibility: expenseData.isDeductible ? 'FULL' : 'NONE',
+        isValidFiscalDoc: expenseData.isValidDoc,
+
         items: [{
             id: Date.now().toString(),
             description: expenseData.concept,
@@ -174,6 +187,41 @@ const ExpenseWizard: React.FC<ExpenseWizardProps> = ({ currentUser, onSave, onCa
                             onChange={(e) => setExpenseData({...expenseData, date: e.target.value})}
                             className="w-full p-3 bg-slate-50 rounded-xl font-medium text-slate-700 outline-none focus:ring-2 focus:ring-[#27bea5]"
                           />
+                      </div>
+                  </div>
+
+                  {/* FISCAL CHECKS */}
+                  <div className="pt-4 border-t border-slate-100">
+                      <p className="text-xs font-bold text-[#27bea5] uppercase mb-3 flex items-center gap-1">
+                          <FileText className="w-3 h-3" /> Validación Fiscal
+                      </p>
+                      
+                      <div className="space-y-3">
+                          <label className="flex items-center gap-3 p-3 border rounded-xl cursor-pointer hover:bg-slate-50 transition-colors">
+                              <input 
+                                type="checkbox"
+                                checked={expenseData.isValidDoc}
+                                onChange={(e) => setExpenseData({...expenseData, isValidDoc: e.target.checked})}
+                                className="w-5 h-5 text-[#27bea5] rounded focus:ring-0"
+                              />
+                              <div className="flex-1">
+                                  <span className="block font-bold text-slate-700 text-sm">Tiene Factura Fiscal</span>
+                                  <span className="text-xs text-slate-400">Desmarca si es voucher o recibo simple (No deduce ITBMS)</span>
+                              </div>
+                          </label>
+
+                          <label className="flex items-center gap-3 p-3 border rounded-xl cursor-pointer hover:bg-slate-50 transition-colors">
+                              <input 
+                                type="checkbox"
+                                checked={expenseData.isDeductible}
+                                onChange={(e) => setExpenseData({...expenseData, isDeductible: e.target.checked})}
+                                className="w-5 h-5 text-[#27bea5] rounded focus:ring-0"
+                              />
+                              <div className="flex-1">
+                                  <span className="block font-bold text-slate-700 text-sm">Es Gasto Deducible</span>
+                                  <span className="text-xs text-slate-400">Relacionado directamente al negocio</span>
+                              </div>
+                          </label>
                       </div>
                   </div>
               </div>

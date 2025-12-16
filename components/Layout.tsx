@@ -4,8 +4,6 @@ import {
   LayoutDashboard, 
   FileText, 
   Settings, 
-  Wifi, 
-  WifiOff, 
   Building2,
   Briefcase,
   PieChart, 
@@ -139,24 +137,9 @@ const Layout: React.FC<LayoutProps> = ({
           />
         </nav>
 
-        {/* Profile & Connection */}
+        {/* Profile & Footer */}
         <div className="p-4 border-t border-slate-50 space-y-3">
           
-          <button 
-             onClick={onToggleOffline}
-             className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-start'} gap-3 p-3 rounded-xl transition-colors ${
-               isOffline ? 'bg-amber-50 text-amber-600' : 'bg-green-50 text-green-600'
-             }`}
-             title={isOffline ? "Modo Offline" : "Conectado"}
-          >
-            {isOffline ? <WifiOff size={20} /> : <Wifi size={20} />}
-            {!isCollapsed && (
-              <span className="text-xs font-bold animate-in fade-in">
-                {isOffline ? 'Offline' : 'Online'}
-              </span>
-            )}
-          </button>
-
           <div className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-start'} gap-3 p-2 rounded-xl border border-slate-100 bg-slate-50/50`}>
             <div className="w-9 h-9 rounded-full bg-white text-slate-500 flex items-center justify-center flex-shrink-0 shadow-sm">
               {currentProfile.type === ProfileType.COMPANY ? <Building2 size={16}/> : <Briefcase size={16} />}

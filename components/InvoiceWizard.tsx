@@ -4,7 +4,7 @@ import {
   Mic, Send, Sparkles, Check, ArrowLeft, Edit2, Loader2, 
   FileText, FileBadge, Calendar, User, Search, Plus, Trash2, 
   ShoppingBag, Calculator, ChevronDown, Building2, Eye,
-  Coins, Lock, AlertTriangle, Settings, Save, Archive, Percent, DollarSign, BrainCircuit
+  Coins, Lock, AlertTriangle, Settings, Save, Archive, Percent, DollarSign, BrainCircuit, Scissors, X
 } from 'lucide-react';
 import { Invoice, ParsedInvoiceData, UserProfile, InvoiceItem, InvoiceStatus, CatalogItem } from '../types';
 import { parseInvoiceRequest, getDiscountRecommendation, AI_ERROR_BLOCKED } from '../services/geminiService';
@@ -59,7 +59,12 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({
   // Discount State
   const [discountType, setDiscountType] = useState<'PERCENT' | 'AMOUNT'>('PERCENT');
   const [showDiscountInput, setShowDiscountInput] = useState(false);
-  const [discountValue, setDiscountValue] = useState(initialData?.discountRate || 0); // Using discountRate from persisted invoice if exists
+  const [discountValue, setDiscountValue] = useState(initialData?.discountRate || 0); 
+  
+  // Withholding State (New)
+  const [withholdingAmount, setWithholdingAmount] = useState(initialData?.withholdingAmount || 0);
+  const [showWithholding, setShowWithholding] = useState(false);
+
   const [aiRecommendation, setAiRecommendation] = useState<{rate: number, text: string} | null>(null);
   const [isGettingRec, setIsGettingRec] = useState(false);
 
@@ -97,6 +102,9 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({
     if (initialData?.discountRate && initialData.discountRate > 0) {
       setDiscountValue(initialData.discountRate);
       setShowDiscountInput(true);
+    }
+    if (initialData?.withholdingAmount && initialData.withholdingAmount > 0) {
+      setShowWithholding(true);
     }
   }, [initialData]);
 
@@ -141,9 +149,14 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({
        return acc + (itemBase * (item.tax / 100));
     }, 0);
 
+    // Auto-calculate withholding (50% of ITBMS) if enabled
+    // Only if it wasn't manually overridden to something else
+    let finalWithholding = withholdingAmount;
+    
+    // Total
     const total = taxableBase + taxAmount;
 
-    return { subtotal, discountAmount, taxAmount, total, effectiveRate };
+    return { subtotal, discountAmount, taxAmount, total, effectiveRate, finalWithholding };
   };
 
   const totals = calculateTotals();
@@ -293,8 +306,9 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({
       date: initialData?.date || new Date().toISOString(), 
       items: draft.items,
       total: totals.total,
-      discountRate: totals.effectiveRate, // Persist the effective percentage
-      notes: draft.notes, // Persist notes
+      discountRate: totals.effectiveRate, 
+      withholdingAmount: showWithholding ? totals.finalWithholding : 0, // Save withholding
+      notes: draft.notes, 
       status: isOffline ? 'PendingSync' : targetStatus,
       currency: draft.currency,
       type: docType,
@@ -679,6 +693,38 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({
                       </div>
                       <span>{totals.taxAmount.toFixed(2)}</span>
                     </div>
+
+                    {/* WITHHOLDING ROW */}
+                    {docType === 'Invoice' && (
+                        <>
+                            {showWithholding ? (
+                                <div className="bg-white/5 rounded-xl p-3 border border-white/10 mt-2 animate-in fade-in">
+                                    <div className="flex justify-between items-center mb-1">
+                                        <span className="text-xs font-bold text-amber-400 uppercase flex items-center gap-1">
+                                            <Scissors className="w-3 h-3" /> Retención
+                                        </span>
+                                        <button onClick={() => setShowWithholding(false)} className="p-1 hover:text-red-400 text-slate-500"><X className="w-3 h-3"/></button>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <input 
+                                            type="number"
+                                            value={withholdingAmount}
+                                            onChange={(e) => setWithholdingAmount(parseFloat(e.target.value) || 0)}
+                                            className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-1 text-white font-bold outline-none focus:border-amber-400"
+                                            placeholder="Monto Retenido"
+                                        />
+                                    </div>
+                                    <p className="text-[9px] text-slate-400 mt-1">Registra aquí el ITBMS retenido por el cliente.</p>
+                                </div>
+                            ) : (
+                                <div className="flex justify-between items-center text-slate-300 group cursor-pointer pt-1" onClick={() => setShowWithholding(true)}>
+                                    <span>Retención ITBMS</span>
+                                    <span className="text-xs text-slate-500 group-hover:text-amber-400 transition-colors">+ Registrar</span>
+                                </div>
+                            )}
+                        </>
+                    )}
+
                   </div>
                 </div>
 
