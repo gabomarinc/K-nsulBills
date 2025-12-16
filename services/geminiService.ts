@@ -4,7 +4,9 @@ import { CatalogItem, FinancialAnalysisResult, DeepDiveReport, ParsedInvoiceData
 
 export const AI_ERROR_BLOCKED = 'AI_BLOCKED_MISSING_KEYS';
 const GEMINI_MODEL_ID = 'gemini-2.5-flash';
-const GEMINI_VISION_MODEL_ID = 'gemini-2.5-flash-image';
+// FIXED: Use 'gemini-2.5-flash' for vision/multimodal tasks. 
+// 'gemini-2.5-flash-image' is typically for generation/editing and may not support analysis inputs correctly.
+const GEMINI_VISION_MODEL_ID = 'gemini-2.5-flash';
 
 export interface AiKeys {
   gemini?: string;

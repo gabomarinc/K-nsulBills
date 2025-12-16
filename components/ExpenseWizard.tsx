@@ -8,11 +8,13 @@ interface ExpenseWizardProps {
   currentUser: UserProfile;
   onSave: (invoice: Invoice) => void;
   onCancel: () => void;
+  initialData?: Invoice | null; // Added for editing support
 }
 
-const ExpenseWizard: React.FC<ExpenseWizardProps> = ({ currentUser, onSave, onCancel }) => {
-  const [step, setStep] = useState<'UPLOAD' | 'REVIEW'>('UPLOAD');
-  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+const ExpenseWizard: React.FC<ExpenseWizardProps> = ({ currentUser, onSave, onCancel, initialData }) => {
+  const isEditing = !!initialData;
+  const [step, setStep] = useState<'UPLOAD' | 'REVIEW'>(isEditing ? 'REVIEW' : 'UPLOAD');
+  const [uploadedImage, setUploadedImage] = useState<string | null>(initialData?.receiptUrl || null);
   const [fileType, setFileType] = useState<'image' | 'pdf'>('image');
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState('');
@@ -27,13 +29,13 @@ const ExpenseWizard: React.FC<ExpenseWizardProps> = ({ currentUser, onSave, onCa
     isDeductible: boolean; 
     isValidDoc: boolean; // Has fiscal invoice?
   }>({
-    clientName: '',
-    amount: 0,
-    currency: currentUser.defaultCurrency || 'USD',
-    concept: '',
-    date: new Date().toISOString().split('T')[0],
-    isDeductible: true,
-    isValidDoc: true
+    clientName: initialData?.clientName || '',
+    amount: initialData?.total || 0,
+    currency: initialData?.currency || currentUser.defaultCurrency || 'USD',
+    concept: initialData?.items?.[0]?.description || '',
+    date: initialData?.date ? new Date(initialData.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+    isDeductible: initialData ? initialData.expenseDeductibility !== 'NONE' : true,
+    isValidDoc: initialData ? (initialData.isValidFiscalDoc ?? true) : true
   });
 
   const hasAiAccess = !!currentUser.apiKeys?.gemini || !!currentUser.apiKeys?.openai;
@@ -45,8 +47,10 @@ const ExpenseWizard: React.FC<ExpenseWizardProps> = ({ currentUser, onSave, onCa
       setFileType(isPdf ? 'pdf' : 'image');
 
       const reader = new FileReader();
+      
       reader.onloadend = async () => {
         const base64String = reader.result as string;
+        // CRITICAL: Set image immediately for preview
         setUploadedImage(base64String);
         
         // Strip header for API if image/pdf
@@ -85,13 +89,19 @@ const ExpenseWizard: React.FC<ExpenseWizardProps> = ({ currentUser, onSave, onCa
             setStep('REVIEW');
         }
       };
+
+      reader.onerror = () => {
+          console.error("Failed to read file");
+          alert("Error al leer el archivo. Intenta de nuevo.");
+      };
+
       reader.readAsDataURL(file);
     }
   };
 
   const handleSave = () => {
     const newExpense: Invoice = {
-        id: `EXP-${Date.now()}`,
+        id: initialData?.id || `EXP-${Date.now()}`,
         type: 'Expense',
         clientName: expenseData.clientName,
         date: expenseData.date,
@@ -104,7 +114,7 @@ const ExpenseWizard: React.FC<ExpenseWizardProps> = ({ currentUser, onSave, onCa
         isValidFiscalDoc: expenseData.isValidDoc,
 
         items: [{
-            id: Date.now().toString(),
+            id: initialData?.items?.[0]?.id || Date.now().toString(),
             description: expenseData.concept,
             quantity: 1,
             price: expenseData.amount,
@@ -119,12 +129,18 @@ const ExpenseWizard: React.FC<ExpenseWizardProps> = ({ currentUser, onSave, onCa
       return (
           <div className="max-w-2xl mx-auto p-6 bg-white rounded-3xl shadow-lg text-center mt-10">
               <h2 className="text-2xl font-bold text-[#1c2938] mb-4">Nuevo Gasto</h2>
-              <div className="border-2 border-dashed border-slate-200 rounded-2xl p-10 flex flex-col items-center justify-center gap-4 hover:bg-slate-50 transition-colors relative">
-                  <input type="file" onChange={handleImageUpload} accept="image/*,application/pdf" className="absolute inset-0 opacity-0 cursor-pointer" />
+              <div className="border-2 border-dashed border-slate-200 rounded-2xl p-10 flex flex-col items-center justify-center gap-4 hover:bg-slate-50 transition-colors relative min-h-[300px] overflow-hidden">
+                  <input type="file" onChange={handleImageUpload} accept="image/*,application/pdf" className="absolute inset-0 opacity-0 cursor-pointer z-10" disabled={isLoading} />
+                  
                   {isLoading ? (
-                      <div className="flex flex-col items-center">
-                          <Loader2 className="w-10 h-10 animate-spin text-[#27bea5] mb-2" />
-                          <p className="text-slate-500">{loadingMsg}</p>
+                      <div className="flex flex-col items-center justify-center z-20 relative">
+                          {uploadedImage && fileType === 'image' && (
+                              <img src={uploadedImage} alt="Preview" className="absolute inset-0 w-full h-full object-contain opacity-20 blur-sm scale-150" />
+                          )}
+                          <div className="relative z-30 bg-white/80 p-6 rounded-2xl shadow-lg flex flex-col items-center backdrop-blur-sm">
+                              <Loader2 className="w-10 h-10 animate-spin text-[#27bea5] mb-2" />
+                              <p className="text-slate-600 font-bold">{loadingMsg}</p>
+                          </div>
                       </div>
                   ) : (
                       <>
@@ -148,7 +164,7 @@ const ExpenseWizard: React.FC<ExpenseWizardProps> = ({ currentUser, onSave, onCa
       <div className="max-w-4xl mx-auto p-6 bg-white rounded-3xl shadow-lg mt-10">
           <div className="flex items-center gap-4 mb-6">
               <button onClick={() => setStep('UPLOAD')} className="p-2 hover:bg-slate-100 rounded-full"><ArrowLeft className="w-6 h-6" /></button>
-              <h2 className="text-2xl font-bold text-[#1c2938]">Revisar Detalles</h2>
+              <h2 className="text-2xl font-bold text-[#1c2938]">{isEditing ? 'Editar Gasto' : 'Revisar Detalles'}</h2>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -242,7 +258,7 @@ const ExpenseWizard: React.FC<ExpenseWizardProps> = ({ currentUser, onSave, onCa
           <div className="flex justify-end gap-4 mt-8 pt-6 border-t border-slate-100">
               <button onClick={onCancel} className="px-6 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-50">Cancelar</button>
               <button onClick={handleSave} className="bg-[#1c2938] text-white px-8 py-3 rounded-xl font-bold hover:bg-[#27bea5] flex items-center gap-2">
-                  <Check className="w-5 h-5" /> Guardar Gasto
+                  <Check className="w-5 h-5" /> {isEditing ? 'Guardar Cambios' : 'Guardar Gasto'}
               </button>
           </div>
       </div>

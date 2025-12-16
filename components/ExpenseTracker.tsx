@@ -6,7 +6,7 @@ import {
   Calendar, Tag, MoreHorizontal, AlertCircle,
   Lightbulb, ArrowUpRight, ArrowDownRight,
   Receipt, Sparkles, Truck, Package, LayoutGrid, List, Briefcase, Star,
-  Save, CheckCircle2
+  Save, CheckCircle2, Edit2
 } from 'lucide-react';
 import { Invoice, UserProfile } from '../types';
 
@@ -14,8 +14,9 @@ interface ExpenseTrackerProps {
   invoices: Invoice[];
   currencySymbol: string;
   onCreateExpense: () => void;
-  currentProfile?: UserProfile; // New optional prop
-  onUpdateProfile?: (profile: UserProfile) => Promise<void>; // New optional prop
+  onEditExpense?: (expense: Invoice) => void; // Added Prop
+  currentProfile?: UserProfile;
+  onUpdateProfile?: (profile: UserProfile) => Promise<void>;
 }
 
 interface ProviderStats {
@@ -28,7 +29,7 @@ interface ProviderStats {
   isTopPartner: boolean;
 }
 
-const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ invoices, currencySymbol, onCreateExpense, currentProfile, onUpdateProfile }) => {
+const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ invoices, currencySymbol, onCreateExpense, onEditExpense, currentProfile, onUpdateProfile }) => {
   const [calculatorMode, setCalculatorMode] = useState(false);
   const [activeTab, setActiveTab] = useState<'TRANSACTIONS' | 'PROVIDERS'>('TRANSACTIONS');
   
@@ -399,7 +400,7 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ invoices, currencySymbo
               {expensesList.length > 0 ? (
                  <div className="divide-y divide-slate-50">
                     {expensesList.map(expense => (
-                       <div key={expense.id} className="p-6 md:px-8 flex flex-col md:flex-row items-start md:items-center justify-between hover:bg-slate-50 transition-colors group gap-4">
+                       <div key={expense.id} className="p-6 md:px-8 flex flex-col md:flex-row items-start md:items-center justify-between hover:bg-slate-50 transition-colors group gap-4 relative">
                           <div className="flex items-center gap-5">
                              <div className="w-14 h-14 rounded-[1.2rem] bg-rose-50 text-rose-500 flex items-center justify-center group-hover:scale-110 group-hover:shadow-md transition-all duration-300 shadow-sm border border-rose-100">
                                 <Tag className="w-6 h-6" />
@@ -413,13 +414,24 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ invoices, currencySymbo
                                 </div>
                              </div>
                           </div>
-                          <div className="flex items-center gap-6 w-full md:w-auto justify-between md:justify-end">
+                          <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
                              <span className="px-3 py-1 bg-slate-100 text-slate-500 text-[10px] font-bold uppercase tracking-wide rounded-lg">
                                 {expense.status === 'Aceptada' ? 'Pagado' : 'Pendiente'}
                              </span>
                              <p className="font-bold text-[#1c2938] text-xl tracking-tight">
                                 -{currencySymbol} {expense.total.toLocaleString()}
                              </p>
+                             
+                             {/* Edit Button */}
+                             {onEditExpense && (
+                                <button 
+                                  onClick={() => onEditExpense(expense)}
+                                  className="p-2 text-slate-300 hover:text-[#1c2938] hover:bg-slate-200 rounded-full transition-colors md:opacity-0 md:group-hover:opacity-100"
+                                  title="Editar Gasto"
+                                >
+                                   <Edit2 className="w-4 h-4" />
+                                </button>
+                             )}
                           </div>
                        </div>
                     ))}

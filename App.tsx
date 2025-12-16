@@ -444,6 +444,11 @@ const AppContent: React.FC = () => {
     setActiveView(AppView.WIZARD);
   };
 
+  const handleEditExpense = (expense: Invoice) => {
+    setDocumentToEdit(expense);
+    setActiveView(AppView.EXPENSE_WIZARD);
+  };
+
   const handleCreateDocumentForClient = (client: DbClient, type: 'Invoice' | 'Quote') => {
     const templateDoc: Invoice = {
       id: '',
@@ -671,7 +676,8 @@ const AppContent: React.FC = () => {
         <ExpenseTracker 
           invoices={invoices}
           currencySymbol={currentUser.defaultCurrency === 'EUR' ? '€' : '$'}
-          onCreateExpense={() => setActiveView(AppView.EXPENSE_WIZARD)}
+          onCreateExpense={() => { setDocumentToEdit(null); setActiveView(AppView.EXPENSE_WIZARD); }}
+          onEditExpense={handleEditExpense}
           currentProfile={currentUser}
           onUpdateProfile={handleUpdateProfile}
         />
@@ -682,6 +688,7 @@ const AppContent: React.FC = () => {
           currentUser={currentUser}
           onSave={(inv) => { handleSaveInvoice(inv); setActiveView(AppView.EXPENSES); }}
           onCancel={() => setActiveView(AppView.EXPENSES)}
+          initialData={documentToEdit}
         />
       )}
 
