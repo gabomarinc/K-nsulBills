@@ -27,7 +27,8 @@ interface DocumentListProps {
 }
 
 type ViewMode = 'LIST' | 'GALLERY';
-type GalleryStage = 'DRAFT' | 'ALL_ACTIVE' | 'TO_COLLECT' | 'NEGOTIATION' | 'DONE';
+// Consolidated Stage Type for both flows
+type DocStage = 'DRAFT' | 'ALL_ACTIVE' | 'TO_COLLECT' | 'NEGOTIATION' | 'SENT_QUOTES' | 'DONE';
 
 const DocumentList: React.FC<DocumentListProps> = ({ 
   invoices, 
@@ -42,8 +43,11 @@ const DocumentList: React.FC<DocumentListProps> = ({
   currentUser
 }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('GALLERY');
-  const [galleryStage, setGalleryStage] = useState<GalleryStage>('ALL_ACTIVE');
-  const [filterType, setFilterType] = useState<'ALL' | 'INVOICE' | 'QUOTE'>('ALL');
+  
+  // NEW: Master Filter for Document Type
+  const [docTypeFilter, setDocTypeFilter] = useState<'INVOICE' | 'QUOTE'>('INVOICE');
+  
+  const [currentStage, setCurrentStage] = useState<DocStage>('ALL_ACTIVE');
   const [searchTerm, setSearchTerm] = useState('');
   
   // Quick Action Menu State
@@ -56,41 +60,43 @@ const DocumentList: React.FC<DocumentListProps> = ({
   const [aiInsight, setAiInsight] = useState<string | null>(null);
   const [isLoadingInsight, setIsLoadingInsight] = useState(false);
 
+  // Reset stage when switching doc type to avoid empty states
+  useEffect(() => {
+      if (docTypeFilter === 'INVOICE') {
+          setCurrentStage('ALL_ACTIVE');
+      } else {
+          setCurrentStage('SENT_QUOTES'); // Default for quotes
+      }
+  }, [docTypeFilter]);
+
   // --- STATS CALCULATION ---
   const totalPaid = invoices
     .filter(i => i.type === 'Invoice')
     .reduce((acc, curr) => {
-        // Updated Logic: Use amountPaid if available, else total if status is paid
         if (curr.amountPaid && curr.amountPaid > 0) return acc + curr.amountPaid;
         if (curr.status === 'Aceptada' || curr.status === 'Pagada') return acc + curr.total;
         return acc;
     }, 0);
 
-  // Updated Pending Calculation: Sum of outstanding balances
   const totalPending = invoices
     .filter(i => i.type === 'Invoice' && i.status !== 'Borrador' && i.status !== 'Rechazada' && i.status !== 'Incobrable')
     .reduce((acc, curr) => {
-       // If fully paid status, assume 0 pending
        if (curr.status === 'Pagada' || curr.status === 'Aceptada') return acc;
-       
        const paid = curr.amountPaid || 0;
        const pending = Math.max(0, curr.total - paid);
        return acc + pending;
     }, 0);
 
-  // PIPELINE: Active Quotes Only (Sent, Viewed, Negotiation)
-  // Excludes: Drafts, Accepted, Rejected
   const totalPipeline = invoices
     .filter(i => i.type === 'Quote' && (i.status === 'Enviada' || i.status === 'Seguimiento' || i.status === 'Negociacion'))
     .reduce((acc, curr) => acc + curr.total, 0);
 
-  // --- REVENUE TREND LOGIC (Real Math for AI Card) ---
+  // --- REVENUE TREND LOGIC ---
   const revenueTrend = useMemo(() => {
       const now = new Date();
       const currentMonth = now.getMonth();
       const currentYear = now.getFullYear();
       
-      // Calculate previous month correctly (handling January -> December rollback)
       const prevDate = new Date();
       prevDate.setMonth(now.getMonth() - 1);
       const prevMonth = prevDate.getMonth();
@@ -105,8 +111,6 @@ const DocumentList: React.FC<DocumentListProps> = ({
           const invYear = d.getFullYear();
           
           let amount = 0;
-          // Use total invoiced amount for trend (Volume of sales), regardless of collection status
-          // This reflects sales activity better than just cash collection for a "Trend" card
           if (inv.status !== 'Borrador' && inv.status !== 'Rechazada') {
               amount = inv.total;
           }
@@ -122,7 +126,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
       if (prevRevenue > 0) {
           percentageChange = ((currentRevenue - prevRevenue) / prevRevenue) * 100;
       } else if (currentRevenue > 0) {
-          percentageChange = 100; // 100% growth from zero
+          percentageChange = 100; 
       }
 
       return { currentRevenue, prevRevenue, percentageChange };
@@ -132,9 +136,6 @@ const DocumentList: React.FC<DocumentListProps> = ({
   useEffect(() => {
       const fetchInsight = async () => {
           if (!hasAiAccess || invoices.length === 0) return;
-          
-          // Simple cache/debounce: if we already have insight for these exact numbers, don't refetch
-          // (In a real app, use a more robust caching strategy)
           if (aiInsight) return; 
 
           setIsLoadingInsight(true);
@@ -149,54 +150,42 @@ const DocumentList: React.FC<DocumentListProps> = ({
       };
 
       fetchInsight();
-  }, [hasAiAccess, revenueTrend, invoices.length]); // Dependencies to trigger refresh
+  }, [hasAiAccess, revenueTrend, invoices.length]); 
 
-  // --- FISCAL REALITY ENGINE (PANAMA) ---
+  // --- FISCAL REALITY ENGINE ---
   const fiscalReality = useMemo(() => {
     if (!currentUser?.fiscalConfig) return null;
 
     const config = currentUser.fiscalConfig;
     const isJuridica = config.entityType === 'JURIDICA';
     
-    // 1. Calculate Collected Bases from Paid Invoices
     let grossCollected = 0;
     let collectedITBMS = 0;
     
     invoices.forEach(inv => {
         if (inv.type !== 'Invoice') return;
-        
-        // Determine amount actually collected for this invoice
         let collectedAmount = 0;
         if (inv.amountPaid && inv.amountPaid > 0) collectedAmount = inv.amountPaid;
         else if (inv.status === 'Pagada' || inv.status === 'Aceptada') collectedAmount = inv.total;
         
         if (collectedAmount > 0) {
             grossCollected += collectedAmount;
-            
-            // Reverse engineer ITBMS from the collected amount based on invoice items tax average
-            // If items have mixed tax, this is an approximation based on weighted average
             const totalTax = inv.items.reduce((sum, item) => sum + (item.price * item.quantity * (item.tax / 100)), 0);
             const totalBase = inv.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
             const effectiveTaxRate = totalBase > 0 ? totalTax / totalBase : 0;
-            
-            // collectedAmount = base * (1 + rate)  =>  base = collected / (1 + rate)
             const base = collectedAmount / (1 + effectiveTaxRate);
             collectedITBMS += (collectedAmount - base);
         }
     });
 
     const netIncome = grossCollected - collectedITBMS;
-
-    // 2. Estimate ISR (Impuesto Sobre la Renta)
     let estimatedISR = 0;
     let isrRateDisplay = '';
 
     if (isJuridica) {
-        // Simple 25% for Corporations
         estimatedISR = netIncome * 0.25; 
         isrRateDisplay = '25% (Jurídica)';
     } else {
-        // Persona Natural Progressive
         if (netIncome > 50000) {
             estimatedISR = ((netIncome - 50000) * 0.25) + 5850; 
             isrRateDisplay = 'Escalonado 25%';
@@ -209,69 +198,68 @@ const DocumentList: React.FC<DocumentListProps> = ({
         }
     }
 
-    // 3. Final Numbers
     const governmentShare = collectedITBMS + estimatedISR;
     const yourMoney = grossCollected - governmentShare;
 
-    return {
-        grossCollected,
-        collectedITBMS,
-        estimatedISR,
-        yourMoney,
-        isrRateDisplay,
-        governmentShare
-    };
+    return { grossCollected, collectedITBMS, estimatedISR, yourMoney, isrRateDisplay, governmentShare };
   }, [invoices, currentUser?.fiscalConfig]);
 
 
+  // --- FILTERING LOGIC ---
   const filteredDocs = invoices.filter(doc => {
-    // 1. Exclude Expenses from this view (handled in ExpenseTracker)
+    // 1. Exclude Expenses
     if (doc.type === 'Expense') return false;
 
+    // 2. Master Filter: Invoice vs Quote
+    const isInvoice = doc.type === 'Invoice';
+    const isQuote = doc.type === 'Quote';
+
+    if (docTypeFilter === 'INVOICE' && !isInvoice) return false;
+    if (docTypeFilter === 'QUOTE' && !isQuote) return false;
+
+    // 3. Search
     const matchesSearch = doc.clientName.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           doc.id.toLowerCase().includes(searchTerm.toLowerCase());
+    if (!matchesSearch) return false;
     
-    const matchesType = filterType === 'ALL' 
-      ? true 
-      : filterType === 'INVOICE' 
-        ? doc.type === 'Invoice' 
-        : doc.type === 'Quote';
+    // 4. Stage Filtering (Tabs)
+    const isTechnicallyPaid = doc.status === 'Pagada' || doc.status === 'Aceptada' || (doc.type === 'Invoice' && (doc.amountPaid || 0) >= (doc.total - 0.01));
+
+    if (docTypeFilter === 'INVOICE') {
+        if (currentStage === 'DRAFT') return doc.status === 'Borrador' || doc.status === 'PendingSync';
+        if (currentStage === 'ALL_ACTIVE') return (doc.status === 'Enviada' || doc.status === 'Seguimiento') && !isTechnicallyPaid;
+        if (currentStage === 'TO_COLLECT') return (doc.status === 'Enviada' || doc.status === 'Seguimiento' || doc.status === 'Abonada') && !isTechnicallyPaid;
+        if (currentStage === 'DONE') return isTechnicallyPaid || doc.status === 'Incobrable' || doc.status === 'Rechazada';
+    } 
     
-    // Check if fully paid (even if status lags)
-    const isTechnicallyPaid = 
-        doc.status === 'Pagada' || 
-        doc.status === 'Aceptada' || 
-        (doc.type === 'Invoice' && (doc.amountPaid || 0) >= (doc.total - 0.01));
-
-    if (viewMode === 'GALLERY') {
-       if (galleryStage === 'DRAFT') return matchesSearch && (doc.status === 'Borrador' || doc.status === 'PendingSync');
-       
-       if (galleryStage === 'ALL_ACTIVE') {
-           // STRICT: Only explicitly Sent or Viewed.
-           const isActiveStatus = doc.status === 'Enviada' || doc.status === 'Seguimiento';
-           return matchesSearch && isActiveStatus && !isTechnicallyPaid;
-       }
-
-       if (galleryStage === 'TO_COLLECT') {
-           // Only Invoices that are NOT fully paid
-           const isCollectableStatus = doc.status === 'Enviada' || doc.status === 'Seguimiento' || doc.status === 'Abonada';
-           return matchesSearch && doc.type === 'Invoice' && isCollectableStatus && !isTechnicallyPaid;
-       }
-
-       if (galleryStage === 'NEGOTIATION') {
-           // Quotes only - Includes explicit negotiation status + viewed quotes
-           return matchesSearch && doc.type === 'Quote' && (doc.status === 'Negociacion' || doc.status === 'Seguimiento') && !isTechnicallyPaid;
-       }
-
-       if (galleryStage === 'DONE') {
-           // History: Paid, Rejected, Uncollectible, or Technically Paid
-           const isExplicitlyDone = doc.status === 'Aceptada' || doc.status === 'Rechazada' || doc.status === 'Pagada' || doc.status === 'Incobrable';
-           return matchesSearch && (isExplicitlyDone || isTechnicallyPaid);
-       }
+    if (docTypeFilter === 'QUOTE') {
+        if (currentStage === 'DRAFT') return doc.status === 'Borrador' || doc.status === 'PendingSync';
+        if (currentStage === 'SENT_QUOTES') return (doc.status === 'Enviada' || doc.status === 'Seguimiento') && doc.status !== 'Negociacion';
+        if (currentStage === 'NEGOTIATION') return doc.status === 'Negociacion';
+        if (currentStage === 'DONE') return doc.status === 'Aceptada' || doc.status === 'Rechazada';
     }
 
-    return matchesSearch && matchesType;
+    return false;
   });
+
+  // --- TABS CONFIGURATION ---
+  const getTabs = () => {
+      if (docTypeFilter === 'INVOICE') {
+          return [
+              { id: 'DRAFT', label: 'Borradores' },
+              { id: 'ALL_ACTIVE', label: 'En Movimiento' }, // Sent, Viewed
+              { id: 'TO_COLLECT', label: 'Por Cobrar' },   // + Partial
+              { id: 'DONE', label: 'Histórico' }           // Paid, Uncollectible
+          ] as { id: DocStage, label: string }[];
+      } else {
+          return [
+              { id: 'DRAFT', label: 'Borradores' },
+              { id: 'SENT_QUOTES', label: 'Enviadas' }, // Sent, Viewed
+              { id: 'NEGOTIATION', label: 'En Negociación' }, // Explicit Negotiation
+              { id: 'DONE', label: 'Histórico' } // Won/Lost
+          ] as { id: DocStage, label: string }[];
+      }
+  };
 
   const getStatusStyle = (status: string) => {
     switch(status) {
@@ -461,27 +449,15 @@ const DocumentList: React.FC<DocumentListProps> = ({
                     <Clock className="w-8 h-8 text-slate-300" />
                  </div>
                  <h3 className="text-lg font-bold text-[#1c2938]">Nada en esta etapa</h3>
-                 <p className="text-slate-400 text-sm mt-1">Tus documentos aparecerán aquí según su estado.</p>
+                 <p className="text-slate-400 text-sm mt-1">
+                    {docTypeFilter === 'INVOICE' ? 'No hay facturas con este estado.' : 'No hay cotizaciones con este estado.'}
+                 </p>
               </div>
             )}
          </div>
       </div>
     );
   };
-
-  const galleryTabs: { id: GalleryStage; label: string }[] = [
-    { id: 'DRAFT', label: 'Borradores' },
-    { id: 'ALL_ACTIVE', label: 'En Movimiento' },
-    { id: 'TO_COLLECT', label: 'Por Cobrar' },
-    { id: 'NEGOTIATION', label: 'Negociación' }, 
-    { id: 'DONE', label: 'Histórico' },
-  ];
-
-  const listTabs: { id: 'ALL' | 'INVOICE' | 'QUOTE'; label: string }[] = [
-      { id: 'ALL', label: 'Todos' },
-      { id: 'INVOICE', label: 'Facturas' },
-      { id: 'QUOTE', label: 'Cotizaciones' }
-  ];
 
   return (
     <div className="max-w-7xl mx-auto space-y-10 animate-in fade-in pb-12">
@@ -648,50 +624,63 @@ const DocumentList: React.FC<DocumentListProps> = ({
       </div>
 
       {/* UNIFIED FILTERS & SEARCH */}
-      <div className="flex flex-col md:flex-row gap-4 items-center bg-white p-2 rounded-[2rem] border border-slate-50 shadow-sm">
-          {/* TABS SCROLL CONTAINER */}
-          <div className="flex bg-slate-100 p-1.5 rounded-2xl w-full md:w-auto overflow-x-auto custom-scrollbar">
-             {viewMode === 'GALLERY' ? (
-                galleryTabs.map(tab => (
-                   <button
-                     key={tab.id}
-                     onClick={() => setGalleryStage(tab.id)}
-                     className={`flex-1 md:flex-none px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide transition-all whitespace-nowrap ${
-                       galleryStage === tab.id 
-                         ? 'bg-white text-[#1c2938] shadow-sm' 
-                         : 'text-slate-400 hover:text-slate-600'
-                     }`}
-                   >
-                     {tab.label}
-                   </button>
-                ))
-             ) : (
-                listTabs.map(tab => (
-                   <button
-                     key={tab.id}
-                     onClick={() => setFilterType(tab.id as any)}
-                     className={`flex-1 md:flex-none px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide transition-all whitespace-nowrap ${
-                       filterType === tab.id 
-                         ? 'bg-white text-[#1c2938] shadow-sm' 
-                         : 'text-slate-400 hover:text-slate-600'
-                     }`}
-                   >
-                     {tab.label}
-                   </button>
-                ))
-             )}
+      <div className="bg-white p-2 rounded-[2rem] border border-slate-50 shadow-sm flex flex-col gap-2">
+          
+          {/* TOP ROW: DOCUMENT TYPE TOGGLE */}
+          <div className="flex justify-center p-2 border-b border-slate-50 pb-4 mb-2">
+             <div className="bg-slate-100 p-1.5 rounded-full flex gap-2">
+                <button
+                  onClick={() => setDocTypeFilter('INVOICE')}
+                  className={`px-8 py-2.5 rounded-full text-sm font-bold transition-all duration-300 flex items-center gap-2 ${
+                    docTypeFilter === 'INVOICE' 
+                      ? 'bg-white text-[#1c2938] shadow-md' 
+                      : 'text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  <FileText className="w-4 h-4" /> Facturas
+                </button>
+                <button
+                  onClick={() => setDocTypeFilter('QUOTE')}
+                  className={`px-8 py-2.5 rounded-full text-sm font-bold transition-all duration-300 flex items-center gap-2 ${
+                    docTypeFilter === 'QUOTE' 
+                      ? 'bg-white text-[#1c2938] shadow-md' 
+                      : 'text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  <FileBadge className="w-4 h-4" /> Cotizaciones
+                </button>
+             </div>
           </div>
 
-          {/* SEARCH INPUT */}
-          <div className="flex-1 relative group w-full">
-             <Search className="absolute left-4 top-3.5 w-5 h-5 text-slate-400 group-focus-within:text-[#27bea5] transition-colors" />
-             <input 
-               type="text" 
-               placeholder={viewMode === 'GALLERY' ? "Buscar por cliente o ID..." : "Filtrar lista..."} 
-               value={searchTerm} 
-               onChange={(e) => setSearchTerm(e.target.value)} 
-               className="w-full h-full pl-12 pr-6 py-3 bg-transparent border-none rounded-2xl text-sm font-medium text-[#1c2938] focus:bg-slate-50 focus:ring-0 outline-none" 
-             />
+          <div className="flex flex-col md:flex-row gap-4 items-center">
+            {/* TABS SCROLL CONTAINER */}
+            <div className="flex bg-slate-100 p-1.5 rounded-2xl w-full md:w-auto overflow-x-auto custom-scrollbar">
+                {getTabs().map(tab => (
+                    <button
+                        key={tab.id}
+                        onClick={() => setCurrentStage(tab.id)}
+                        className={`flex-1 md:flex-none px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide transition-all whitespace-nowrap ${
+                        currentStage === tab.id 
+                            ? 'bg-white text-[#1c2938] shadow-sm' 
+                            : 'text-slate-400 hover:text-slate-600'
+                        }`}
+                    >
+                        {tab.label}
+                    </button>
+                ))}
+            </div>
+
+            {/* SEARCH INPUT */}
+            <div className="flex-1 relative group w-full">
+                <Search className="absolute left-4 top-3.5 w-5 h-5 text-slate-400 group-focus-within:text-[#27bea5] transition-colors" />
+                <input 
+                type="text" 
+                placeholder={docTypeFilter === 'INVOICE' ? "Buscar facturas..." : "Buscar cotizaciones..."} 
+                value={searchTerm} 
+                onChange={(e) => setSearchTerm(e.target.value)} 
+                className="w-full h-full pl-12 pr-6 py-3 bg-transparent border-none rounded-2xl text-sm font-medium text-[#1c2938] focus:bg-slate-50 focus:ring-0 outline-none" 
+                />
+            </div>
           </div>
       </div>
 
