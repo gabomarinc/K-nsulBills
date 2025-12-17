@@ -3,7 +3,7 @@ import React, { useState, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
-  PieChart, Pie, Cell, AreaChart, Area, ScatterChart, Scatter, LineChart, Line
+  PieChart, Pie, Cell, ScatterChart, Scatter
 } from 'recharts';
 import { 
   Sparkles, TrendingUp, Loader2, 
@@ -66,6 +66,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
   // Deep Dive Report State
   const [deepDiveReport, setDeepDiveReport] = useState<DeepDiveReport | null>(null);
   const [deepDiveVisual, setDeepDiveVisual] = useState<{ type: string, data: any, title: string } | null>(null);
+  const [deepDiveAiData, setDeepDiveAiData] = useState<any>(null); // STORE AGGREGATED DATA FOR AI RETRIES
   const [isDeepDiving, setIsDeepDiving] = useState<string | null>(null); // Holds the Chart ID being analyzed
   const [deepDiveError, setDeepDiveError] = useState(false); // New: Explicit error state for modal
 
@@ -275,11 +276,23 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
             });
         }
 
+        // REAL PAYMENT SPEED CALCULATION
         if (inv.status === 'Pagada' || inv.status === 'Aceptada') {
             const createdEvent = inv.timeline?.find(e => e.type === 'CREATED');
-            const paidEvent = inv.timeline?.find(e => e.type === 'PAID'); 
-            if (createdEvent && paidEvent) { 
-                const days = (new Date(paidEvent.timestamp).getTime() - new Date(createdEvent.timestamp).getTime()) / (1000 * 3600 * 24); 
+            // Try to find the specific payment event or a status change to PAID
+            const paidEvent = inv.timeline?.find(e => 
+                e.type === 'PAID' || 
+                (e.type === 'STATUS_CHANGE' && (e.title.includes('Pagada') || e.title.includes('Aceptada'))) ||
+                e.type === 'APPROVED' // For quotes turned into invoices
+            ); 
+            
+            // Fallback: If no created event (legacy), assume invoice date
+            const startDate = createdEvent ? new Date(createdEvent.timestamp) : new Date(inv.date);
+            
+            if (paidEvent) { 
+                const endDate = new Date(paidEvent.timestamp);
+                const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
+                const days = Math.ceil(diffTime / (1000 * 3600 * 24)); 
                 paymentDaysSum += days; 
                 paidInvoicesCount++; 
             }
@@ -299,6 +312,9 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
     const avgPaymentDays = paidInvoicesCount > 0 ? Math.round(paymentDaysSum / paidInvoicesCount) : 0;
     const netMargin = totalRevenue - totalExpenses;
     const marginPercent = totalRevenue > 0 ? (netMargin / totalRevenue) * 100 : 0;
+    
+    // REAL CONVERSION RATE
+    // Filter strictly for Quotes in the current filtered set
     const quoteDocs = filteredInvoices.filter(i => i.type === 'Quote');
     const totalQuotes = quoteDocs.length;
     const wonQuotes = quoteDocs.filter(i => i.status === 'Aceptada').length;
@@ -470,59 +486,6 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
     }
   };
 
-  const fetchDeepDiveReport = async (chartTitle: string, chartData: any, type: string) => {
-      if (!hasAiAccess) return;
-      setDeepDiveReport(null);
-      setDeepDiveError(false);
-      let context = '';
-      
-      if (type === 'cashflow') {
-          context = `
-            ESTADO DE RESULTADOS (P&L) - ${timeRange}
-            ------------------------------------------
-            INGRESOS TOTALES: ${currencySymbol}${chartData.income.toFixed(2)}
-            DESGLOSE DE GASTOS:
-            ${chartData.breakdown.map((b: any) => `- ${b.category}: ${currencySymbol}${b.amount.toFixed(2)}`).join('\n')}
-            TOTAL GASTOS: ${currencySymbol}${chartData.expenses.toFixed(2)}
-            UTILIDAD NETA: ${currencySymbol}${(chartData.income - chartData.expenses).toFixed(2)}
-            ------------------------------------------
-            INSTRUCCIÓN ESPECIAL PARA IA:
-            Analiza estos gastos categoría por categoría.
-            En 'strategicInsight', identifica qué categoría de gasto es desproporcionada.
-            En 'recommendation', da 3 'Puntos a Mejorar' específicos para reducir esos gastos concretos y una 'Buena Práctica' financiera.
-          `;
-      } else if (type === 'products') {
-          // Use Aggregated Data for Context (not ledger rows)
-          const topProducts = chartData.slice(0, 10).map((p: any) => `- ${p.name}: ${currencySymbol}${p.totalRevenue.toFixed(2)} (${p.count} ventas)`).join('\n');
-          context = `
-            ANÁLISIS DE VENTAS POR PRODUCTO - ${timeRange}
-            ------------------------------------------
-            TOP PRODUCTOS (Ranking por Ingresos):
-            ${topProducts}
-            
-            INSTRUCCIÓN ESPECIAL:
-            Actúa como Gerente Comercial. Analiza el rendimiento del catálogo.
-            En 'strategicInsight', identifica patrones de venta (productos estrella vs productos estancados) y concentración de ingresos (Pareto).
-            En 'recommendation', da 3 'Estrategias Comerciales' específicas (ej. Bundling, Promociones, Ajuste de precios) para maximizar el valor del catálogo.
-          `;
-      } else {
-          let dataForAi = chartData;
-          if (Array.isArray(chartData) && chartData.length > 30) dataForAi = chartData.slice(0, 30);
-          context = `Periodo: ${timeRange}. Datos Reales (Muestra): ${JSON.stringify(dataForAi)}. Contexto KPI: Margen ${data.kpis.marginPercent.toFixed(1)}%, Conversión ${data.kpis.conversionRate.toFixed(1)}%.`;
-      }
-      
-      try {
-          const report = await generateDeepDiveReport(chartTitle, context, apiKey);
-          if (report) setDeepDiveReport(report);
-          else setDeepDiveError(true);
-      } catch (e) {
-          console.error("Deep Dive Error", e);
-          setDeepDiveError(true);
-      } finally {
-          setIsDeepDiving(null);
-      }
-  };
-
   const handleDeepDive = async (chartId: string, chartTitle: string, chartData: any) => {
     setIsDeepDiving(chartId);
     setDeepDiveReport(null);
@@ -578,25 +541,87 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
     }
 
     setDeepDiveVisual(visualData);
+    setDeepDiveAiData(dataForAi); // STORE AGGREGATED DATA FOR RETRIES
+
     if (hasAiAccess) fetchDeepDiveReport(chartTitle, dataForAi, chartId);
     else setIsDeepDiving(null);
   };
 
   const handleRetryDeepDive = () => {
-      if (deepDiveVisual) {
-          // If retrying product report, we need to re-fetch the aggregated data context
-          // However, for simplicity in retry, we might assume context is somewhat available or pass empty
-          // Ideally, we should store the AI context separately in state to support retry
-          // For now, simpler retry logic:
+      // USE deepDiveAiData INSTEAD OF visual.data to prevent schema mismatch on retry
+      if (deepDiveVisual && deepDiveAiData) {
           setIsDeepDiving(deepDiveVisual.type);
-          // Fallback: if we don't have the original chartData, we might send visualData which is suboptimal for products
-          // A robust fix would require storing aiContext in state.
-          // Given the constraint, we will just re-trigger with current visualData if type is simple, 
-          // or fail gracefully. For products, this might fail to produce good results on retry if we don't store the aggregation.
-          // Let's assume the user just closes and re-opens for now to get fresh aggregation.
           setDeepDiveError(false);
           setDeepDiveReport(null);
-          setIsDeepDiving(null); // Force close to re-trigger properly
+          fetchDeepDiveReport(deepDiveVisual.title, deepDiveAiData, deepDiveVisual.type);
+      }
+  };
+
+  const fetchDeepDiveReport = async (chartTitle: string, chartData: any, type: string) => {
+      if (!hasAiAccess) return;
+      setDeepDiveReport(null);
+      setDeepDiveError(false);
+      let context = '';
+      
+      try {
+        if (type === 'cashflow') {
+            context = `
+              ESTADO DE RESULTADOS (P&L) - ${timeRange}
+              ------------------------------------------
+              INGRESOS TOTALES: ${currencySymbol}${(chartData.income || 0).toFixed(2)}
+              DESGLOSE DE GASTOS:
+              ${(chartData.breakdown || []).map((b: any) => `- ${b.category}: ${currencySymbol}${b.amount.toFixed(2)}`).join('\n')}
+              TOTAL GASTOS: ${currencySymbol}${(chartData.expenses || 0).toFixed(2)}
+              UTILIDAD NETA: ${currencySymbol}${(chartData.income - chartData.expenses).toFixed(2)}
+              ------------------------------------------
+              INSTRUCCIÓN ESPECIAL PARA IA:
+              Analiza estos gastos categoría por categoría.
+              En 'strategicInsight', identifica qué categoría de gasto es desproporcionada.
+              En 'recommendation', da 3 'Puntos a Mejorar' específicos para reducir esos gastos concretos y una 'Buena Práctica' financiera.
+            `;
+        } else if (type === 'products') {
+            // SAFETY CHECK: Ensure chartData is array before slice/map
+            if (!Array.isArray(chartData) || chartData.length === 0) {
+                console.warn("Deep Dive: No product data available for AI");
+                setDeepDiveError(true);
+                return;
+            }
+
+            const topProducts = chartData.slice(0, 10).map((p: any) => 
+               `- ${p.name}: ${currencySymbol}${(p.totalRevenue || 0).toFixed(2)} (${p.count || 0} ventas)`
+            ).join('\n');
+
+            context = `
+              ANÁLISIS DE VENTAS POR PRODUCTO - ${timeRange}
+              ------------------------------------------
+              TOP PRODUCTOS (Ranking por Ingresos):
+              ${topProducts}
+              
+              INSTRUCCIÓN ESPECIAL:
+              Actúa como Gerente Comercial. Analiza el rendimiento del catálogo.
+              
+              GENERAR JSON con estos campos obligatorios:
+              1. 'chartTitle': "${chartTitle}"
+              2. 'executiveSummary': Resumen del desempeño del catálogo.
+              3. 'keyMetrics': Genera 3 métricas calculadas del texto anterior (ej. "Producto Top", "Ventas Totales Top 10", "Promedio Venta"). Define 'trend' como 'neutral' si no hay histórico.
+              4. 'strategicInsight': Identifica patrones de venta (Pareto 80/20, concentración).
+              5. 'recommendation': 3 estrategias para optimizar el mix de productos (ej. Bundling, Promociones, Ajuste de precios).
+            `;
+        } else {
+            let dataForAi = chartData;
+            if (Array.isArray(chartData) && chartData.length > 30) dataForAi = chartData.slice(0, 30);
+            context = `Periodo: ${timeRange}. Datos Reales (Muestra): ${JSON.stringify(dataForAi)}. Contexto KPI: Margen ${data.kpis.marginPercent.toFixed(1)}%, Conversión ${data.kpis.conversionRate.toFixed(1)}%.`;
+        }
+      
+        const report = await generateDeepDiveReport(chartTitle, context, apiKey);
+        if (report) setDeepDiveReport(report);
+        else setDeepDiveError(true);
+
+      } catch (e) {
+          console.error("Deep Dive Error", e);
+          setDeepDiveError(true);
+      } finally {
+          setIsDeepDiving(null);
       }
   };
 
@@ -916,7 +941,6 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
 
   const renderDocumentsView = () => (
     <div ref={documentsRef} className="p-4 bg-slate-50/50 rounded-[3rem] -m-4">
-      {/* ... (Existing Documents View Code) ... */}
       <div className="p-4">
         {/* OPERATIONAL KPIs */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
