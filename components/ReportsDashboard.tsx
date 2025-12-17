@@ -320,11 +320,40 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
     const wonQuotes = quoteDocs.filter(i => i.status === 'Aceptada').length;
     const conversionRate = totalQuotes > 0 ? (wonQuotes / totalQuotes) * 100 : 0;
     
+    // --- REAL FUNNEL (CUMULATIVE STAGES) ---
+    // 1. CREATION: Total Documents (All Docs)
+    const totalCreated = filteredInvoices.length;
+
+    // 2. SENT: Docs that are NOT Drafts/Internal (i.e. Sent, Viewed, Paid, etc.)
+    const totalSent = filteredInvoices.filter(i => 
+        i.status !== 'Borrador' && i.status !== 'Creada' && i.status !== 'PendingSync'
+    ).length;
+
+    // 3. INTERACTION: Docs that have been Viewed (Timeline) OR are in Negotiation OR are Closed (Implies viewed)
+    // We assume any status beyond 'Enviada' implies interaction, or explicit timeline event
+    const totalInteraction = filteredInvoices.filter(i => {
+        const isInternal = i.status === 'Borrador' || i.status === 'Creada' || i.status === 'PendingSync';
+        if (isInternal) return false;
+        
+        // Advanced statuses imply interaction
+        if (['Seguimiento', 'Negociacion', 'Aceptada', 'Pagada', 'Abonada', 'Rechazada', 'Incobrable'].includes(i.status)) return true;
+        
+        // Check timeline for OPENED if status is still just 'Enviada'
+        if (i.timeline?.some(e => e.type === 'OPENED')) return true;
+        
+        return false;
+    }).length;
+
+    // 4. CLOSED: Successfully Closed (Paid/Accepted)
+    const totalClosed = filteredInvoices.filter(i => 
+        i.status === 'Aceptada' || i.status === 'Pagada' || (i.status === 'Abonada' && (i.amountPaid || 0) > 0)
+    ).length;
+
     const funnelData = [ 
-        { name: 'Borrador', value: filteredInvoices.filter(i => i.status === 'Borrador').length, fill: '#cbd5e1' }, 
-        { name: 'Enviadas', value: filteredInvoices.filter(i => i.status === 'Enviada').length, fill: '#3b82f6' }, 
-        { name: 'Vistas', value: filteredInvoices.filter(i => i.timeline?.some(e => e.type === 'OPENED')).length, fill: '#a855f7' }, 
-        { name: 'Cobradas', value: filteredInvoices.filter(i => i.status === 'Aceptada' || i.status === 'Pagada' || (i.status === 'Abonada' && (i.amountPaid || 0) > 0)).length, fill: '#27bea5' }, 
+        { name: 'Creación', value: totalCreated, fill: '#cbd5e1' }, 
+        { name: 'Enviadas', value: totalSent, fill: '#3b82f6' }, 
+        { name: 'Seguimiento', value: totalInteraction, fill: '#a855f7' }, 
+        { name: 'Cerradas', value: totalClosed, fill: '#27bea5' }, 
     ];
     
     const scatterData = filteredInvoices.filter(i => i.type === 'Invoice' || i.type === 'Quote').map(i => ({ id: i.id, client: i.clientName, x: i.items.length, y: i.total, z: 1, status: i.status }));
