@@ -232,7 +232,8 @@ export const generateFinancialAnalysis = async (summary: string, keys?: AiKeys):
             type: Type.OBJECT,
             properties: {
                 healthScore: { type: Type.NUMBER },
-                healthStatus: { type: Type.STRING, enum: ['Excellent', 'Good', 'Fair', 'Critical'] },
+                // Use Spanish Enums directly to avoid prompt conflicts
+                healthStatus: { type: Type.STRING, enum: ['Excelente', 'Buena', 'Regular', 'Crítica'] },
                 diagnosis: { type: Type.STRING },
                 actionableTips: { type: Type.ARRAY, items: { type: Type.STRING } },
                 projection: { type: Type.STRING }
@@ -250,7 +251,8 @@ export const generateFinancialAnalysis = async (summary: string, keys?: AiKeys):
             REGLAS DE ANÁLISIS:
             1. Sé crudo y directo en el 'diagnosis'.
             2. En 'actionableTips', da 3 pasos concretos.
-            3. Idioma: Español.`,
+            3. Idioma: Español.
+            4. 'healthStatus' debe ser uno de: 'Excelente', 'Buena', 'Regular', 'Crítica' basado en el 'healthScore'.`,
             config: { responseMimeType: "application/json", responseSchema: schema }
         }));
         
@@ -300,7 +302,8 @@ export const generateDeepDiveReport = async (title: string, context: string, key
             - 'keyMetrics': 3 métricas clave.
             - 'strategicInsight': Análisis de tendencias.
             - 'recommendation': Acción táctica.
-            - Idioma: Español.`,
+            - Idioma: Español (excepto 'trend').
+            - IMPORTANTE: 'trend' debe ser obligatoriamente 'up', 'down' o 'neutral'.`,
             config: { responseMimeType: "application/json", responseSchema: schema }
         }));
         

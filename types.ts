@@ -245,7 +245,7 @@ export interface ChartData {
 // NEW: Structured AI Analysis for Reports
 export interface FinancialAnalysisResult {
   healthScore: number; // 0-100
-  healthStatus: 'Excellent' | 'Good' | 'Fair' | 'Critical';
+  healthStatus: 'Excelente' | 'Buena' | 'Regular' | 'Crítica'; // Updated to Spanish
   diagnosis: string;
   actionableTips: string[];
   projection: string;

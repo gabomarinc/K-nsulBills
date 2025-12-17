@@ -655,24 +655,24 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
            <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-50">
               <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Ingreso Neto</p>
-              <h3 className="text-2xl font-bold text-[#1c2938]">{currencySymbol}{compactNumber(data.kpis.totalRevenue)}</h3>
+              <h3 className="text-2xl font-bold text-[#1c2938]">{currencySymbol}{data.kpis.totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</h3>
               <span className="text-[10px] text-slate-400">Cobrado (Total + Abonos)</span>
            </div>
            <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-50">
               <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Margen Real</p>
-              <h3 className={`text-2xl font-bold ${data.kpis.marginPercent > 20 ? 'text-[#27bea5]' : 'text-amber-500'}`}>
-                 {data.kpis.marginPercent.toFixed(0)}%
+              <h3 className={`text-2xl font-bold ${data.kpis.marginPercent > 0 ? 'text-[#27bea5]' : 'text-red-500'}`}>
+                 {data.kpis.marginPercent.toFixed(1)}%
               </h3>
               <span className="text-[10px] text-slate-400">Rentabilidad</span>
            </div>
            <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-50">
               <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Gastos</p>
-              <h3 className="text-2xl font-bold text-rose-500">-{currencySymbol}{compactNumber(data.kpis.totalExpenses)}</h3>
+              <h3 className="text-2xl font-bold text-rose-500">-{currencySymbol}{data.kpis.totalExpenses.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</h3>
               <span className="text-[10px] text-slate-400">Operativos</span>
            </div>
            <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-50">
               <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Utilidad</p>
-              <h3 className="text-2xl font-bold text-[#1c2938]">{currencySymbol}{compactNumber(data.kpis.netMargin)}</h3>
+              <h3 className="text-2xl font-bold text-[#1c2938]">{currencySymbol}{data.kpis.netMargin.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</h3>
               <span className="text-[10px] text-slate-400">En caja</span>
            </div>
         </div>
