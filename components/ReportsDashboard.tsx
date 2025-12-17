@@ -10,7 +10,7 @@ import {
   BrainCircuit, Activity, Target, Lightbulb,
   X, TrendingDown, Wallet,
   LayoutDashboard, FileBarChart, Users, Filter, Calendar, Download, Mail, Smartphone, CheckCircle2,
-  Clock, AlertTriangle, Trophy, FileText, Lock, ArrowRight, Table, Scale, Landmark, Calculator, PiggyBank, Briefcase, ShieldCheck, AlertCircle, FileWarning, XCircle, RefreshCw, ChevronDown, ChevronRight
+  Clock, AlertTriangle, Trophy, FileText, Lock, ArrowRight, Table, Scale, Landmark, Calculator, PiggyBank, Briefcase, ShieldCheck, AlertCircle, FileWarning, XCircle, RefreshCw, ChevronDown, ChevronRight, Package, Tag
 } from 'lucide-react';
 import { Invoice, FinancialAnalysisResult, DeepDiveReport, UserProfile } from '../types';
 import { generateFinancialAnalysis, generateDeepDiveReport, AI_ERROR_BLOCKED } from '../services/geminiService';
@@ -50,6 +50,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
   const clientsRef = useRef<HTMLDivElement>(null);
   const fiscalRef = useRef<HTMLDivElement>(null); // New Ref
   const deepDiveRef = useRef<HTMLDivElement>(null); 
+  const analysisRef = useRef<HTMLDivElement>(null); // New Ref for specific AI Analysis capture
 
   // Filter State - Default to This Year
   const [timeRange, setTimeRange] = useState<TimeRange>('THIS_YEAR');
@@ -91,19 +92,38 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
       clone.style.top = '0';
       clone.style.left = '-10000px'; 
       clone.style.zIndex = '-9999';
+      // Force white background for PDF readability, even if source is dark theme
       clone.style.backgroundColor = '#FFFFFF'; 
       clone.style.color = '#1c2938'; 
+      
       document.body.appendChild(clone);
-      const canvas = await html2canvas(clone, { scale: 2, useCORS: true, backgroundColor: '#FFFFFF', logging: false, width: clone.clientWidth, height: totalHeight, windowWidth: clone.clientWidth, windowHeight: totalHeight, x: 0, y: 0, ignoreElements: (element) => element.id === 'no-print' });
+      
+      const canvas = await html2canvas(clone, { 
+          scale: 2, 
+          useCORS: true, 
+          backgroundColor: '#FFFFFF', 
+          logging: false, 
+          width: clone.clientWidth, 
+          height: totalHeight, 
+          windowWidth: clone.clientWidth, 
+          windowHeight: totalHeight, 
+          x: 0, 
+          y: 0, 
+          ignoreElements: (element) => element.id === 'no-print' 
+      });
+      
       document.body.removeChild(clone);
+      
       const imgData = canvas.toDataURL('image/png');
       const a4WidthMm = 210; 
       const imgHeightPx = canvas.height;
       const imgWidthPx = canvas.width;
       const pdfWidth = a4WidthMm;
       const pdfHeight = (imgHeightPx * a4WidthMm) / imgWidthPx;
+      
       const pdf = new jsPDF('p', 'mm', [pdfWidth, pdfHeight]);
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      
       return pdf.output('blob');
     } catch (error) { console.error("PDF Generation Error", error); return null; }
   };
@@ -111,12 +131,15 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
   const handleExportPdf = async (ref: React.RefObject<HTMLDivElement>, title: string) => {
     setIsExporting('pdf');
     let targetRef = ref;
+    
+    // Fallback if ref is not explicitly passed or current is null
     if (!targetRef.current) {
         if (activeTab === 'DOCUMENTS') targetRef = documentsRef;
-        if (activeTab === 'CLIENTS') targetRef = clientsRef;
-        if (activeTab === 'OVERVIEW') targetRef = overviewRef;
-        if (activeTab === 'FISCAL') targetRef = fiscalRef;
+        else if (activeTab === 'CLIENTS') targetRef = clientsRef;
+        else if (activeTab === 'FISCAL') targetRef = fiscalRef;
+        else targetRef = overviewRef;
     }
+
     const blob = await generatePdfBlob(targetRef);
     if (blob) {
       const url = window.URL.createObjectURL(blob);
@@ -203,6 +226,8 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
   // --- 2. DATA AGGREGATION & REAL KPIs ---
   const data = useMemo(() => {
     const timelineMap = new Map<string, { ingresos: number, gastos: number, date: Date }>();
+    const productStatsMap = new Map<string, { name: string, totalRevenue: number, count: number }>();
+    
     let totalRevenue = 0; let totalExpenses = 0; let paymentDaysSum = 0; let paidInvoicesCount = 0;
     
     const isDaily = timeRange === 'THIS_MONTH' || (
@@ -236,6 +261,20 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
             totalRevenue += collected;
         }
 
+        // Product Breakdown Logic (Sales by Item)
+        // We consider an item "Sold" if the invoice is not Draft or Rejected
+        if (inv.status !== 'Borrador' && inv.status !== 'Rechazada') {
+            inv.items.forEach(item => {
+                const pKey = item.description.trim();
+                if (!productStatsMap.has(pKey)) {
+                    productStatsMap.set(pKey, { name: pKey, totalRevenue: 0, count: 0 });
+                }
+                const pStat = productStatsMap.get(pKey)!;
+                pStat.totalRevenue += (item.price * item.quantity);
+                pStat.count += item.quantity;
+            });
+        }
+
         if (inv.status === 'Pagada' || inv.status === 'Aceptada') {
             const createdEvent = inv.timeline?.find(e => e.type === 'CREATED');
             const paidEvent = inv.timeline?.find(e => e.type === 'PAID'); 
@@ -252,6 +291,11 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
     });
 
     const monthlyData = Array.from(timelineMap.entries()).map(([name, val]) => ({ name, ingresos: val.ingresos, gastos: val.gastos, _date: val.date })).sort((a, b) => a._date.getTime() - b._date.getTime());
+    
+    // Sort Products by Revenue (Top Sellers)
+    const productSalesData = Array.from(productStatsMap.values())
+        .sort((a, b) => b.totalRevenue - a.totalRevenue);
+
     const avgPaymentDays = paidInvoicesCount > 0 ? Math.round(paymentDaysSum / paidInvoicesCount) : 0;
     const netMargin = totalRevenue - totalExpenses;
     const marginPercent = totalRevenue > 0 ? (netMargin / totalRevenue) * 100 : 0;
@@ -292,7 +336,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
     const activeClientsCount = ltvData.filter(c => c.daysSinceLast <= 90).length;
     const clientActivityData = [ { name: 'Activos (<90d)', value: activeClientsCount, color: '#27bea5' }, { name: 'Riesgo (>90d)', value: churnRiskCount, color: '#ef4444' }, ];
     
-    return { monthlyData, funnelData, scatterData, ltvData, clientActivityData, kpis: { totalRevenue, totalExpenses, netMargin, marginPercent, avgPaymentDays, conversionRate, churnRiskCount, activeClientsCount } };
+    return { monthlyData, productSalesData, funnelData, scatterData, ltvData, clientActivityData, kpis: { totalRevenue, totalExpenses, netMargin, marginPercent, avgPaymentDays, conversionRate, churnRiskCount, activeClientsCount } };
   }, [filteredInvoices, timeRange, customStart, customEnd]);
 
   // --- 3. FISCAL REPORT ENGINE (DGI PANAMA LOGIC) ---
@@ -447,6 +491,21 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
             En 'strategicInsight', identifica qué categoría de gasto es desproporcionada.
             En 'recommendation', da 3 'Puntos a Mejorar' específicos para reducir esos gastos concretos y una 'Buena Práctica' financiera.
           `;
+      } else if (type === 'products') {
+          // Flatten data for context
+          const topProducts = chartData.slice(0, 10).map((p: any) => `${p.description}: $${p.total.toFixed(2)} (${p.quantity} ventas)`).join('\n');
+          context = `
+            DETALLE DE VENTAS POR PRODUCTO - ${timeRange}
+            ------------------------------------------
+            TOP 10 PRODUCTOS/SERVICIOS:
+            ${topProducts}
+            
+            INSTRUCCIÓN ESPECIAL:
+            Analiza el portafolio de productos.
+            - Identifica el Principio de Pareto (80/20) si aplica.
+            - Sugiere estrategias para los productos de bajo rendimiento.
+            - Recomienda si se deben ajustar precios basados en el volumen.
+          `;
       } else {
           let dataForAi = chartData;
           if (Array.isArray(chartData) && chartData.length > 30) dataForAi = chartData.slice(0, 30);
@@ -492,6 +551,28 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
         const expensesArray = Array.from(expenseBreakdown.entries()).map(([category, amount]) => ({ category, amount })).sort((a, b) => b.amount - a.amount);
         const pnlData = { income: totalIncome, expenses: totalExpenses, breakdown: expensesArray };
         visualData = { type: 'cashflow', data: pnlData, title: 'Estado de Resultados (P&L)' };
+    } else if (chartId === 'products') {
+        // Prepare Detailed Ledger for Table View based on PDF request
+        const productLedger: any[] = [];
+        
+        filteredInvoices.filter(i => i.type === 'Invoice' && i.status !== 'Borrador').forEach(inv => {
+            inv.items.forEach(item => {
+                productLedger.push({
+                    date: inv.date,
+                    docType: 'Factura', // Static for invoices
+                    docNumber: inv.id,
+                    client: inv.clientName,
+                    description: item.description,
+                    quantity: item.quantity,
+                    price: item.price,
+                    total: item.price * item.quantity
+                });
+            });
+        });
+        
+        // Sort by Date Descending
+        productLedger.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        visualData = { type: 'products', data: productLedger, title: 'Detalle de ventas por producto/servicio' };
     }
 
     setDeepDiveVisual(visualData);
@@ -584,22 +665,45 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
       }
 
       switch(deepDiveVisual.type) {
-          case 'trends':
+          case 'products':
               return (
                   <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden mb-8 shadow-sm">
-                      <table className="w-full text-left text-sm">
-                          <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-xs">
-                              <tr><th className="p-4">Periodo</th><th className="p-4 text-right">Ingresos</th></tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-50">
-                              {deepDiveVisual.data.map((row: any, i: number) => (
-                                  <tr key={i} className="hover:bg-slate-50/50">
-                                      <td className="p-4 font-bold text-[#1c2938]">{row.name}</td>
-                                      <td className="p-4 text-right text-green-600 font-medium">{currencySymbol}{row.ingresos.toLocaleString()}</td>
+                      <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
+                          <table className="w-full text-left text-sm">
+                              <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-[10px] sticky top-0 z-10 shadow-sm">
+                                  <tr>
+                                      <th className="p-3">Fecha</th>
+                                      <th className="p-3">Doc</th>
+                                      <th className="p-3">Cliente</th>
+                                      <th className="p-3">Descripción / Ítem</th>
+                                      <th className="p-3 text-right">Cant</th>
+                                      <th className="p-3 text-right">Precio</th>
+                                      <th className="p-3 text-right">Importe</th>
                                   </tr>
-                              ))}
-                          </tbody>
-                      </table>
+                              </thead>
+                              <tbody className="divide-y divide-slate-50">
+                                  {deepDiveVisual.data.map((row: any, i: number) => (
+                                      <tr key={i} className="hover:bg-slate-50/50 group">
+                                          <td className="p-3 text-slate-500 whitespace-nowrap">{new Date(row.date).toLocaleDateString()}</td>
+                                          <td className="p-3 text-slate-500 text-xs font-mono">{row.docNumber}</td>
+                                          <td className="p-3 font-bold text-[#1c2938]">{row.client}</td>
+                                          <td className="p-3 text-slate-600 group-hover:text-[#27bea5] transition-colors">{row.description}</td>
+                                          <td className="p-3 text-right text-slate-500">{row.quantity}</td>
+                                          <td className="p-3 text-right text-slate-500">{currencySymbol}{row.price.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                          <td className="p-3 text-right font-bold text-[#1c2938]">{currencySymbol}{row.total.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                      </tr>
+                                  ))}
+                              </tbody>
+                              <tfoot className="bg-slate-50 font-bold text-[#1c2938] sticky bottom-0">
+                                  <tr>
+                                      <td colSpan={6} className="p-3 text-right uppercase text-xs">Total General</td>
+                                      <td className="p-3 text-right text-lg">
+                                          {currencySymbol}{deepDiveVisual.data.reduce((acc: number, curr: any) => acc + curr.total, 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                      </td>
+                                  </tr>
+                              </tfoot>
+                          </table>
+                      </div>
                   </div>
               );
           case 'funnel':
@@ -748,52 +852,47 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
               </div>
             </div>
 
-            {/* Card: Profit Trends */}
+            {/* Card: Sales Details by Product (NEW REPLACEMENT) */}
             <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-slate-50 hover:shadow-md transition-shadow">
               <div className="flex justify-between items-start mb-6">
                   <div>
                     <h3 className="font-bold text-[#1c2938] text-xl flex items-center gap-2">
                       <div className="p-2 bg-slate-50 rounded-xl text-blue-500">
-                        <TrendingUp className="w-5 h-5" />
+                        <Package className="w-5 h-5" />
                       </div>
-                      Evolución de Ingresos
+                      Ventas por Producto
                     </h3>
-                    <p className="text-slate-400 text-sm mt-1 ml-11">Tendencia de crecimiento de tus ingresos cobrados en el tiempo.</p>
+                    <p className="text-slate-400 text-sm mt-1 ml-11">Top productos y servicios generadores de ingresos.</p>
                   </div>
-                  <button id="no-print" onClick={() => handleDeepDive('trends', 'Tendencia de Ingresos', data.monthlyData)} className="p-3 rounded-xl bg-slate-50 hover:text-blue-500 transition-all">
-                    {isDeepDiving === 'trends' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
+                  <button id="no-print" onClick={() => handleDeepDive('products', 'Detalle de Ventas', data.productSalesData)} className="p-3 rounded-xl bg-slate-50 hover:text-blue-500 transition-all" title="Ver Detalle Completo">
+                    {isDeepDiving === 'products' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
                   </button>
               </div>
               <div className="h-72 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={data.monthlyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                      <defs>
-                        <linearGradient id="colorIngresos" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#27bea5" stopOpacity={0.15}/>
-                          <stop offset="95%" stopColor="#27bea5" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                      <XAxis 
-                        dataKey="name" 
-                        axisLine={false} 
-                        tickLine={false} 
-                        fontSize={11} 
-                        stroke="#94a3b8" 
-                        dy={10} 
-                        interval="preserveStartEnd"
-                      />
+                    <BarChart layout="vertical" data={data.productSalesData.slice(0, 5)} margin={{ top: 0, right: 30, left: 20, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
+                      <XAxis type="number" hide />
                       <YAxis 
+                        dataKey="name" 
+                        type="category" 
+                        width={100} 
+                        tick={{fontSize: 10, fontWeight: 600, fill: '#64748b'}} 
                         axisLine={false} 
                         tickLine={false} 
-                        fontSize={11} 
-                        stroke="#94a3b8" 
-                        tickFormatter={compactNumber}
-                        width={40}
+                        tickFormatter={(val) => val.length > 15 ? val.slice(0, 15) + '...' : val}
                       />
-                      <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
-                      <Area type="monotone" dataKey="ingresos" stroke="#27bea5" strokeWidth={3} fillOpacity={1} fill="url(#colorIngresos)" />
-                    </AreaChart>
+                      <Tooltip 
+                        cursor={{fill: 'transparent'}} 
+                        contentStyle={{ borderRadius: '12px', border: 'none' }}
+                        formatter={(value: number) => [`${currencySymbol}${value.toLocaleString()}`, 'Ingresos']}
+                      />
+                      <Bar dataKey="totalRevenue" fill="#3b82f6" radius={[0, 6, 6, 0]} barSize={24} name="Ingresos">
+                        {data.productSalesData.slice(0, 5).map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={index === 0 ? '#27bea5' : '#3b82f6'} />
+                        ))}
+                      </Bar>
+                    </BarChart>
                   </ResponsiveContainer>
               </div>
             </div>
@@ -1318,7 +1417,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
 
             {/* ANALYZED STATE */}
             {analysis && (
-               <div className="animate-in fade-in slide-in-from-bottom-4">
+               <div ref={analysisRef} className="animate-in fade-in slide-in-from-bottom-4">
                   <div className="flex justify-between items-start mb-8 border-b border-white/10 pb-6">
                      <div>
                         <div className="flex items-center gap-3 mb-2">
@@ -1374,30 +1473,15 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                      </div>
                   </div>
 
-                  {/* ACTION BUTTONS (Revealed on Generation) */}
+                  {/* ACTION BUTTONS (Updated: PDF only, targeting analysisRef) */}
                   <div className="flex flex-wrap gap-4 pt-4 border-t border-white/10">
                      <button 
-                        onClick={() => handleExportPdf(overviewRef, 'Reporte_CFO_IA')}
+                        onClick={() => handleExportPdf(analysisRef, 'Reporte_CFO_IA')}
                         disabled={!!isExporting}
                         className="bg-white text-[#1c2938] px-6 py-3 rounded-xl font-bold hover:bg-[#27bea5] hover:text-white transition-all flex items-center gap-2 shadow-lg disabled:opacity-50"
                      >
                         {isExporting === 'pdf' ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
                         Descargar Reporte PDF
-                     </button>
-                     <button 
-                        onClick={() => handleSendEmail(overviewRef, `Reporte CFO ${new Date().toLocaleDateString()}`)}
-                        disabled={emailStatus === 'SENDING'}
-                        className="bg-white/10 text-white px-6 py-3 rounded-xl font-bold hover:bg-white/20 transition-all flex items-center gap-2 border border-white/10 disabled:opacity-50"
-                     >
-                        {emailStatus === 'SENDING' ? <Loader2 className="w-5 h-5 animate-spin" /> : <Mail className="w-5 h-5" />}
-                        Enviar por Email
-                     </button>
-                     <button 
-                        onClick={() => handleShareWhatsapp(`CFO Diagnosis: ${analysis.diagnosis}`)}
-                        className="bg-[#25D366] text-white px-6 py-3 rounded-xl font-bold hover:bg-[#20bd5a] transition-all flex items-center gap-2 shadow-lg"
-                     >
-                        <Smartphone className="w-5 h-5" />
-                        WhatsApp
                      </button>
                   </div>
                </div>
