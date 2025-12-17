@@ -366,35 +366,56 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
     setIsAnalyzing(true);
     setAiError(null);
     
+    // 1. Gather all necessary context from User Profile & Cost Simulator
     const { kpis, monthlyData, ltvData } = data;
     const trendString = monthlyData.map(m => `${m.name}: Ingreso $${m.ingresos.toFixed(0)}, Gasto $${m.gastos.toFixed(0)}`).join(' | ');
-    const fiscalContext = currentUser?.fiscalConfig ? `Entidad: ${currentUser.fiscalConfig.entityType}, Ingreso Anual Est.: $${currentUser.fiscalConfig.annualRevenue}, Régimen: ${currentUser.fiscalConfig.specialRegime}` : 'Perfil Fiscal no configurado (Asumir General)';
+    
+    // Fiscal Profile
+    const fiscalConfig = currentUser?.fiscalConfig;
+    const entityType = fiscalConfig?.entityType === 'JURIDICA' ? 'Sociedad Anónima (Jurídica)' : 'Persona Natural (Profesional)';
+    const regime = fiscalConfig?.specialRegime || 'General';
+    const annualProj = fiscalConfig?.annualRevenue || 0;
 
+    // Cost Simulator / Targets
+    const targets = currentUser?.hourlyRateConfig || { targetIncome: 0, monthlyCosts: 0 };
+    const monthlyTarget = targets.targetIncome || 0;
+    const fixedCosts = targets.monthlyCosts || 0;
+
+    // Construct a rich narrative prompt
     const summary = `
-      PERFIL DEL NEGOCIO:
-      Nombre: ${currentUser?.name || 'Usuario'}
-      Tipo: ${currentUser?.type || 'N/A'}
-      ${fiscalContext}
-      País: ${currentUser?.country || 'Panamá'}
+      PERFIL EMPRESARIAL:
+      - Entidad: ${entityType}
+      - Régimen: ${regime}
+      - País: ${currentUser?.country || 'Panamá'}
+      - Proyección Anual: $${annualProj.toLocaleString()}
 
-      RESULTADOS (${timeRange}):
-      - Facturación Total: ${currencySymbol}${kpis.totalRevenue.toFixed(2)}
+      METAS DEFINIDAS (SIMULADOR):
+      - Meta de Facturación Mensual: $${monthlyTarget.toLocaleString()}
+      - Costos Fijos Operativos: $${fixedCosts.toLocaleString()}
+
+      RESULTADOS REALES (${timeRange}):
+      - Facturación Cobrada: ${currencySymbol}${kpis.totalRevenue.toFixed(2)}
       - Gastos Totales: ${currencySymbol}${kpis.totalExpenses.toFixed(2)}
-      - Margen Neto: ${kpis.marginPercent.toFixed(1)}% (${kpis.netMargin > 0 ? 'Positivo' : 'Negativo'})
-      - Ciclo de Cobro (DSO): ${kpis.avgPaymentDays} días
+      - Margen Neto Real: ${kpis.marginPercent.toFixed(1)}%
+      - Utilidad Neta: ${currencySymbol}${kpis.netMargin.toFixed(2)}
       
-      CLIENTES:
-      - Activos: ${kpis.activeClientsCount}
-      - En Riesgo: ${kpis.churnRiskCount}
+      COMPARATIVA OBJETIVOS:
+      - Desviación Ingresos: ${monthlyTarget > 0 ? (((kpis.totalRevenue - monthlyTarget) / monthlyTarget) * 100).toFixed(1) : 0}% vs Meta
+      - Cobertura Costos Fijos: ${kpis.totalRevenue >= fixedCosts ? 'Cubiertos' : 'NO CUBIERTOS'}
+
+      CLIENTES Y SALUD:
+      - Ciclo de Cobro (DSO): ${kpis.avgPaymentDays} días
+      - Clientes Activos: ${kpis.activeClientsCount}
+      - Clientes en Riesgo: ${kpis.churnRiskCount}
       - Top Cliente: ${ltvData[0]?.name || 'N/A'} ($${ltvData[0]?.revenue || 0})
 
-      TENDENCIA MENSUAL:
+      TENDENCIA HISTÓRICA:
       ${trendString}
     `;
     
     try {
         const result = await generateFinancialAnalysis(summary, apiKey);
-        if (!result) throw new Error("Respuesta vacía o inválida de la IA");
+        if (!result) throw new Error("La IA no pudo procesar los datos. Intenta nuevamente.");
         setAnalysis(result);
     } catch (e: any) {
         console.error(e);

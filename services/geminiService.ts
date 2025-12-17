@@ -232,8 +232,8 @@ export const generateFinancialAnalysis = async (summary: string, keys?: AiKeys):
             type: Type.OBJECT,
             properties: {
                 healthScore: { type: Type.NUMBER },
-                // Use Spanish Enums directly to avoid prompt conflicts
-                healthStatus: { type: Type.STRING, enum: ['Excelente', 'Buena', 'Regular', 'Crítica'] },
+                // Use standard string to avoid validation strictness, prompt will enforce values
+                healthStatus: { type: Type.STRING },
                 diagnosis: { type: Type.STRING },
                 actionableTips: { type: Type.ARRAY, items: { type: Type.STRING } },
                 projection: { type: Type.STRING }
@@ -242,22 +242,34 @@ export const generateFinancialAnalysis = async (summary: string, keys?: AiKeys):
         };
         const response: GenerateContentResponse = await withTimeout(ai.models.generateContent({
             model: GEMINI_MODEL_ID,
-            contents: `Eres un CFO Virtual experto para PYMES en Panamá.
-            Analiza los siguientes datos financieros de la empresa y genera un reporte diagnóstico.
+            contents: `Eres un Auditor Financiero Senior (CFO Virtual) para negocios en Panamá.
+            Tu misión es analizar la salud financiera comparando los RESULTADOS REALES contra las METAS DEFINIDAS por el usuario.
             
-            DATOS:
+            DATOS DE LA EMPRESA:
             ${summary}
             
-            REGLAS DE ANÁLISIS:
-            1. Sé crudo y directo en el 'diagnosis'.
-            2. En 'actionableTips', da 3 pasos concretos.
-            3. Idioma: Español.
-            4. 'healthStatus' debe ser uno de: 'Excelente', 'Buena', 'Regular', 'Crítica' basado en el 'healthScore'.`,
+            INSTRUCCIONES CRÍTICAS:
+            1. Compara explícitamente lo facturado contra la "Meta Mensual Definida". Si está por debajo, sé severo.
+            2. Revisa si los "Gastos Totales" superan a los "Costos Fijos".
+            3. Ajusta el tono según si es "Persona Natural" (más personal) o "Sociedad" (más corporativo).
+            4. 'healthStatus' DEBE ser exactamente una de estas palabras: 'Excelente', 'Buena', 'Regular', 'Crítica'.
+            5. 'healthScore' es un número de 0 a 100 basado en el cumplimiento de metas.
+            6. 'projection': Una predicción corta basada en la tendencia actual.
+            
+            Responde SOLO en JSON válido.`,
             config: { responseMimeType: "application/json", responseSchema: schema }
         }));
         
         const cleaned = cleanJson(response.text || "{}");
-        return JSON.parse(cleaned);
+        const result = JSON.parse(cleaned);
+        
+        // Safety Fallback for Enums
+        const validStatuses = ['Excelente', 'Buena', 'Regular', 'Crítica'];
+        if (!validStatuses.includes(result.healthStatus)) {
+            result.healthStatus = 'Regular'; 
+        }
+        
+        return result;
     } catch (e) { 
         console.error("Analysis Error:", e);
         if ((e as Error).message === AI_ERROR_BLOCKED) throw e;
