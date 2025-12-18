@@ -1,12 +1,12 @@
 
 import React, { useState } from 'react';
-import { 
-  LayoutDashboard, 
-  FileText, 
-  Settings, 
+import {
+  LayoutDashboard,
+  FileText,
+  Settings,
   Building2,
   Briefcase,
-  PieChart, 
+  PieChart,
   ShoppingBag,
   Users,
   TrendingDown,
@@ -14,6 +14,7 @@ import {
   LogOut
 } from 'lucide-react';
 import { AppView, ProfileType, UserProfile } from '../types';
+import SupportWidget from './SupportWidget';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -27,10 +28,10 @@ interface LayoutProps {
   onLogout?: () => void; // New Prop
 }
 
-const Layout: React.FC<LayoutProps> = ({ 
-  children, 
-  activeView, 
-  onNavigate, 
+const Layout: React.FC<LayoutProps> = ({
+  children,
+  activeView,
+  onNavigate,
   currentProfile,
   onSwitchProfile,
   isOffline,
@@ -43,7 +44,7 @@ const Layout: React.FC<LayoutProps> = ({
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex">
       {/* Sidebar */}
-      <aside 
+      <aside
         className={`${isCollapsed ? 'w-20' : 'w-64'} bg-white border-r border-slate-100 flex-shrink-0 flex flex-col transition-all duration-300 relative group/sidebar h-screen sticky top-0 z-40`}
       >
         {/* Toggle Button */}
@@ -70,67 +71,67 @@ const Layout: React.FC<LayoutProps> = ({
         {/* Brand Header */}
         <div className={`p-6 flex items-center ${isCollapsed ? 'justify-center' : 'justify-start'} h-24 overflow-hidden`}>
           {isCollapsed ? (
-             <img 
-               src="https://konsul.digital/wp-content/uploads/2025/07/cropped-3.png" 
-               alt="Kônsul Icon" 
-               className="w-10 h-10 object-contain transition-all duration-300 animate-in fade-in"
-             />
+            <img
+              src="https://konsul.digital/wp-content/uploads/2025/07/cropped-3.png"
+              alt="Kônsul Icon"
+              className="w-10 h-10 object-contain transition-all duration-300 animate-in fade-in"
+            />
           ) : (
-             <img 
-               src="https://konsul.digital/wp-content/uploads/2025/11/1-min-e1762361628509.avif" 
-               alt="Kônsul" 
-               className="h-8 object-contain transition-all duration-300 animate-in slide-in-from-left-2"
-             />
+            <img
+              src="https://konsul.digital/wp-content/uploads/2025/11/1-min-e1762361628509.avif"
+              alt="Kônsul"
+              className="h-8 object-contain transition-all duration-300 animate-in slide-in-from-left-2"
+            />
           )}
         </div>
 
         {/* Navigation */}
         <nav className="flex-1 px-3 space-y-2 mt-4 overflow-y-auto custom-scrollbar">
-          <NavItem 
-            icon={<LayoutDashboard size={24} />} 
-            label="Inicio" 
+          <NavItem
+            icon={<LayoutDashboard size={24} />}
+            label="Inicio"
             isActive={activeView === AppView.DASHBOARD || activeView === AppView.WIZARD}
             isCollapsed={isCollapsed}
             onClick={() => onNavigate(AppView.DASHBOARD)}
           />
-          <NavItem 
-            icon={<FileText size={24} />} 
-            label="Documentos" 
+          <NavItem
+            icon={<FileText size={24} />}
+            label="Documentos"
             isActive={activeView === AppView.INVOICES || activeView === AppView.INVOICE_DETAIL}
             isCollapsed={isCollapsed}
             onClick={() => onNavigate(AppView.INVOICES)}
           />
-          <NavItem 
-            icon={<Users size={24} />} 
-            label="Clientes" 
+          <NavItem
+            icon={<Users size={24} />}
+            label="Clientes"
             isActive={activeView === AppView.CLIENTS}
             isCollapsed={isCollapsed}
             onClick={() => onNavigate(AppView.CLIENTS)}
           />
-          <NavItem 
-            icon={<TrendingDown size={24} />} 
-            label="Gastos" 
+          <NavItem
+            icon={<TrendingDown size={24} />}
+            label="Gastos"
             isActive={activeView === AppView.EXPENSES}
             isCollapsed={isCollapsed}
             onClick={() => onNavigate(AppView.EXPENSES)}
           />
-          <NavItem 
-            icon={<ShoppingBag size={24} />} 
-            label="Catálogo" 
+          <NavItem
+            icon={<ShoppingBag size={24} />}
+            label="Catálogo"
             isActive={activeView === AppView.CATALOG}
             isCollapsed={isCollapsed}
             onClick={() => onNavigate(AppView.CATALOG)}
           />
-          <NavItem 
-            icon={<PieChart size={24} />} 
-            label="Reportes" 
+          <NavItem
+            icon={<PieChart size={24} />}
+            label="Reportes"
             isActive={activeView === AppView.REPORTS}
             isCollapsed={isCollapsed}
             onClick={() => onNavigate(AppView.REPORTS)}
           />
-          <NavItem 
-            icon={<Settings size={24} />} 
-            label="Ajustes" 
+          <NavItem
+            icon={<Settings size={24} />}
+            label="Ajustes"
             isActive={activeView === AppView.SETTINGS}
             isCollapsed={isCollapsed}
             onClick={() => onNavigate(AppView.SETTINGS)}
@@ -139,10 +140,10 @@ const Layout: React.FC<LayoutProps> = ({
 
         {/* Profile & Footer */}
         <div className="p-4 border-t border-slate-50 space-y-3">
-          
+
           <div className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-start'} gap-3 p-2 rounded-xl border border-slate-100 bg-slate-50/50`}>
             <div className="w-9 h-9 rounded-full bg-white text-slate-500 flex items-center justify-center flex-shrink-0 shadow-sm">
-              {currentProfile.type === ProfileType.COMPANY ? <Building2 size={16}/> : <Briefcase size={16} />}
+              {currentProfile.type === ProfileType.COMPANY ? <Building2 size={16} /> : <Briefcase size={16} />}
             </div>
             {!isCollapsed && (
               <div className="text-left min-w-0 flex-1 animate-in fade-in">
@@ -154,7 +155,7 @@ const Layout: React.FC<LayoutProps> = ({
 
           {/* LOGOUT BUTTON */}
           {onLogout && (
-            <button 
+            <button
               onClick={onLogout}
               className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-start'} gap-3 p-3 rounded-xl text-rose-500 hover:bg-rose-50 transition-colors`}
               title="Cerrar Sesión"
@@ -172,24 +173,26 @@ const Layout: React.FC<LayoutProps> = ({
           {children}
         </div>
       </main>
+
+      {/* SUPPORT CHATBOT */}
+      <SupportWidget apiKeys={currentProfile.apiKeys} />
     </div>
   );
 };
 
-const NavItem: React.FC<{ 
-  icon: React.ReactNode, 
-  label: string, 
-  isActive: boolean, 
+const NavItem: React.FC<{
+  icon: React.ReactNode,
+  label: string,
+  isActive: boolean,
   isCollapsed: boolean,
-  onClick: () => void 
+  onClick: () => void
 }> = ({ icon, label, isActive, isCollapsed, onClick }) => (
-  <button 
+  <button
     onClick={onClick}
-    className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-start'} gap-4 px-4 py-3.5 rounded-2xl transition-all duration-200 group relative ${
-      isActive 
-      ? 'bg-[#27bea5]/10 text-[#27bea5] font-bold' 
+    className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-start'} gap-4 px-4 py-3.5 rounded-2xl transition-all duration-200 group relative ${isActive
+      ? 'bg-[#27bea5]/10 text-[#27bea5] font-bold'
       : 'text-slate-400 hover:text-[#27bea5] hover:bg-[#27bea5]/5'
-    }`}
+      }`}
     title={isCollapsed ? label : undefined}
   >
     <div className={`transition-transform duration-200 ${isActive ? 'scale-110' : 'group-hover:scale-110'}`}>
