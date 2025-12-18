@@ -342,18 +342,18 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
     const fIncobrables = invoiceDocs.filter(i => i.status === 'Incobrable').length;
 
     const funnelData = [
-      { name: 'Enviadas', value: fEnviadas, fill: '#3b82f6' },
-      { name: 'Seguimiento', value: fSeguimiento, fill: '#a855f7' },
-      { name: 'Abonadas', value: fAbonadas, fill: '#6366f1' },
-      { name: 'Pagadas', value: fPagadas, fill: '#27bea5' },
-      { name: 'Incobrables', value: fIncobrables, fill: '#ef4444' },
+      { name: `Enviadas (${fEnviadas})`, value: fEnviadas, fill: '#3b82f6' },
+      { name: `Seguimiento (${fSeguimiento})`, value: fSeguimiento, fill: '#a855f7' },
+      { name: `Abonadas (${fAbonadas})`, value: fAbonadas, fill: '#6366f1' },
+      { name: `Pagadas (${fPagadas})`, value: fPagadas, fill: '#27bea5' },
+      { name: `Incobrables (${fIncobrables})`, value: fIncobrables, fill: '#ef4444' },
     ];
 
     const quoteFunnelData = [
-      { name: 'Enviadas', value: quoteDocs.filter(i => i.status === 'Enviada').length, fill: '#3b82f6' },
-      { name: 'Negociacion', value: quoteDocs.filter(i => i.status === 'Negociacion').length, fill: '#8b5cf6' },
-      { name: 'Aceptadas', value: quoteDocs.filter(i => i.status === 'Aceptada').length, fill: '#27bea5' },
-      { name: 'Rechazadas', value: quoteDocs.filter(i => i.status === 'Rechazada').length, fill: '#ef4444' },
+      { name: `Enviadas (${quoteDocs.filter(i => i.status === 'Enviada').length})`, value: quoteDocs.filter(i => i.status === 'Enviada').length, fill: '#3b82f6' },
+      { name: `Negociacion (${quoteDocs.filter(i => i.status === 'Negociacion').length})`, value: quoteDocs.filter(i => i.status === 'Negociacion').length, fill: '#8b5cf6' },
+      { name: `Aceptadas (${quoteDocs.filter(i => i.status === 'Aceptada').length})`, value: quoteDocs.filter(i => i.status === 'Aceptada').length, fill: '#27bea5' },
+      { name: `Rechazadas (${quoteDocs.filter(i => i.status === 'Rechazada').length})`, value: quoteDocs.filter(i => i.status === 'Rechazada').length, fill: '#ef4444' },
     ];
 
     const scatterData = filteredInvoices.filter(i => i.type === 'Invoice' || i.type === 'Quote').map(i => ({ id: i.id, client: i.clientName, x: i.items.length, y: i.total, z: 1, status: i.status }));
