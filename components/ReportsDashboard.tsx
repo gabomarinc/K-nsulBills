@@ -617,6 +617,20 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
 
       visualData = { type: 'retention', data: healthLedger, title: 'Detalle de Cartera Pendiente' };
       dataForAi = chartData;
+    } else if (chartId === 'quotes') {
+      const quoteLedger = filteredInvoices
+        .filter(i => i.type === 'Quote')
+        .map(i => ({
+          id: i.id,
+          date: i.date,
+          client: i.clientName,
+          total: i.total,
+          status: i.status
+        }))
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      visualData = { type: 'quotes', data: quoteLedger, title: 'Detalle de Cotizaciones' };
+      dataForAi = chartData;
     }
 
     setDeepDiveVisual(visualData);
@@ -703,6 +717,25 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
               3. 'keyMetrics': 3 métricas relevantes (ej. "% Morosidad", "Docs Pendientes", "Impacto Estimado").
               4. 'strategicInsight': Identifica el riesgo principal de tener facturas vencidas.
               5. 'recommendation': 3 acciones para acelerar el recaudo y mejorar la salud de la cartera.
+            `;
+      } else if (type === 'quotes') {
+        context = `
+              ANÁLISIS DE EMBUDO DE COTIZACIONES - ${timeRange}
+              ------------------------------------------
+              MÉTRICAS DEL EMBUDO:
+              ${chartData.map((d: any) => `- ${d.name}: ${d.value}`).join('\n')}
+              TASA DE CONVERSIÓN: ${data.kpis.conversionRate.toFixed(1)}%
+              
+              INSTRUCCIÓN ESPECIAL PARA IA:
+              Actúa como Director Comercial. Analiza la efectividad del proceso de ventas.
+              Identifica cuellos de botella entre cotizaciones enviadas y aceptadas.
+              
+              GENERAR JSON con estos campos obligatorios:
+              1. 'chartTitle': "${chartTitle}"
+              2. 'executiveSummary': Resumen del flujo comercial.
+              3. 'keyMetrics': 3 métricas de rendimiento (ej. "Hit Rate", "Ciclo de Cierre", "Valor en Pipeline").
+              4. 'strategicInsight': Identifica por qué se ganan o pierden cotizaciones.
+              5. 'recommendation': 3 acciones para aumentar la tasa de cierre y mejorar el seguimiento.
             `;
       } else {
         let dataForAi = chartData;
@@ -939,6 +972,42 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
             </div>
           </div>
         );
+      case 'quotes':
+        return (
+          <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden mb-8 shadow-sm">
+            <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-[10px] sticky top-0 z-10 shadow-sm">
+                  <tr>
+                    <th className="p-3">ID</th>
+                    <th className="p-3">Fecha</th>
+                    <th className="p-3">Cliente</th>
+                    <th className="p-3 text-right">Monto</th>
+                    <th className="p-3 text-center">Estado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {deepDiveVisual.data.map((row: any, i: number) => (
+                    <tr key={i} className="hover:bg-slate-50/50 group">
+                      <td className="p-3 text-slate-500 text-xs font-mono">{row.id}</td>
+                      <td className="p-3 text-slate-500 text-xs">{new Date(row.date).toLocaleDateString()}</td>
+                      <td className="p-3 font-bold text-[#1c2938]">{row.client}</td>
+                      <td className="p-3 text-right font-medium">{currencySymbol}{row.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                      <td className="p-3 text-center">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${row.status === 'Aceptada' ? 'bg-emerald-50 text-emerald-600' :
+                          row.status === 'Rechazada' ? 'bg-red-50 text-red-600' :
+                            'bg-blue-50 text-blue-600'
+                          }`}>
+                          {row.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
       default:
         return null;
     }
@@ -1140,42 +1209,42 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
             </div>
           </div>
 
-          {/* Scatter Plot */}
+          {/* Quote Funnel Chart */}
           <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-slate-50 hover:shadow-md transition-shadow">
             <div className="flex justify-between items-start mb-6">
               <div>
                 <h3 className="font-bold text-[#1c2938] text-xl flex items-center gap-2">
                   <div className="p-2 bg-slate-50 rounded-xl text-rose-500">
-                    <Activity className="w-5 h-5" />
+                    <Filter className="w-5 h-5" />
                   </div>
-                  Distribución de Valor
+                  Embudo de Cotizaciones
                 </h3>
-                <p className="text-slate-400 text-sm mt-1 ml-11">Relación entre la cantidad de ítems y el monto total por factura.</p>
+                <p className="text-slate-400 text-sm mt-1 ml-11">Progreso comercial desde el envío hasta la aceptación o rechazo.</p>
               </div>
-              <button id="no-print" onClick={() => handleDeepDive('scatter', 'Distribución de Valor', data.scatterData)} className="p-3 rounded-xl bg-slate-50 hover:text-rose-500 transition-all">
-                {isDeepDiving === 'scatter' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
+              <button id="no-print" onClick={() => handleDeepDive('quotes', 'Embudo de Cotizaciones', data.quoteFunnelData)} className="p-3 rounded-xl bg-slate-50 hover:text-rose-500 transition-all">
+                {isDeepDiving === 'quotes' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
               </button>
             </div>
             <div className="h-72 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis type="number" dataKey="x" name="Ítems" unit="" tick={{ fontSize: 11 }} />
+                <BarChart data={data.quoteFunnelData} layout="vertical" margin={{ left: 0, right: 10 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
+                  <XAxis type="number" hide />
                   <YAxis
-                    type="number"
-                    dataKey="y"
-                    name="Monto"
-                    tick={{ fontSize: 11 }}
-                    tickFormatter={compactNumber}
-                    width={40}
+                    dataKey="name"
+                    type="category"
+                    width={100}
+                    tick={{ fontSize: 11, fontWeight: 600, fill: '#64748b' }}
+                    axisLine={false}
+                    tickLine={false}
                   />
-                  <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ borderRadius: '12px', border: 'none' }} />
-                  <Scatter name="Documentos" data={data.scatterData} fill="#8884d8">
-                    {data.scatterData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.status === 'Aceptada' || entry.status === 'Pagada' ? '#27bea5' : '#94a3b8'} />
+                  <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '12px', border: 'none' }} />
+                  <Bar dataKey="value" radius={[0, 8, 8, 0]} barSize={40}>
+                    {data.quoteFunnelData.map((entry: any, index: number) => (
+                      <Cell key={`cell-${index}`} fill={entry.fill} />
                     ))}
-                  </Scatter>
-                </ScatterChart>
+                  </Bar>
+                </BarChart>
               </ResponsiveContainer>
             </div>
           </div>
