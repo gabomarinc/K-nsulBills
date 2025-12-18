@@ -543,38 +543,6 @@ const AppContent: React.FC = () => {
     return <OnboardingWizard onComplete={handleOnboardingComplete} />;
   }
 
-  // --- FINANCIAL CONTEXT FOR BILL BOT ---
-  const financialContext = React.useMemo(() => {
-    return "";
-    // Logic disabled for stability
-
-
-    const now = new Date();
-    const currentMonth = now.getMonth();
-
-    // Revenue logic
-    const totalRevenue = invoices
-      .filter(i => i.type === 'Invoice' && (i.status === 'Pagada' || i.status === 'Abonada'))
-      .reduce((sum, i) => sum + i.total, 0);
-
-    const pendingInvoices = invoices.filter(i => i.type === 'Invoice' && (i.status === 'Enviada' || i.status === 'Seguimiento' || i.status === 'Abonada'));
-    const pendingAmount = pendingInvoices.reduce((sum, i) => sum + (i.total - (i.amountPaid || 0)), 0);
-
-    // Monthly
-    const thisMonthRevenue = invoices
-      .filter(i => i.type === 'Invoice' && i.status === 'Pagada' && new Date(i.date).getMonth() === currentMonth)
-      .reduce((sum, i) => sum + i.total, 0);
-
-    return `
-      Resumen Financiero Actual:
-      - Total Histórico Cobrado: $${totalRevenue.toFixed(2)}
-      - Cobrado este Mes: $${thisMonthRevenue.toFixed(2)}
-      - Pendiente de Cobro: $${pendingAmount.toFixed(2)} (${pendingInvoices.length} facturas)
-      - Total Clientes: ${dbClients.length}
-      - Moneda: ${currentUser.defaultCurrency || 'USD'}
-    `;
-  }, [invoices, currentUser, dbClients]);
-
   return (
     <Layout
       activeView={activeView}

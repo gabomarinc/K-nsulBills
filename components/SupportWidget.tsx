@@ -86,10 +86,10 @@ const SupportWidget: React.FC<SupportWidgetProps> = ({ apiKeys }) => {
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[85%] rounded-2xl px-4 py-2 text-sm ${msg.sender === 'user'
-                  ? 'bg-[#27bea5] text-white rounded-tr-none'
-                  : msg.sender === 'system'
-                    ? 'bg-red-100 text-red-800 border border-red-200 text-center w-full'
-                    : 'bg-white text-slate-800 border border-slate-200 shadow-sm rounded-tl-none'
+                    ? 'bg-[#27bea5] text-white rounded-tr-none'
+                    : msg.sender === 'system'
+                      ? 'bg-red-100 text-red-800 border border-red-200 text-center w-full'
+                      : 'bg-white text-slate-800 border border-slate-200 shadow-sm rounded-tl-none'
                   }`}>
                   {msg.text}
                 </div>

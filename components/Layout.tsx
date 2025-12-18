@@ -14,6 +14,7 @@ import {
   LogOut
 } from 'lucide-react';
 import { AppView, ProfileType, UserProfile } from '../types';
+import SupportWidget from './SupportWidget';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -24,7 +25,7 @@ interface LayoutProps {
   isOffline: boolean;
   onToggleOffline: () => void;
   pendingInvoicesCount: number;
-  onLogout?: () => void;
+  onLogout?: () => void; // New Prop
 }
 
 const Layout: React.FC<LayoutProps> = ({
@@ -173,8 +174,8 @@ const Layout: React.FC<LayoutProps> = ({
         </div>
       </main>
 
-      {/* SUPPORT CHATBOT (Temporarily Disabled for Debugging) */}
-      {/* <SupportWidget apiKeys={currentProfile.apiKeys} financialContext={financialContext} /> */}
+      {/* SUPPORT CHATBOT */}
+      <SupportWidget apiKeys={currentProfile.apiKeys} />
     </div>
   );
 };
