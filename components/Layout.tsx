@@ -24,10 +24,9 @@ interface LayoutProps {
   onSwitchProfile: () => void;
   isOffline: boolean;
   onToggleOffline: () => void;
-  onToggleOffline: () => void;
   pendingInvoicesCount: number;
   onLogout?: () => void;
-  financialContext?: string; // NEW
+  financialContext?: string;
 }
 
 const Layout: React.FC<LayoutProps> = ({
@@ -36,8 +35,6 @@ const Layout: React.FC<LayoutProps> = ({
   onNavigate,
   currentProfile,
   onSwitchProfile,
-  isOffline,
-  onToggleOffline,
   isOffline,
   onToggleOffline,
   pendingInvoicesCount,
