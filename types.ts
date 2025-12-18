@@ -102,7 +102,7 @@ export interface HourlyRateConfig {
 // NEW: Advanced Fiscal Configuration for Panama
 export interface FiscalConfig {
   entityType: 'NATURAL' | 'JURIDICA';
-  companyForm?: 'SA' | 'SRL' | 'SAS' | 'EMI' | 'OTHER'; 
+  companyForm?: 'SA' | 'SRL' | 'SAS' | 'EMI' | 'OTHER';
   specialRegime: 'NONE' | 'MICRO' | 'ZONA_FRANCA' | 'CIUDAD_SABER';
   annualRevenue: number; // Projected or Real
   declaredCapital: number; // For Aviso Operación
@@ -120,13 +120,13 @@ export interface UserProfile {
   address?: string;
   country?: string;
   fiscalRegime?: string; // Legacy string, kept for backward compat
-  
+
   // NEW: Structured Fiscal Profile
   fiscalConfig?: FiscalConfig;
 
   // Branding
   branding?: BrandingConfig;
-  
+
   // Finance
   bankName?: string; // New: Bank Name
   bankAccount?: string; // IBAN / CBU / CLABE
@@ -186,7 +186,7 @@ export interface TimelineEvent {
   icon?: string; // Optional custom icon hint
 }
 
-export type InvoiceStatus = 
+export type InvoiceStatus =
   | 'Borrador'      // Draft
   | 'Creada'        // Created
   | 'Enviada'       // Sent
@@ -214,8 +214,9 @@ export interface Invoice {
   amountPaid?: number; // New: Track partial payments
   status: InvoiceStatus;
   currency: string;
-  type: 'Invoice' | 'Quote' | 'Expense'; 
-  
+  type: 'Invoice' | 'Quote' | 'Expense';
+  dueDate?: string; // New: User-defined due date
+
   // Fiscal Logic (DGI Panama)
   withholdingAmount?: number; // Retención sufrida (ITBMS) por agentes retenedores
   expenseDeductibility?: 'FULL' | 'NONE' | 'PARTIAL'; // Full (Factura Fiscal), None (Voucher/Personal)

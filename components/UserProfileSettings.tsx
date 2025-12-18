@@ -56,6 +56,15 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const formatRenewalDate = (dateStr: string | undefined): string => {
+    if (!dateStr) return 'Indefinida';
+    const date = new Date(dateStr);
+    if (!isNaN(date.getTime())) {
+      return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
+    }
+    return dateStr;
+  };
+
   // --- HANDLERS ---
 
   const handleInputChange = (field: keyof UserProfile, value: any) => {
@@ -1032,9 +1041,7 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                   <span className="text-xs text-teal-50 font-medium">Próxima Renovación</span>
                   <span className="text-sm font-bold flex items-center gap-1.5">
                     <Calendar className="w-3.5 h-3.5" />
-                    {profile.renewalDate
-                      ? new Date(profile.renewalDate).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })
-                      : 'Indefinida'}
+                    {formatRenewalDate(profile.renewalDate)}
                   </span>
                 </div>
                 <div className="w-full bg-black/10 h-1.5 rounded-full overflow-hidden">
