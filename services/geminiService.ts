@@ -162,13 +162,31 @@ export const parseInvoiceRequest = async (input: string, keys?: AiKeys): Promise
     }
 };
 
-export const askSupportBot = async (message: string, keys?: AiKeys): Promise<string> => {
+export const askSupportBot = async (message: string, keys?: AiKeys, context?: string): Promise<string> => {
     try {
         const ai = getAiClient(keys, false);
+        const systemPrompt = `
+        Eres "Bill Bot", un asesor financiero experto y amigable para freelancers y PyMEs en la plataforma Kônsul Bills.
+        
+        OBJETIVO:
+        Ayudar al usuario a entender sus finanzas, cobrar mejor y organizar su negocio.
+        Responde de forma concisa, proactiva y motivadora.
+        
+        CONTEXTO FINANCIERO ACTUAL DEL USUARIO:
+        "${context || 'No hay datos financieros disponibles aún.'}"
+        
+        SI EL USUARIO PREGUNTA SOBRE SUS DATOS:
+        Usa el contexto proporcionado para dar respuestas precisas.
+        Ejemplo: "Tienes $500 pendientes de cobro, te sugiero enviar recordatorios."
+        
+        SI EL USUARIO SALUDA:
+        Preséntate brevemente como su asesor financiero y menciona un dato clave de su resumen si es relevante.
+        `;
+
         const response: GenerateContentResponse = await withTimeout(ai.models.generateContent({
             model: GEMINI_MODEL_ID,
             contents: message,
-            config: { systemInstruction: "Eres un asistente de soporte técnico amigable y servicial para la plataforma Kônsul Bills." }
+            config: { systemInstruction: systemPrompt }
         }));
         return response.text || "No entendí, ¿puedes repetir?";
     } catch (e) {

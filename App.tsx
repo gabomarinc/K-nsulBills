@@ -15,17 +15,17 @@ import UserProfileSettings from './components/UserProfileSettings';
 import CatalogDashboard from './components/CatalogDashboard';
 import ExpenseTracker from './components/ExpenseTracker';
 import ExpenseWizard from './components/ExpenseWizard';
-import ClientWizard from './components/ClientWizard'; 
+import ClientWizard from './components/ClientWizard';
 import { AlertProvider, useAlert } from './components/AlertSystem';
-import { 
-  authenticateUser, 
-  createUserInDb, 
-  updateUserProfileInDb, 
-  fetchInvoicesFromDb, 
-  saveInvoiceToDb, 
+import {
+  authenticateUser,
+  createUserInDb,
+  updateUserProfileInDb,
+  fetchInvoicesFromDb,
+  saveInvoiceToDb,
   deleteInvoiceFromDb,
   saveClientToDb,
-  saveProviderToDb, 
+  saveProviderToDb,
   getUserById,
   fetchClientsFromDb,
   fetchCatalogItemsFromDb,
@@ -38,98 +38,98 @@ const AppContent: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [activeView, setActiveView] = useState<AppView>(AppView.DASHBOARD);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [dbClients, setDbClients] = useState<DbClient[]>([]); 
+  const [dbClients, setDbClients] = useState<DbClient[]>([]);
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]); // NEW: Separate state for Catalog
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [selectedClientName, setSelectedClientName] = useState<string | null>(null);
   const [documentToEdit, setDocumentToEdit] = useState<Invoice | null>(null);
   const [isOffline, setIsOffline] = useState(false);
   const [isSessionLoading, setIsSessionLoading] = useState(true);
-  
+
   const alert = useAlert(); // Hook for alerts
 
   // SESSION RESTORATION LOGIC
   useEffect(() => {
     const initSession = async () => {
-        // Check URL for Stripe return logic
-        const params = new URLSearchParams(window.location.search);
-        const paymentSuccess = params.get('payment_success');
-        const sessionId = params.get('session_id');
-        
-        const storedUserStr = localStorage.getItem('konsul_user_data'); 
-        const storedUserId = localStorage.getItem('konsul_session_id');
+      // Check URL for Stripe return logic
+      const params = new URLSearchParams(window.location.search);
+      const paymentSuccess = params.get('payment_success');
+      const sessionId = params.get('session_id');
 
-        if (storedUserStr) {
-           try {
-             let cachedUser = JSON.parse(storedUserStr);
-             
-             // HANDLE STRIPE SUCCESS RETURN & SYNC
-             if (paymentSuccess === 'true' && sessionId) {
-                 try {
-                    // Fetch real customer ID and renewal date from our backend bridge
-                    const stripeRes = await fetch(`/api/get-stripe-session?sessionId=${sessionId}`);
-                    const stripeData = await stripeRes.json();
+      const storedUserStr = localStorage.getItem('konsul_user_data');
+      const storedUserId = localStorage.getItem('konsul_session_id');
 
-                    if (stripeData.customerId) {
-                        console.log("Stripe Sync Successful:", stripeData);
-                        
-                        // Merge new data
-                        const updatedUserWithStripe = {
-                            ...cachedUser,
-                            stripeCustomerId: stripeData.customerId,
-                            renewalDate: stripeData.renewalDate ? new Date(stripeData.renewalDate).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' }) : cachedUser.renewalDate,
-                            plan: stripeData.plan || 'Emprendedor Pro'
-                        };
+      if (storedUserStr) {
+        try {
+          let cachedUser = JSON.parse(storedUserStr);
 
-                        // 1. Update Local State
-                        cachedUser = updatedUserWithStripe;
-                        localStorage.setItem('konsul_user_data', JSON.stringify(updatedUserWithStripe));
-                        
-                        // 2. Sync to Neon DB immediately
-                        await updateUserProfileInDb(updatedUserWithStripe);
-
-                        // 3. Notify user
-                        setTimeout(() => {
-                            alert.addToast('success', 'Suscripción Activada', 'Tu cuenta Pro está lista y sincronizada.');
-                        }, 1000);
-                    }
-                 } catch (err) {
-                    console.error("Error syncing Stripe data:", err);
-                    // Continue with cached user even if sync fails temporarily
-                 }
-                 
-                 // Clean URL
-                 window.history.replaceState({}, document.title, window.location.pathname);
-             }
-
-             setCurrentUser(cachedUser);
-             setIsSessionLoading(false); 
-           } catch (e) {
-             console.error("Cache parse error", e);
-           }
-        }
-
-        if (storedUserId) {
+          // HANDLE STRIPE SUCCESS RETURN & SYNC
+          if (paymentSuccess === 'true' && sessionId) {
             try {
-                const user = await getUserById(storedUserId);
-                if (user) {
-                    setCurrentUser(prev => {
-                        if (prev?.stripeCustomerId && !user.stripeCustomerId) {
-                            return prev;
-                        }
-                        return user;
-                    });
-                    localStorage.setItem('konsul_user_data', JSON.stringify(user));
-                } else {
-                    console.warn("User ID invalid or not found in DB. Logging out.");
-                    handleLogout();
-                }
-            } catch (error) {
-                console.error("Session verification failed. Keeping cached session.", error);
-                setIsOffline(true);
+              // Fetch real customer ID and renewal date from our backend bridge
+              const stripeRes = await fetch(`/api/get-stripe-session?sessionId=${sessionId}`);
+              const stripeData = await stripeRes.json();
+
+              if (stripeData.customerId) {
+                console.log("Stripe Sync Successful:", stripeData);
+
+                // Merge new data
+                const updatedUserWithStripe = {
+                  ...cachedUser,
+                  stripeCustomerId: stripeData.customerId,
+                  renewalDate: stripeData.renewalDate ? new Date(stripeData.renewalDate).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' }) : cachedUser.renewalDate,
+                  plan: stripeData.plan || 'Emprendedor Pro'
+                };
+
+                // 1. Update Local State
+                cachedUser = updatedUserWithStripe;
+                localStorage.setItem('konsul_user_data', JSON.stringify(updatedUserWithStripe));
+
+                // 2. Sync to Neon DB immediately
+                await updateUserProfileInDb(updatedUserWithStripe);
+
+                // 3. Notify user
+                setTimeout(() => {
+                  alert.addToast('success', 'Suscripción Activada', 'Tu cuenta Pro está lista y sincronizada.');
+                }, 1000);
+              }
+            } catch (err) {
+              console.error("Error syncing Stripe data:", err);
+              // Continue with cached user even if sync fails temporarily
             }
+
+            // Clean URL
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+
+          setCurrentUser(cachedUser);
+          setIsSessionLoading(false);
+        } catch (e) {
+          console.error("Cache parse error", e);
         }
-        setIsSessionLoading(false);
+      }
+
+      if (storedUserId) {
+        try {
+          const user = await getUserById(storedUserId);
+          if (user) {
+            setCurrentUser(prev => {
+              if (prev?.stripeCustomerId && !user.stripeCustomerId) {
+                return prev;
+              }
+              return user;
+            });
+            localStorage.setItem('konsul_user_data', JSON.stringify(user));
+          } else {
+            console.warn("User ID invalid or not found in DB. Logging out.");
+            handleLogout();
+          }
+        } catch (error) {
+          console.error("Session verification failed. Keeping cached session.", error);
+          setIsOffline(true);
+        }
+      }
+      setIsSessionLoading(false);
     };
     initSession();
   }, [alert]);
@@ -141,32 +141,32 @@ const AppContent: React.FC = () => {
         // Fetch Invoices
         const docs = await fetchInvoicesFromDb(currentUser.id);
         if (docs) {
-            setInvoices(docs);
-            setIsOffline(false);
+          setInvoices(docs);
+          setIsOffline(false);
         } else {
-            setIsOffline(true);
+          setIsOffline(true);
         }
 
         // Fetch Clients
         const clients = await fetchClientsFromDb(currentUser.id);
         if (clients) {
-            setDbClients(clients);
+          setDbClients(clients);
         }
 
         // Fetch Catalog Items (NEW)
         // We now load this into its own state variable for reliable rendering
         const items = await fetchCatalogItemsFromDb(currentUser.id);
         if (items) {
-            setCatalogItems(items);
-            
-            // Legacy sync: Keep profile updated just in case older logic uses it
-            setCurrentUser(prev => {
-                if (!prev) return null;
-                if (JSON.stringify(prev.defaultServices) !== JSON.stringify(items)) {
-                    return { ...prev, defaultServices: items };
-                }
-                return prev;
-            });
+          setCatalogItems(items);
+
+          // Legacy sync: Keep profile updated just in case older logic uses it
+          setCurrentUser(prev => {
+            if (!prev) return null;
+            if (JSON.stringify(prev.defaultServices) !== JSON.stringify(items)) {
+              return { ...prev, defaultServices: items };
+            }
+            return prev;
+          });
         }
       };
       loadData();
@@ -175,7 +175,7 @@ const AppContent: React.FC = () => {
 
   const handleLoginSuccess = (user: UserProfile) => {
     localStorage.setItem('konsul_session_id', user.id);
-    localStorage.setItem('konsul_user_data', JSON.stringify(user)); 
+    localStorage.setItem('konsul_user_data', JSON.stringify(user));
     setCurrentUser(user);
     alert.addToast('success', `Bienvenido, ${user.name}`, 'Tu sesión ha iniciado correctamente.');
   };
@@ -192,29 +192,29 @@ const AppContent: React.FC = () => {
 
   const handleOnboardingComplete = async (data: Partial<UserProfile> & { password?: string, email?: string }) => {
     if (data.password && data.email) {
-       const success = await createUserInDb(data, data.password, data.email);
-       if (success) {
-         const user = await authenticateUser(data.email, data.password);
-         if (user) {
-             handleLoginSuccess(user);
-         }
-       } else {
-         alert.addToast('error', 'Error de Registro', 'El correo podría ya estar registrado.');
-       }
+      const success = await createUserInDb(data, data.password, data.email);
+      if (success) {
+        const user = await authenticateUser(data.email, data.password);
+        if (user) {
+          handleLoginSuccess(user);
+        }
+      } else {
+        alert.addToast('error', 'Error de Registro', 'El correo podría ya estar registrado.');
+      }
     } else if (currentUser) {
-       const updated = { ...currentUser, ...data, isOnboardingComplete: true };
-       await updateUserProfileInDb(updated);
-       setCurrentUser(updated);
-       localStorage.setItem('konsul_user_data', JSON.stringify(updated));
+      const updated = { ...currentUser, ...data, isOnboardingComplete: true };
+      await updateUserProfileInDb(updated);
+      setCurrentUser(updated);
+      localStorage.setItem('konsul_user_data', JSON.stringify(updated));
     }
   };
 
   const handleSaveInvoice = async (invoice: Invoice) => {
     if (!currentUser) return;
-    
+
     const exists = invoices.find(i => i.id === invoice.id);
     let newInvoices = [];
-    
+
     if (exists) {
       newInvoices = invoices.map(i => i.id === invoice.id ? invoice : i);
     } else {
@@ -232,72 +232,72 @@ const AppContent: React.FC = () => {
       const idNum = parseInt(idParts[idParts.length - 1] || '0', 10);
 
       if (!isNaN(idNum)) {
-          if (invoice.type === 'Invoice') {
-              if (idNum >= updatedSequences.invoiceNextNumber) {
-                  updatedSequences.invoiceNextNumber = idNum + 1;
-                  profileUpdated = true;
-              }
-          } else if (invoice.type === 'Quote') {
-              if (idNum >= updatedSequences.quoteNextNumber) {
-                  updatedSequences.quoteNextNumber = idNum + 1;
-                  profileUpdated = true;
-              }
+        if (invoice.type === 'Invoice') {
+          if (idNum >= updatedSequences.invoiceNextNumber) {
+            updatedSequences.invoiceNextNumber = idNum + 1;
+            profileUpdated = true;
           }
+        } else if (invoice.type === 'Quote') {
+          if (idNum >= updatedSequences.quoteNextNumber) {
+            updatedSequences.quoteNextNumber = idNum + 1;
+            profileUpdated = true;
+          }
+        }
       } else {
-          if (invoice.type === 'Invoice') { updatedSequences.invoiceNextNumber += 1; profileUpdated = true; }
-          if (invoice.type === 'Quote') { updatedSequences.quoteNextNumber += 1; profileUpdated = true; }
+        if (invoice.type === 'Invoice') { updatedSequences.invoiceNextNumber += 1; profileUpdated = true; }
+        if (invoice.type === 'Quote') { updatedSequences.quoteNextNumber += 1; profileUpdated = true; }
       }
 
       if (profileUpdated) {
-          const updatedUser = { ...currentUser, documentSequences: updatedSequences };
-          setCurrentUser(updatedUser);
-          localStorage.setItem('konsul_user_data', JSON.stringify(updatedUser));
-          updateUserProfileInDb(updatedUser);
+        const updatedUser = { ...currentUser, documentSequences: updatedSequences };
+        setCurrentUser(updatedUser);
+        localStorage.setItem('konsul_user_data', JSON.stringify(updatedUser));
+        updateUserProfileInDb(updatedUser);
       }
     }
-    
+
     setInvoices(newInvoices);
     await saveInvoiceToDb({ ...invoice, userId: currentUser.id });
-    
+
     if (invoice.clientName) {
-       const cleanName = invoice.clientName.trim();
-       
-       if (invoice.type === 'Expense') {
-           await saveProviderToDb({
-               name: cleanName,
-               category: invoice.items[0]?.description || 'General' 
-           }, currentUser.id);
-       } else {
-           // Improved Matching Logic: Normalize strings
-           const existingClient = dbClients.find(c => c.name.trim().toLowerCase() === cleanName.toLowerCase());
-           let clientStatus: 'CLIENT' | 'PROSPECT' = 'PROSPECT';
+      const cleanName = invoice.clientName.trim();
 
-           if (invoice.type === 'Invoice') {
-               clientStatus = 'CLIENT';
-           } else if (existingClient && existingClient.status === 'CLIENT') {
-               clientStatus = 'CLIENT';
-           } else {
-               clientStatus = 'PROSPECT';
-           }
+      if (invoice.type === 'Expense') {
+        await saveProviderToDb({
+          name: cleanName,
+          category: invoice.items[0]?.description || 'General'
+        }, currentUser.id);
+      } else {
+        // Improved Matching Logic: Normalize strings
+        const existingClient = dbClients.find(c => c.name.trim().toLowerCase() === cleanName.toLowerCase());
+        let clientStatus: 'CLIENT' | 'PROSPECT' = 'PROSPECT';
 
-           const saveResult = await saveClientToDb({ 
-             id: existingClient?.id,
-             name: cleanName, 
-             taxId: invoice.clientTaxId, 
-             email: invoice.clientEmail,
-             address: invoice.clientAddress,
-             tags: existingClient?.tags,
-             notes: existingClient?.notes,
-             phone: existingClient?.phone
-           }, currentUser.id, clientStatus);
-           
-           if (!saveResult.success) {
-               alert.addToast('error', 'Error Base de Datos', 'No se pudo guardar el cliente en el directorio.');
-           }
+        if (invoice.type === 'Invoice') {
+          clientStatus = 'CLIENT';
+        } else if (existingClient && existingClient.status === 'CLIENT') {
+          clientStatus = 'CLIENT';
+        } else {
+          clientStatus = 'PROSPECT';
+        }
 
-           const updatedClients = await fetchClientsFromDb(currentUser.id);
-           setDbClients(updatedClients);
-       }
+        const saveResult = await saveClientToDb({
+          id: existingClient?.id,
+          name: cleanName,
+          taxId: invoice.clientTaxId,
+          email: invoice.clientEmail,
+          address: invoice.clientAddress,
+          tags: existingClient?.tags,
+          notes: existingClient?.notes,
+          phone: existingClient?.phone
+        }, currentUser.id, clientStatus);
+
+        if (!saveResult.success) {
+          alert.addToast('error', 'Error Base de Datos', 'No se pudo guardar el cliente en el directorio.');
+        }
+
+        const updatedClients = await fetchClientsFromDb(currentUser.id);
+        setDbClients(updatedClients);
+      }
     }
 
     setDocumentToEdit(null);
@@ -306,84 +306,84 @@ const AppContent: React.FC = () => {
 
   const handleUpdateStatus = async (id: string, newStatus: InvoiceStatus) => {
     if (!currentUser) return;
-    
+
     const targetInvoice = invoices.find(i => i.id === id);
     if (!targetInvoice) return;
 
     if (targetInvoice.type === 'Quote' && newStatus === 'Aceptada' && targetInvoice.status !== 'Aceptada') {
-        const confirmed = await alert.confirm({
-            title: 'Convertir a Factura',
-            message: '¿Deseas convertir esta cotización aprobada en una nueva factura de venta?',
-            confirmText: 'Sí, Convertir',
-            type: 'info'
-        });
+      const confirmed = await alert.confirm({
+        title: 'Convertir a Factura',
+        message: '¿Deseas convertir esta cotización aprobada en una nueva factura de venta?',
+        confirmText: 'Sí, Convertir',
+        type: 'info'
+      });
 
-        if(confirmed) {
-            const sequences = currentUser.documentSequences || { invoicePrefix: 'FAC', invoiceNextNumber: 1, quotePrefix: 'COT', quoteNextNumber: 1 };
-            let nextNum = sequences.invoiceNextNumber;
-            let newInvoiceId = `${sequences.invoicePrefix}-${String(nextNum).padStart(4, '0')}`;
-            
-            while(invoices.some(i => i.id === newInvoiceId)) {
-                nextNum++;
-                newInvoiceId = `${sequences.invoicePrefix}-${String(nextNum).padStart(4, '0')}`;
-            }
+      if (confirmed) {
+        const sequences = currentUser.documentSequences || { invoicePrefix: 'FAC', invoiceNextNumber: 1, quotePrefix: 'COT', quoteNextNumber: 1 };
+        let nextNum = sequences.invoiceNextNumber;
+        let newInvoiceId = `${sequences.invoicePrefix}-${String(nextNum).padStart(4, '0')}`;
 
-            const newInvoice: Invoice = {
-                ...targetInvoice,
-                id: newInvoiceId,
-                type: 'Invoice',
-                status: 'Enviada', 
-                date: new Date().toISOString(),
-                timeline: [
-                    { id: Date.now().toString(), type: 'CREATED', title: `Convertida desde ${targetInvoice.id}`, timestamp: new Date().toISOString() }
-                ]
-            };
-
-            await handleSaveInvoice(newInvoice);
-            
-            const quoteEvent: TimelineEvent = {
-                id: Date.now().toString(), type: 'APPROVED', title: 'Cotización Aceptada', description: `Convertida a factura ${newInvoiceId}`, timestamp: new Date().toISOString()
-            };
-            const updatedQuote = { ...targetInvoice, status: newStatus, timeline: [...(targetInvoice.timeline || []), quoteEvent] };
-            
-            setInvoices(prev => prev.map(i => i.id === id ? updatedQuote : i));
-            await saveInvoiceToDb({ ...updatedQuote, userId: currentUser.id });
-            alert.addToast('success', 'Conversión Exitosa', `Se creó la factura ${newInvoiceId}`);
-            return;
+        while (invoices.some(i => i.id === newInvoiceId)) {
+          nextNum++;
+          newInvoiceId = `${sequences.invoicePrefix}-${String(nextNum).padStart(4, '0')}`;
         }
+
+        const newInvoice: Invoice = {
+          ...targetInvoice,
+          id: newInvoiceId,
+          type: 'Invoice',
+          status: 'Enviada',
+          date: new Date().toISOString(),
+          timeline: [
+            { id: Date.now().toString(), type: 'CREATED', title: `Convertida desde ${targetInvoice.id}`, timestamp: new Date().toISOString() }
+          ]
+        };
+
+        await handleSaveInvoice(newInvoice);
+
+        const quoteEvent: TimelineEvent = {
+          id: Date.now().toString(), type: 'APPROVED', title: 'Cotización Aceptada', description: `Convertida a factura ${newInvoiceId}`, timestamp: new Date().toISOString()
+        };
+        const updatedQuote = { ...targetInvoice, status: newStatus, timeline: [...(targetInvoice.timeline || []), quoteEvent] };
+
+        setInvoices(prev => prev.map(i => i.id === id ? updatedQuote : i));
+        await saveInvoiceToDb({ ...updatedQuote, userId: currentUser.id });
+        alert.addToast('success', 'Conversión Exitosa', `Se creó la factura ${newInvoiceId}`);
+        return;
+      }
     }
 
     const event: TimelineEvent = {
-        id: Date.now().toString(),
-        type: 'STATUS_CHANGE',
-        title: `Estado cambiado a ${newStatus}`,
-        timestamp: new Date().toISOString()
+      id: Date.now().toString(),
+      type: 'STATUS_CHANGE',
+      title: `Estado cambiado a ${newStatus}`,
+      timestamp: new Date().toISOString()
     };
 
-    const updatedInvoice = { 
-        ...targetInvoice, 
-        status: newStatus,
-        timeline: [...(targetInvoice.timeline || []), event]
+    const updatedInvoice = {
+      ...targetInvoice,
+      status: newStatus,
+      timeline: [...(targetInvoice.timeline || []), event]
     };
 
     const newInvoices = invoices.map(i => i.id === id ? updatedInvoice : i);
     setInvoices(newInvoices);
-    
+
     if (selectedInvoice?.id === id) {
-        setSelectedInvoice(updatedInvoice);
+      setSelectedInvoice(updatedInvoice);
     }
 
     await saveInvoiceToDb({ ...updatedInvoice, userId: currentUser.id });
-    
+
     if (updatedInvoice.type === 'Invoice' && (newStatus === 'Pagada' || newStatus === 'Aceptada')) {
-        const clientName = updatedInvoice.clientName.trim();
-        // Improved Matching
-        const existing = dbClients.find(c => c.name.trim().toLowerCase() === clientName.toLowerCase());
-        if (existing) {
-             await saveClientToDb({ ...existing, name: clientName }, currentUser.id, 'CLIENT');
-             const updated = await fetchClientsFromDb(currentUser.id);
-             setDbClients(updated);
-        }
+      const clientName = updatedInvoice.clientName.trim();
+      // Improved Matching
+      const existing = dbClients.find(c => c.name.trim().toLowerCase() === clientName.toLowerCase());
+      if (existing) {
+        await saveClientToDb({ ...existing, name: clientName }, currentUser.id, 'CLIENT');
+        const updated = await fetchClientsFromDb(currentUser.id);
+        setDbClients(updated);
+      }
     }
 
     alert.addToast('success', 'Estado Actualizado', `El documento ahora está: ${newStatus}`);
@@ -403,8 +403,8 @@ const AppContent: React.FC = () => {
     }, currentUser.id, clientData.status || 'PROSPECT');
 
     if (!res.success) {
-        alert.addToast('error', 'Error', res.error || 'No se pudo guardar el cliente.');
-        return;
+      alert.addToast('error', 'Error', res.error || 'No se pudo guardar el cliente.');
+      return;
     }
 
     const updatedClients = await fetchClientsFromDb(currentUser.id);
@@ -416,24 +416,24 @@ const AppContent: React.FC = () => {
 
   const handleDeleteInvoice = async (id: string) => {
     if (!currentUser) return;
-    
+
     const confirmed = await alert.confirm({
-        title: '¿Eliminar Documento?',
-        message: 'Esta acción es irreversible. El documento desaparecerá de tus registros y reportes.',
-        confirmText: 'Sí, Eliminar',
-        cancelText: 'Cancelar',
-        type: 'danger'
+      title: '¿Eliminar Documento?',
+      message: 'Esta acción es irreversible. El documento desaparecerá de tus registros y reportes.',
+      confirmText: 'Sí, Eliminar',
+      cancelText: 'Cancelar',
+      type: 'danger'
     });
 
     if (confirmed) {
       const newInvoices = invoices.filter(i => i.id !== id);
       setInvoices(newInvoices);
-      
+
       if (selectedInvoice?.id === id) {
-         setSelectedInvoice(null);
-         setActiveView(AppView.INVOICES);
+        setSelectedInvoice(null);
+        setActiveView(AppView.INVOICES);
       }
-      
+
       await deleteInvoiceFromDb(id, currentUser.id);
       alert.addToast('info', 'Documento Eliminado', 'El registro ha sido borrado correctamente.');
     }
@@ -469,7 +469,7 @@ const AppContent: React.FC = () => {
 
   const handleUpdateProfile = async (updated: UserProfile) => {
     setCurrentUser(updated);
-    localStorage.setItem('konsul_user_data', JSON.stringify(updated)); 
+    localStorage.setItem('konsul_user_data', JSON.stringify(updated));
     await updateUserProfileInDb(updated);
     alert.addToast('success', 'Perfil Actualizado', 'Tus cambios se han guardado.');
   };
@@ -477,36 +477,36 @@ const AppContent: React.FC = () => {
   // --- CATALOG HANDLERS ---
   const handleSaveCatalogItem = async (item: CatalogItem) => {
     if (!currentUser) return;
-    
+
     const res = await saveCatalogItemToDb(item, currentUser.id);
     if (res.success) {
-        // Fetch fresh list from DB to ensure consistency
-        const updatedList = await fetchCatalogItemsFromDb(currentUser.id);
-        setCatalogItems(updatedList);
-        
-        // Also update user profile just in case (legacy)
-        setCurrentUser(prev => prev ? ({ ...prev, defaultServices: updatedList }) : null);
-        
-        alert.addToast('success', 'Ítem Guardado', `${item.name} se ha guardado en tu catálogo.`);
+      // Fetch fresh list from DB to ensure consistency
+      const updatedList = await fetchCatalogItemsFromDb(currentUser.id);
+      setCatalogItems(updatedList);
+
+      // Also update user profile just in case (legacy)
+      setCurrentUser(prev => prev ? ({ ...prev, defaultServices: updatedList }) : null);
+
+      alert.addToast('success', 'Ítem Guardado', `${item.name} se ha guardado en tu catálogo.`);
     } else {
-        alert.addToast('error', 'Error al Guardar', res.error || 'No se pudo conectar con la base de datos.');
+      alert.addToast('error', 'Error al Guardar', res.error || 'No se pudo conectar con la base de datos.');
     }
   };
 
   const handleDeleteCatalogItem = async (itemId: string) => {
     if (!currentUser) return;
-    
+
     const success = await deleteCatalogItemFromDb(itemId, currentUser.id);
     if (success) {
-        const updatedList = catalogItems.filter(i => i.id !== itemId);
-        setCatalogItems(updatedList);
-        
-        // Also update user profile (legacy)
-        setCurrentUser(prev => prev ? ({ ...prev, defaultServices: updatedList }) : null);
-        
-        alert.addToast('info', 'Ítem Eliminado', 'El producto ha sido removido del catálogo.');
+      const updatedList = catalogItems.filter(i => i.id !== itemId);
+      setCatalogItems(updatedList);
+
+      // Also update user profile (legacy)
+      setCurrentUser(prev => prev ? ({ ...prev, defaultServices: updatedList }) : null);
+
+      alert.addToast('info', 'Ítem Eliminado', 'El producto ha sido removido del catálogo.');
     } else {
-        alert.addToast('error', 'Error al Eliminar', 'Intenta nuevamente.');
+      alert.addToast('error', 'Error al Eliminar', 'Intenta nuevamente.');
     }
   };
 
@@ -514,27 +514,27 @@ const AppContent: React.FC = () => {
 
   if (isSessionLoading) {
     return (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
-            <div className="w-16 h-16 border-4 border-slate-200 border-t-[#27bea5] rounded-full animate-spin mb-4"></div>
-            <p className="text-slate-400 font-medium animate-pulse">Recuperando tu oficina...</p>
-        </div>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
+        <div className="w-16 h-16 border-4 border-slate-200 border-t-[#27bea5] rounded-full animate-spin mb-4"></div>
+        <p className="text-slate-400 font-medium animate-pulse">Recuperando tu oficina...</p>
+      </div>
     );
   }
 
   if (!currentUser) {
     return (
-      <LoginScreen 
+      <LoginScreen
         onLoginSuccess={handleLoginSuccess}
-        onRegisterClick={() => { 
-            setCurrentUser({ 
-                id: 'temp_reg', 
-                name: '', 
-                type: 'Autónomo' as any, 
-                taxId: '', 
-                avatar: '', 
-                isOnboardingComplete: false 
-            } as UserProfile);
-        }} 
+        onRegisterClick={() => {
+          setCurrentUser({
+            id: 'temp_reg',
+            name: '',
+            type: 'Autónomo' as any,
+            taxId: '',
+            avatar: '',
+            isOnboardingComplete: false
+          } as UserProfile);
+        }}
       />
     );
   }
@@ -543,19 +543,50 @@ const AppContent: React.FC = () => {
     return <OnboardingWizard onComplete={handleOnboardingComplete} />;
   }
 
+  // --- FINANCIAL CONTEXT FOR BILL BOT ---
+  const financialContext = React.useMemo(() => {
+    if (!currentUser || invoices.length === 0) return "El usuario es nuevo, aún no tiene documentos registrados.";
+
+    const now = new Date();
+    const currentMonth = now.getMonth();
+
+    // Revenue logic
+    const totalRevenue = invoices
+      .filter(i => i.type === 'Invoice' && (i.status === 'Pagada' || i.status === 'Abonada'))
+      .reduce((sum, i) => sum + i.total, 0);
+
+    const pendingInvoices = invoices.filter(i => i.type === 'Invoice' && (i.status === 'Enviada' || i.status === 'Seguimiento' || i.status === 'Abonada'));
+    const pendingAmount = pendingInvoices.reduce((sum, i) => sum + (i.total - (i.amountPaid || 0)), 0);
+
+    // Monthly
+    const thisMonthRevenue = invoices
+      .filter(i => i.type === 'Invoice' && i.status === 'Pagada' && new Date(i.date).getMonth() === currentMonth)
+      .reduce((sum, i) => sum + i.total, 0);
+
+    return `
+      Resumen Financiero Actual:
+      - Total Histórico Cobrado: $${totalRevenue.toFixed(2)}
+      - Cobrado este Mes: $${thisMonthRevenue.toFixed(2)}
+      - Pendiente de Cobro: $${pendingAmount.toFixed(2)} (${pendingInvoices.length} facturas)
+      - Total Clientes: ${dbClients.length}
+      - Moneda: ${currentUser.defaultCurrency || 'USD'}
+    `;
+  }, [invoices, currentUser, dbClients]);
+
   return (
-    <Layout 
-      activeView={activeView} 
+    <Layout
+      activeView={activeView}
       onNavigate={setActiveView}
       currentProfile={currentUser}
-      onSwitchProfile={() => {}}
+      onSwitchProfile={() => { }}
       isOffline={isOffline}
       onToggleOffline={() => setIsOffline(!isOffline)}
       pendingInvoicesCount={invoices.filter(i => i.status === 'PendingSync').length}
       onLogout={handleLogout}
+      financialContext={financialContext}
     >
       {activeView === AppView.DASHBOARD && (
-        <Dashboard 
+        <Dashboard
           recentInvoices={invoices}
           isOffline={isOffline}
           pendingCount={invoices.filter(i => i.status === 'PendingSync').length}
@@ -567,15 +598,15 @@ const AppContent: React.FC = () => {
       )}
 
       {activeView === AppView.WIZARD && (
-        <InvoiceWizard 
+        <InvoiceWizard
           currentUser={currentUser}
           isOffline={isOffline}
           onSave={handleSaveInvoice}
           onCancel={() => { setDocumentToEdit(null); setActiveView(AppView.DASHBOARD); }}
           onViewDetail={() => setActiveView(AppView.INVOICES)}
           onSelectInvoiceForDetail={(inv) => {
-             setSelectedInvoice(inv);
-             setActiveView(AppView.INVOICE_DETAIL);
+            setSelectedInvoice(inv);
+            setActiveView(AppView.INVOICE_DETAIL);
           }}
           initialData={documentToEdit}
           dbClients={dbClients}
@@ -585,27 +616,27 @@ const AppContent: React.FC = () => {
       )}
 
       {activeView === AppView.INVOICES && (
-        <DocumentList 
+        <DocumentList
           invoices={invoices}
           onSelectInvoice={(inv) => { setSelectedInvoice(inv); setActiveView(AppView.INVOICE_DETAIL); }}
           onCreateNew={() => { setDocumentToEdit(null); setActiveView(AppView.WIZARD); }}
           onDeleteInvoice={handleDeleteInvoice}
-          onEditInvoice={handleEditInvoice} 
-          onUpdateStatus={handleUpdateStatus} 
+          onEditInvoice={handleEditInvoice}
+          onUpdateStatus={handleUpdateStatus}
           currencySymbol={currentUser.defaultCurrency === 'EUR' ? '€' : '$'}
           currentUser={currentUser}
         />
       )}
 
       {activeView === AppView.INVOICE_DETAIL && selectedInvoice && (
-        <InvoiceDetail 
+        <InvoiceDetail
           invoice={selectedInvoice}
           issuer={currentUser}
           onBack={() => setActiveView(AppView.INVOICES)}
           onUpdateInvoice={(updated) => {
-             setInvoices(invoices.map(i => i.id === updated.id ? updated : i));
-             setSelectedInvoice(updated);
-             saveInvoiceToDb({ ...updated, userId: currentUser.id });
+            setInvoices(invoices.map(i => i.id === updated.id ? updated : i));
+            setSelectedInvoice(updated);
+            saveInvoiceToDb({ ...updated, userId: currentUser.id });
           }}
           onUpdateStatus={handleUpdateStatus}
           onEdit={handleEditInvoice}
@@ -614,18 +645,18 @@ const AppContent: React.FC = () => {
       )}
 
       {activeView === AppView.CLIENTS && (
-        <ClientList 
+        <ClientList
           invoices={invoices}
-          dbClients={dbClients} 
+          dbClients={dbClients}
           onCreateDocument={(client) => {
-             if (client) {
-                handleCreateDocumentForClient(client, 'Invoice');
-             } else {
-                setDocumentToEdit(null); 
-                setActiveView(AppView.WIZARD);
-             }
+            if (client) {
+              handleCreateDocumentForClient(client, 'Invoice');
+            } else {
+              setDocumentToEdit(null);
+              setActiveView(AppView.WIZARD);
+            }
           }}
-          onCreateClient={() => setActiveView(AppView.CLIENT_WIZARD)} 
+          onCreateClient={() => setActiveView(AppView.CLIENT_WIZARD)}
           currencySymbol={currentUser.defaultCurrency === 'EUR' ? '€' : '$'}
           currentUser={currentUser}
           onSelectClient={(name) => { setSelectedClientName(name); setActiveView(AppView.CLIENT_DETAIL); }}
@@ -633,47 +664,47 @@ const AppContent: React.FC = () => {
       )}
 
       {activeView === AppView.CLIENT_WIZARD && (
-        <ClientWizard 
+        <ClientWizard
           onSave={handleSaveNewClient}
           onCancel={() => setActiveView(AppView.CLIENTS)}
         />
       )}
 
       {activeView === AppView.CLIENT_DETAIL && selectedClientName && (
-         <ClientDetail 
-           clientName={selectedClientName}
-           invoices={invoices}
-           // Use flexible matching (trim + lowercase) to find DB data even if invoice name varies slightly
-           dbClientData={dbClients.find(c => c.name.trim().toLowerCase() === selectedClientName.trim().toLowerCase())}
-           onBack={() => setActiveView(AppView.CLIENTS)}
-           onSelectInvoice={(inv) => { setSelectedInvoice(inv); setActiveView(AppView.INVOICE_DETAIL); }}
-           currencySymbol={currentUser.defaultCurrency === 'EUR' ? '€' : '$'}
-           onUpdateClientContact={async (oldName, updatedClient) => {
-              // Same loose matching logic for updates
-              const existing = dbClients.find(c => c.name.trim().toLowerCase() === oldName.trim().toLowerCase());
-              const currentStatus = existing?.status || 'PROSPECT';
-              
-              const res = await saveClientToDb(updatedClient, currentUser.id, currentStatus);
-              if (res.success) {
-                  const updated = await fetchClientsFromDb(currentUser.id);
-                  setDbClients(updated);
-                  // Ensure we update the selected name if the user edited the name itself
-                  if (updatedClient.name !== selectedClientName) {
-                      setSelectedClientName(updatedClient.name);
-                  }
-                  alert.addToast('success', 'Cliente Actualizado');
-              } else {
-                  alert.addToast('error', 'Error', res.error);
+        <ClientDetail
+          clientName={selectedClientName}
+          invoices={invoices}
+          // Use flexible matching (trim + lowercase) to find DB data even if invoice name varies slightly
+          dbClientData={dbClients.find(c => c.name.trim().toLowerCase() === selectedClientName.trim().toLowerCase())}
+          onBack={() => setActiveView(AppView.CLIENTS)}
+          onSelectInvoice={(inv) => { setSelectedInvoice(inv); setActiveView(AppView.INVOICE_DETAIL); }}
+          currencySymbol={currentUser.defaultCurrency === 'EUR' ? '€' : '$'}
+          onUpdateClientContact={async (oldName, updatedClient) => {
+            // Same loose matching logic for updates
+            const existing = dbClients.find(c => c.name.trim().toLowerCase() === oldName.trim().toLowerCase());
+            const currentStatus = existing?.status || 'PROSPECT';
+
+            const res = await saveClientToDb(updatedClient, currentUser.id, currentStatus);
+            if (res.success) {
+              const updated = await fetchClientsFromDb(currentUser.id);
+              setDbClients(updated);
+              // Ensure we update the selected name if the user edited the name itself
+              if (updatedClient.name !== selectedClientName) {
+                setSelectedClientName(updatedClient.name);
               }
-           }}
-           onCreateDocument={(type, clientData) => {
-              handleCreateDocumentForClient(clientData, type);
-           }}
-         />
+              alert.addToast('success', 'Cliente Actualizado');
+            } else {
+              alert.addToast('error', 'Error', res.error);
+            }
+          }}
+          onCreateDocument={(type, clientData) => {
+            handleCreateDocumentForClient(clientData, type);
+          }}
+        />
       )}
 
       {activeView === AppView.EXPENSES && (
-        <ExpenseTracker 
+        <ExpenseTracker
           invoices={invoices}
           currencySymbol={currentUser.defaultCurrency === 'EUR' ? '€' : '$'}
           onCreateExpense={() => { setDocumentToEdit(null); setActiveView(AppView.EXPENSE_WIZARD); }}
@@ -684,7 +715,7 @@ const AppContent: React.FC = () => {
       )}
 
       {activeView === AppView.EXPENSE_WIZARD && (
-        <ExpenseWizard 
+        <ExpenseWizard
           currentUser={currentUser}
           onSave={(inv) => { handleSaveInvoice(inv); setActiveView(AppView.EXPENSES); }}
           onCancel={() => setActiveView(AppView.EXPENSES)}
@@ -693,7 +724,7 @@ const AppContent: React.FC = () => {
       )}
 
       {activeView === AppView.CATALOG && (
-        <CatalogDashboard 
+        <CatalogDashboard
           items={catalogItems} // Use the new reliable state
           userCountry={currentUser.country || 'Global'}
           apiKey={currentUser.apiKeys}
@@ -705,7 +736,7 @@ const AppContent: React.FC = () => {
       )}
 
       {activeView === AppView.REPORTS && (
-        <ReportsDashboard 
+        <ReportsDashboard
           invoices={invoices}
           currencySymbol={currentUser.defaultCurrency === 'EUR' ? '€' : '$'}
           apiKey={currentUser.apiKeys}
@@ -714,7 +745,7 @@ const AppContent: React.FC = () => {
       )}
 
       {activeView === AppView.SETTINGS && (
-        <UserProfileSettings 
+        <UserProfileSettings
           currentUser={currentUser}
           onUpdate={handleUpdateProfile}
         />

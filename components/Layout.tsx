@@ -24,8 +24,10 @@ interface LayoutProps {
   onSwitchProfile: () => void;
   isOffline: boolean;
   onToggleOffline: () => void;
+  onToggleOffline: () => void;
   pendingInvoicesCount: number;
-  onLogout?: () => void; // New Prop
+  onLogout?: () => void;
+  financialContext?: string; // NEW
 }
 
 const Layout: React.FC<LayoutProps> = ({
@@ -36,8 +38,11 @@ const Layout: React.FC<LayoutProps> = ({
   onSwitchProfile,
   isOffline,
   onToggleOffline,
+  isOffline,
+  onToggleOffline,
   pendingInvoicesCount,
-  onLogout
+  onLogout,
+  financialContext
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -175,7 +180,7 @@ const Layout: React.FC<LayoutProps> = ({
       </main>
 
       {/* SUPPORT CHATBOT */}
-      <SupportWidget apiKeys={currentProfile.apiKeys} />
+      <SupportWidget apiKeys={currentProfile.apiKeys} financialContext={financialContext} />
     </div>
   );
 };

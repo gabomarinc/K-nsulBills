@@ -7,13 +7,14 @@ interface SupportWidgetProps {
     gemini?: string;
     openai?: string;
   };
+  financialContext?: string;
 }
 
-const SupportWidget: React.FC<SupportWidgetProps> = ({ apiKeys }) => {
+const SupportWidget: React.FC<SupportWidgetProps> = ({ apiKeys, financialContext }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [mode, setMode] = useState<'BOT' | 'HUMAN'>('BOT');
   const [messages, setMessages] = useState<{ sender: 'user' | 'bot' | 'system', text: string }[]>([
-    { sender: 'bot', text: 'Hola, soy ZenBot 🤖. ¿En qué puedo ayudarte hoy?' }
+    { sender: 'bot', text: 'Hola, soy Bill Bot 🤖, tu asesor financiero. ¿Cómo van tus números hoy?' }
   ]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -27,11 +28,11 @@ const SupportWidget: React.FC<SupportWidgetProps> = ({ apiKeys }) => {
 
   const handleSend = async () => {
     if (!inputText.trim()) return;
-    
+
     const userMsg = inputText;
     setMessages(prev => [...prev, { sender: 'user', text: userMsg }]);
     setInputText('');
-    
+
     if (mode === 'HUMAN') {
       // Simulate human response delay
       setIsTyping(true);
@@ -44,7 +45,7 @@ const SupportWidget: React.FC<SupportWidgetProps> = ({ apiKeys }) => {
 
     setIsTyping(true);
     // Use the hybrid AI service (Gemini primary -> OpenAI fallback)
-    const botResponse = await askSupportBot(userMsg, apiKeys);
+    const botResponse = await askSupportBot(userMsg, apiKeys, financialContext);
     setMessages(prev => [...prev, { sender: 'bot', text: botResponse }]);
     setIsTyping(false);
   };
@@ -52,7 +53,7 @@ const SupportWidget: React.FC<SupportWidgetProps> = ({ apiKeys }) => {
   const activatePanicMode = () => {
     setMode('HUMAN');
     setMessages(prev => [
-      ...prev, 
+      ...prev,
       { sender: 'system', text: '🚨 MODO DE EMERGENCIA ACTIVADO' },
       { sender: 'bot', text: 'Te hemos saltado la cola de espera. Un ingeniero de soporte fiscal está leyendo esto ahora mismo. Describe tu error crítico.' }
     ]);
@@ -68,10 +69,10 @@ const SupportWidget: React.FC<SupportWidgetProps> = ({ apiKeys }) => {
             <div className="flex items-center gap-2">
               {mode === 'HUMAN' ? <UserCheck className="w-5 h-5" /> : <MessageSquare className="w-5 h-5" />}
               <div>
-                <span className="font-semibold block leading-none">{mode === 'HUMAN' ? 'Soporte Humano VIP' : 'Ayuda Kônsul Bills'}</span>
+                <span className="font-semibold block leading-none">{mode === 'HUMAN' ? 'Soporte Humano VIP' : 'Asesor Bill Bot'}</span>
                 {mode === 'BOT' && (
                   <span className="text-[10px] text-slate-300 opacity-80 flex items-center gap-1">
-                     <Sparkles className="w-3 h-3" /> IA Híbrida Activa
+                    <Sparkles className="w-3 h-3" /> IA Híbrida Activa
                   </span>
                 )}
               </div>
@@ -85,13 +86,12 @@ const SupportWidget: React.FC<SupportWidgetProps> = ({ apiKeys }) => {
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 bg-slate-50 space-y-4">
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] rounded-2xl px-4 py-2 text-sm ${
-                  msg.sender === 'user' 
-                    ? 'bg-[#27bea5] text-white rounded-tr-none' 
+                <div className={`max-w-[85%] rounded-2xl px-4 py-2 text-sm ${msg.sender === 'user'
+                    ? 'bg-[#27bea5] text-white rounded-tr-none'
                     : msg.sender === 'system'
-                    ? 'bg-red-100 text-red-800 border border-red-200 text-center w-full'
-                    : 'bg-white text-slate-800 border border-slate-200 shadow-sm rounded-tl-none'
-                }`}>
+                      ? 'bg-red-100 text-red-800 border border-red-200 text-center w-full'
+                      : 'bg-white text-slate-800 border border-slate-200 shadow-sm rounded-tl-none'
+                  }`}>
                   {msg.text}
                 </div>
               </div>
@@ -112,7 +112,7 @@ const SupportWidget: React.FC<SupportWidgetProps> = ({ apiKeys }) => {
           {/* Panic Button Area (Only in Bot Mode) */}
           {mode === 'BOT' && (
             <div className="px-4 py-2 bg-slate-50 border-t border-slate-100">
-              <button 
+              <button
                 onClick={activatePanicMode}
                 className="w-full flex items-center justify-center gap-2 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 py-2 rounded-lg border border-red-200 transition-colors"
               >
@@ -132,7 +132,7 @@ const SupportWidget: React.FC<SupportWidgetProps> = ({ apiKeys }) => {
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
               />
-              <button 
+              <button
                 onClick={handleSend}
                 disabled={!inputText.trim()}
                 className="p-2 bg-[#27bea5] text-white rounded-xl hover:bg-[#22a890] disabled:opacity-50"
