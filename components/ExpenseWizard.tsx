@@ -252,7 +252,7 @@ const ExpenseWizard: React.FC<ExpenseWizardProps> = ({ currentUser, onSave, onCa
                 <div className="bg-slate-100 rounded-2xl flex items-center justify-center p-4 overflow-hidden max-h-80">
                     {uploadedImage ? (
                         fileType === 'pdf' ? (
-                            <div className="text-slate-500 font-medium">Vista previa de PDF no disponible</div>
+                            <embed src={uploadedImage} type="application/pdf" className="w-full h-full rounded-lg min-h-[300px]" />
                         ) : (
                             <img src={uploadedImage} alt="Receipt" className="object-contain h-full w-full rounded-lg" />
                         )
