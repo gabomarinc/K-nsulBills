@@ -545,7 +545,9 @@ const AppContent: React.FC = () => {
 
   // --- FINANCIAL CONTEXT FOR BILL BOT ---
   const financialContext = React.useMemo(() => {
-    if (!currentUser || invoices.length === 0) return "El usuario es nuevo, aún no tiene documentos registrados.";
+    return "";
+    // Logic disabled for stability
+
 
     const now = new Date();
     const currentMonth = now.getMonth();
