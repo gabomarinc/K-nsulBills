@@ -6,11 +6,11 @@ import { Invoice, UserProfile } from '../types';
 // The email part MUST match the domain verified in Resend (via ENV VAR)
 const getSender = (name: string = 'Kônsul Bills') => {
   const verifiedEmail = process.env.RESEND_FROM_EMAIL;
-  
+
   if (verifiedEmail) {
     return `${name} <${verifiedEmail}>`;
   }
-  
+
   console.warn("⚠️ RESEND_FROM_EMAIL no está configurado en .env. Usando modo Sandbox (onboarding@resend.dev).");
   return `${name} <onboarding@resend.dev>`;
 };
@@ -37,13 +37,13 @@ interface EmailPayload {
 export const sendEmail = async (
   payload: EmailPayload
 ): Promise<{ success: boolean; id?: string; error?: string }> => {
-  
+
   try {
     // 1. Construct Sender: Uses User's Name + System Verified Email
     const sender = getSender(payload.senderName || 'Kônsul Bills');
 
     const body: any = {
-      from: sender, 
+      from: sender,
       to: [payload.to],
       subject: payload.subject,
     };
@@ -55,13 +55,13 @@ export const sendEmail = async (
 
     // Priority to HTML content to ensure delivery, BUT if templateId is present and no HTML, use template
     if (payload.html) {
-        body.html = payload.html;
+      body.html = payload.html;
     } else if (payload.templateId) {
-        // Fallback for systems that support template_id strictly
-        body.template_id = payload.templateId;
-        body.data = payload.data || {};
+      // Fallback for systems that support template_id strictly
+      body.template_id = payload.templateId;
+      body.data = payload.data || {};
     } else {
-        body.html = '<p>No content provided</p>';
+      body.html = '<p>No content provided</p>';
     }
 
     if (payload.attachments && payload.attachments.length > 0) {
@@ -111,41 +111,83 @@ export const getEmailStatus = async (id: string): Promise<any> => {
  * Sends the Welcome Email using the 'welcome-to-konsul-bills' template.
  */
 export const sendWelcomeEmail = async (user: UserProfile) => {
-    const loginUrl = window.location.origin; 
-    
-    // NOTE: HTML property is omitted to force usage of templateId in sendEmail logic
-    return sendEmail({
-        to: user.email!,
-        subject: 'Bienvenido a Kônsul 🚀', // This might be overridden by the template settings in Resend
-        templateId: 'welcome-to-konsul-bills',
-        senderName: 'Equipo Kônsul',
-        data: {
-            name: user.name,
-            login_url: loginUrl,
-            email: user.email
-        }
-    });
+  const loginUrl = window.location.origin;
+
+  // NOTE: HTML property is omitted to force usage of templateId in sendEmail logic
+  return sendEmail({
+    to: user.email!,
+    subject: 'Bienvenido a Kônsul 🚀', // This might be overridden by the template settings in Resend
+    templateId: 'welcome-to-konsul-bills',
+    senderName: 'Equipo Kônsul',
+    data: {
+      name: user.name,
+      login_url: loginUrl,
+      email: user.email
+    }
+  });
 };
+
+/**
+ * Sends a Password Recovery Email with a temporary password.
+ */
+export const sendPasswordRecoveryEmail = async (email: string, temporaryPassword: string) => {
+  return sendEmail({
+    to: email,
+    subject: 'Recupera tu acceso a Kônsul 🔐',
+    senderName: 'Seguridad Kônsul',
+    html: `
+            <!DOCTYPE html>
+            <html>
+            <body style="font-family: sans-serif; background-color: #f8fafc; padding: 40px;">
+              <div style="max-width: 500px; margin: 0 auto; background: white; padding: 40px; border-radius: 16px; text-align: center; border: 1px solid #e2e8f0;">
+                <div style="background-color: #f1f5f9; width: 64px; height: 64px; border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px;">
+                    <span style="font-size: 32px;">🔐</span>
+                </div>
+                <h1 style="color: #1c2938; margin-bottom: 8px;">Restablecer Contraseña</h1>
+                <p style="color: #64748b; font-size: 16px; line-height: 1.5; margin-bottom: 32px;">
+                  Hemos recibido una solicitud para restablecer tu contraseña. Utiliza la siguiente clave temporal para ingresar a tu cuenta:
+                </p>
+                
+                <div style="background-color: #f8fafc; border: 2px dashed #cbd5e1; padding: 16px; border-radius: 12px; margin-bottom: 32px;">
+                    <span style="font-family: monospace; font-size: 24px; font-weight: bold; color: #1c2938; letter-spacing: 2px;">
+                        ${temporaryPassword}
+                    </span>
+                </div>
+
+                <p style="color: #94a3b8; font-size: 13px; margin-bottom: 32px;">
+                    Por seguridad, una vez que ingreses, te recomendamos cambiar esta contraseña desde los ajustes de tu perfil.
+                </p>
+
+                <a href="${window.location.origin}" style="display: inline-block; background-color: #1c2938; color: white; padding: 14px 28px; border-radius: 12px; text-decoration: none; font-weight: bold;">
+                  Ir al Login
+                </a>
+              </div>
+            </body>
+            </html>
+        `
+  });
+};
+
 
 /**
  * Helper: Send Document (Invoice/Quote)
  */
 export const sendDocumentEmail = async (
-    recipientEmail: string, 
-    subject: string, 
-    htmlContent: string, 
-    issuerName: string,
-    attachments?: Attachment[],
-    ccEmail?: string
+  recipientEmail: string,
+  subject: string,
+  htmlContent: string,
+  issuerName: string,
+  attachments?: Attachment[],
+  ccEmail?: string
 ) => {
-    return sendEmail({
-        to: recipientEmail,
-        cc: ccEmail,
-        subject: subject,
-        html: htmlContent,
-        senderName: issuerName,
-        attachments: attachments
-    });
+  return sendEmail({
+    to: recipientEmail,
+    cc: ccEmail,
+    subject: subject,
+    html: htmlContent,
+    senderName: issuerName,
+    attachments: attachments
+  });
 };
 
 /**
@@ -155,7 +197,7 @@ export const generateDocumentHtml = (invoice: Invoice, issuer: UserProfile): str
   const isQuote = invoice.type === 'Quote';
   const docTypeLabel = isQuote ? 'Cotización' : 'Factura';
   const color = issuer.branding?.primaryColor || '#1c2938';
-  
+
   return `
 <!DOCTYPE html>
 <html lang="es">
