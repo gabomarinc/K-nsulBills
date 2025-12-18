@@ -26,7 +26,8 @@ interface LayoutProps {
   onToggleOffline: () => void;
   pendingInvoicesCount: number;
   onLogout?: () => void;
-  financialContext?: string;
+  pendingInvoicesCount: number;
+  onLogout?: () => void;
 }
 
 const Layout: React.FC<LayoutProps> = ({
@@ -176,8 +177,8 @@ const Layout: React.FC<LayoutProps> = ({
         </div>
       </main>
 
-      {/* SUPPORT CHATBOT */}
-      <SupportWidget apiKeys={currentProfile.apiKeys} financialContext={financialContext} />
+      {/* SUPPORT CHATBOT (Temporarily Disabled for Debugging) */}
+      {/* <SupportWidget apiKeys={currentProfile.apiKeys} financialContext={financialContext} /> */}
     </div>
   );
 };

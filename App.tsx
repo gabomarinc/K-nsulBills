@@ -583,7 +583,6 @@ const AppContent: React.FC = () => {
       onToggleOffline={() => setIsOffline(!isOffline)}
       pendingInvoicesCount={invoices.filter(i => i.status === 'PendingSync').length}
       onLogout={handleLogout}
-      financialContext={financialContext}
     >
       {activeView === AppView.DASHBOARD && (
         <Dashboard
