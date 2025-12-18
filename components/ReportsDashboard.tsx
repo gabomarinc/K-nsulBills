@@ -321,39 +321,32 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
     const conversionRate = totalQuotes > 0 ? (wonQuotes / totalQuotes) * 100 : 0;
 
     // --- REAL FUNNEL (CUMULATIVE STAGES) ---
-    // 1. CREATION: Total Documents (All Docs)
-    const totalCreated = filteredInvoices.length;
+    // --- INVOICE FUNNEL (REAL STATUSES) ---
+    const invoiceDocs = filteredInvoices.filter(i => i.type === 'Invoice');
 
-    // 2. SENT: Docs that are NOT Drafts/Internal (i.e. Sent, Viewed, Paid, etc.)
-    const totalSent = filteredInvoices.filter(i =>
+    const fEnviadas = invoiceDocs.filter(i =>
       i.status !== 'Borrador' && i.status !== 'Creada' && i.status !== 'PendingSync'
     ).length;
 
-    // 3. INTERACTION: Docs that have been Viewed (Timeline) OR are in Negotiation OR are Closed (Implies viewed)
-    // We assume any status beyond 'Enviada' implies interaction, or explicit timeline event
-    const totalInteraction = filteredInvoices.filter(i => {
-      const isInternal = i.status === 'Borrador' || i.status === 'Creada' || i.status === 'PendingSync';
-      if (isInternal) return false;
-
-      // Advanced statuses imply interaction
-      if (['Seguimiento', 'Negociacion', 'Aceptada', 'Pagada', 'Abonada', 'Rechazada', 'Incobrable'].includes(i.status)) return true;
-
-      // Check timeline for OPENED if status is still just 'Enviada'
-      if (i.timeline?.some(e => e.type === 'OPENED')) return true;
-
-      return false;
+    const fSeguimiento = invoiceDocs.filter(i => {
+      if (['Borrador', 'Creada', 'PendingSync'].includes(i.status)) return false;
+      return ['Seguimiento', 'Abonada', 'Pagada', 'Incobrable', 'Rechazada'].includes(i.status) ||
+        i.timeline?.some(e => e.type === 'OPENED');
     }).length;
 
-    // 4. CLOSED: Successfully Closed (Paid/Accepted)
-    const totalClosed = filteredInvoices.filter(i =>
-      i.status === 'Aceptada' || i.status === 'Pagada' || (i.status === 'Abonada' && (i.amountPaid || 0) > 0)
+    const fAbonadas = invoiceDocs.filter(i =>
+      ['Abonada', 'Pagada'].includes(i.status) || (i.amountPaid || 0) > 0
     ).length;
 
+    const fPagadas = invoiceDocs.filter(i => i.status === 'Pagada').length;
+    const fIncobrables = invoiceDocs.filter(i => i.status === 'Incobrable').length;
+
     const funnelData = [
-      { name: 'Creación', value: totalCreated, fill: '#cbd5e1' },
-      { name: 'Enviadas', value: totalSent, fill: '#3b82f6' },
-      { name: 'Seguimiento', value: totalInteraction, fill: '#a855f7' },
-      { name: 'Cerradas', value: totalClosed, fill: '#27bea5' },
+      { name: 'Enviadas', value: fEnviadas, fill: '#3b82f6' },
+      { name: 'Seguimiento', value: fSeguimiento, fill: '#a855f7' },
+      { name: 'Abonadas', value: fAbonadas, fill: '#6366f1' },
+      { name: 'Pagadas', value: fPagadas, fill: '#27bea5' },
+      { name: 'Incobrables', value: fIncobrables, fill: '#ef4444' },
     ];
 
     const quoteFunnelData = [
@@ -717,6 +710,25 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
               3. 'keyMetrics': 3 métricas relevantes (ej. "% Morosidad", "Docs Pendientes", "Impacto Estimado").
               4. 'strategicInsight': Identifica el riesgo principal de tener facturas vencidas.
               5. 'recommendation': 3 acciones para acelerar el recaudo y mejorar la salud de la cartera.
+            `;
+      } else if (type === 'funnel') {
+        context = `
+              ANÁLISIS DE EMBUDO DE FACTURAS - ${timeRange}
+              ------------------------------------------
+              MÉTRICAS DEL EMBUDO (CONVERSIÓN DE PAGO):
+              ${chartData.map((d: any) => `- ${d.name}: ${d.value}`).join('\n')}
+              
+              INSTRUCCIÓN ESPECIAL PARA IA:
+              Actúa como Tesorero Corporativo. Analiza la eficiencia del ciclo de cobro.
+              Identifica dónde se estancan los pagos (ej. de Enviadas a Pagadas).
+              Comenta sobre el impacto de las facturas 'Incobrables' en la salud financiera.
+              
+              GENERAR JSON con estos campos obligatorios:
+              1. 'chartTitle': "Embudo de Facturas"
+              2. 'executiveSummary': Resumen del flujo de efectivo y efectividad de cobro.
+              3. 'keyMetrics': 3 métricas de cobro (ej. "% Eficacia", "Pérdida por Incobrables", "Conversión a Pago").
+              4. 'strategicInsight': Identifica cuellos de botella en la recepción de pagos.
+              5. 'recommendation': 3 acciones para reducir la morosidad y acelerar la liquidación de facturas.
             `;
       } else if (type === 'quotes') {
         context = `
@@ -1177,11 +1189,11 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                   <div className="p-2 bg-slate-50 rounded-xl text-indigo-500">
                     <Filter className="w-5 h-5" />
                   </div>
-                  Embudo Real
+                  Embudo de Facturas
                 </h3>
-                <p className="text-slate-400 text-sm mt-1 ml-11">Visualiza la conversión de tus documentos desde borrador hasta pago.</p>
+                <p className="text-slate-400 text-sm mt-1 ml-11">Visualización del flujo real de cobro de tus facturas.</p>
               </div>
-              <button id="no-print" onClick={() => handleDeepDive('funnel', 'Embudo de Ventas', data.funnelData)} className="p-3 rounded-xl bg-slate-50 hover:text-indigo-500 transition-all">
+              <button id="no-print" onClick={() => handleDeepDive('funnel', 'Embudo de Facturas', data.funnelData)} className="p-3 rounded-xl bg-slate-50 hover:text-indigo-500 transition-all">
                 {isDeepDiving === 'funnel' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
               </button>
             </div>
