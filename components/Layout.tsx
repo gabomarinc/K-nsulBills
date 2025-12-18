@@ -36,8 +36,7 @@ const Layout: React.FC<LayoutProps> = ({
   isOffline,
   onToggleOffline,
   pendingInvoicesCount,
-  onLogout,
-  financialContext
+  onLogout
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
 

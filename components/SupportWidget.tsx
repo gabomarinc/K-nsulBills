@@ -7,14 +7,13 @@ interface SupportWidgetProps {
     gemini?: string;
     openai?: string;
   };
-  financialContext?: string;
 }
 
-const SupportWidget: React.FC<SupportWidgetProps> = ({ apiKeys, financialContext }) => {
+const SupportWidget: React.FC<SupportWidgetProps> = ({ apiKeys }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [mode, setMode] = useState<'BOT' | 'HUMAN'>('BOT');
   const [messages, setMessages] = useState<{ sender: 'user' | 'bot' | 'system', text: string }[]>([
-    { sender: 'bot', text: 'Hola, soy Bill Bot 🤖, tu asesor financiero. ¿Cómo van tus números hoy?' }
+    { sender: 'bot', text: 'Hola, soy ZenBot 🤖. ¿En qué puedo ayudarte hoy?' }
   ]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -45,7 +44,7 @@ const SupportWidget: React.FC<SupportWidgetProps> = ({ apiKeys, financialContext
 
     setIsTyping(true);
     // Use the hybrid AI service (Gemini primary -> OpenAI fallback)
-    const botResponse = await askSupportBot(userMsg, apiKeys, financialContext);
+    const botResponse = await askSupportBot(userMsg, apiKeys);
     setMessages(prev => [...prev, { sender: 'bot', text: botResponse }]);
     setIsTyping(false);
   };
@@ -69,7 +68,7 @@ const SupportWidget: React.FC<SupportWidgetProps> = ({ apiKeys, financialContext
             <div className="flex items-center gap-2">
               {mode === 'HUMAN' ? <UserCheck className="w-5 h-5" /> : <MessageSquare className="w-5 h-5" />}
               <div>
-                <span className="font-semibold block leading-none">{mode === 'HUMAN' ? 'Soporte Humano VIP' : 'Asesor Bill Bot'}</span>
+                <span className="font-semibold block leading-none">{mode === 'HUMAN' ? 'Soporte Humano VIP' : 'Ayuda Kônsul Bills'}</span>
                 {mode === 'BOT' && (
                   <span className="text-[10px] text-slate-300 opacity-80 flex items-center gap-1">
                     <Sparkles className="w-3 h-3" /> IA Híbrida Activa
@@ -87,10 +86,10 @@ const SupportWidget: React.FC<SupportWidgetProps> = ({ apiKeys, financialContext
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[85%] rounded-2xl px-4 py-2 text-sm ${msg.sender === 'user'
-                    ? 'bg-[#27bea5] text-white rounded-tr-none'
-                    : msg.sender === 'system'
-                      ? 'bg-red-100 text-red-800 border border-red-200 text-center w-full'
-                      : 'bg-white text-slate-800 border border-slate-200 shadow-sm rounded-tl-none'
+                  ? 'bg-[#27bea5] text-white rounded-tr-none'
+                  : msg.sender === 'system'
+                    ? 'bg-red-100 text-red-800 border border-red-200 text-center w-full'
+                    : 'bg-white text-slate-800 border border-slate-200 shadow-sm rounded-tl-none'
                   }`}>
                   {msg.text}
                 </div>
