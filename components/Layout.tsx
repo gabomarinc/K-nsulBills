@@ -14,7 +14,6 @@ import {
   LogOut
 } from 'lucide-react';
 import { AppView, ProfileType, UserProfile } from '../types';
-import SupportWidget from './SupportWidget';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -24,8 +23,6 @@ interface LayoutProps {
   onSwitchProfile: () => void;
   isOffline: boolean;
   onToggleOffline: () => void;
-  pendingInvoicesCount: number;
-  onLogout?: () => void;
   pendingInvoicesCount: number;
   onLogout?: () => void;
 }
