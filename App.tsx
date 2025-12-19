@@ -280,23 +280,29 @@ const AppContent: React.FC = () => {
           clientStatus = 'PROSPECT';
         }
 
-        const saveResult = await saveClientToDb({
-          id: existingClient?.id,
-          name: cleanName,
-          taxId: invoice.clientTaxId,
-          email: invoice.clientEmail,
-          address: invoice.clientAddress,
-          tags: existingClient?.tags,
-          notes: existingClient?.notes,
-          phone: existingClient?.phone
-        }, currentUser.id, clientStatus);
+        // LOGIC CHANGE: Only save if new OR promoting Prospect -> Client
+        const isPromotion = existingClient?.status === 'PROSPECT' && clientStatus === 'CLIENT';
+        const shouldSaveClient = !existingClient || isPromotion;
 
-        if (!saveResult.success) {
-          alert.addToast('error', 'Error Base de Datos', 'No se pudo guardar el cliente en el directorio.');
+        if (shouldSaveClient) {
+          const saveResult = await saveClientToDb({
+            id: existingClient?.id,
+            name: cleanName,
+            taxId: invoice.clientTaxId,
+            email: invoice.clientEmail,
+            address: invoice.clientAddress,
+            tags: existingClient?.tags,
+            notes: existingClient?.notes,
+            phone: existingClient?.phone
+          }, currentUser.id, clientStatus);
+
+          if (!saveResult.success) {
+            alert.addToast('error', 'Error Base de Datos', 'No se pudo guardar el cliente en el directorio.');
+          } else {
+            const updatedClients = await fetchClientsFromDb(currentUser.id);
+            setDbClients(updatedClients);
+          }
         }
-
-        const updatedClients = await fetchClientsFromDb(currentUser.id);
-        setDbClients(updatedClients);
       }
     }
 

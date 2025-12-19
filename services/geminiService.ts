@@ -434,8 +434,15 @@ export const generateRevenueInsight = async (
         const ai = getAiClient(keys, false);
         const response: GenerateContentResponse = await withTimeout(ai.models.generateContent({
             model: GEMINI_MODEL_ID,
-            contents: `Eres un CFO. Datos: Mes Actual $${currentRevenue}, Anterior $${prevRevenue}, Var ${percentChange}%.
-            Genera una frase ESTRATÉGICA y CORTA (max 10 palabras).`,
+            contents: `Eres un CFO experto en negocios de Panamá. 
+            Datos financieros del usuario: Mes Actual $${currentRevenue}, Mes Anterior $${prevRevenue}, Variación ${percentChange}%.
+            
+            Tu tarea: Genera una frase ESTRATÉGICA y CORTA (max 12 palabras) en ESPAÑOL dando un consejo o insight sobre estos números.
+            
+            REGLAS ESTRICTAS:
+            1. Solo texto plano. NO uses markdown, ni asteriscos (**), ni negritas.
+            2. Idioma: ESPAÑOL.
+            3. Tono: Profesional pero directo.`,
         }));
         return response.text?.trim() || null;
     } catch (e) {
