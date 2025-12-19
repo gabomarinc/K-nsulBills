@@ -635,47 +635,46 @@ export const fetchClientsFromDb = async (userId: string): Promise<DbClient[]> =>
   try {
     await client.connect();
 
-    // Ensure both tables exist
+    // 1. ROBUST SCHEMA MIGRATION: Ensure columns exist before querying
+    // This fixes issues where 'tags' or 'notes' might be missing in older schemas
     await client.query(`
-      CREATE TABLE IF NOT EXISTS clients (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        name TEXT NOT NULL,
-        tax_id TEXT,
-        email TEXT,
-        address TEXT,
-        phone TEXT,
-        tags TEXT,
-        notes TEXT,
-        updated_at TIMESTAMP DEFAULT NOW()
-      );
-      CREATE TABLE IF NOT EXISTS prospects (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        name TEXT NOT NULL,
-        tax_id TEXT,
-        email TEXT,
-        address TEXT,
-        phone TEXT,
-        tags TEXT,
-        notes TEXT,
-        created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW()
-      );
+      CREATE TABLE IF NOT EXISTS clients (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS prospects (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL);
+      
+      ALTER TABLE clients ADD COLUMN IF NOT EXISTS tax_id TEXT;
+      ALTER TABLE clients ADD COLUMN IF NOT EXISTS email TEXT;
+      ALTER TABLE clients ADD COLUMN IF NOT EXISTS address TEXT;
+      ALTER TABLE clients ADD COLUMN IF NOT EXISTS phone TEXT;
+      ALTER TABLE clients ADD COLUMN IF NOT EXISTS tags TEXT;
+      ALTER TABLE clients ADD COLUMN IF NOT EXISTS notes TEXT;
+      ALTER TABLE clients ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
+
+      ALTER TABLE prospects ADD COLUMN IF NOT EXISTS tax_id TEXT;
+      ALTER TABLE prospects ADD COLUMN IF NOT EXISTS email TEXT;
+      ALTER TABLE prospects ADD COLUMN IF NOT EXISTS address TEXT;
+      ALTER TABLE prospects ADD COLUMN IF NOT EXISTS phone TEXT;
+      ALTER TABLE prospects ADD COLUMN IF NOT EXISTS tags TEXT;
+      ALTER TABLE prospects ADD COLUMN IF NOT EXISTS notes TEXT;
+      ALTER TABLE prospects ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
+      ALTER TABLE prospects ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
     `);
 
-    // Fetch from both and combine with status indicator
-    // Using UNION ALL to see everything
-    const query = `
-      SELECT id, name, tax_id, email, address, phone, tags, notes, 'CLIENT' as status FROM clients WHERE user_id = $1
-      UNION ALL
-      SELECT id, name, tax_id, email, address, phone, tags, notes, 'PROSPECT' as status FROM prospects WHERE user_id = $1
-    `;
+    // 2. Fetch Separately to isolate potential table errors
+    const clientsRes = await client.query(
+      `SELECT id, name, tax_id, email, address, phone, tags, notes, 'CLIENT' as status FROM clients WHERE user_id = $1`,
+      [userId]
+    );
 
-    const result = await client.query(query, [userId]);
+    const prospectsRes = await client.query(
+      `SELECT id, name, tax_id, email, address, phone, tags, notes, 'PROSPECT' as status FROM prospects WHERE user_id = $1`,
+      [userId]
+    );
+
     await client.end();
 
-    return result.rows.map(row => ({
+    const allRows = [...clientsRes.rows, ...prospectsRes.rows];
+
+    return allRows.map(row => ({
       id: row.id,
       name: row.name,
       taxId: row.tax_id,
@@ -684,10 +683,12 @@ export const fetchClientsFromDb = async (userId: string): Promise<DbClient[]> =>
       phone: row.phone,
       tags: row.tags,
       notes: row.notes,
-      status: row.status as 'CLIENT' | 'PROSPECT'
+      status: (row.status || 'PROSPECT') as 'CLIENT' | 'PROSPECT'
     }));
+
   } catch (error) {
-    console.error("Error fetching clients/prospects:", error);
+    console.error("Error fetching clients/prospects (Critical):", error);
+    // Return empty array but log aggressively
     return [];
   }
 };
