@@ -118,6 +118,8 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
         if (inv.status !== 'Borrador' && inv.status !== 'Rechazada') {
           client.invoiceCount++;
           client.totalInvoiced += inv.total;
+          // FIX: Promote to CLIENT immediately if they have a valid invoice
+          client.status = 'CLIENT';
         }
 
         let collected = 0;
@@ -129,7 +131,6 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
 
         if (collected > 0) {
           client.totalCollected += collected;
-          client.status = 'CLIENT';
         }
       } else if (inv.type === 'Quote') {
         client.quoteCount++;

@@ -637,8 +637,12 @@ const AppContent: React.FC = () => {
           onSelectClient={(name) => { setSelectedClientName(name); setActiveView(AppView.CLIENT_DETAIL); }}
           onRefresh={async () => {
             if (currentUser) {
-              const clients = await fetchClientsFromDb(currentUser.id);
+              const [clients, docs] = await Promise.all([
+                fetchClientsFromDb(currentUser.id),
+                fetchInvoicesFromDb(currentUser.id)
+              ]);
               setDbClients(clients);
+              if (docs) setInvoices(docs);
             }
           }}
         />
