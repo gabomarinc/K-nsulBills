@@ -15,6 +15,7 @@ interface ClientListProps {
   onCreateClient?: () => void;
   currencySymbol: string;
   currentUser?: UserProfile;
+  onRefresh?: () => void;
 }
 
 interface AggregatedClient {
@@ -35,10 +36,15 @@ interface AggregatedClient {
   fullData: any;
 }
 
-const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSelectClient, onCreateDocument, onCreateClient, currencySymbol, currentUser }) => {
+const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSelectClient, onCreateDocument, onCreateClient, currencySymbol, currentUser, onRefresh }) => {
   const [viewMode, setViewMode] = useState<'LIST' | 'GALLERY'>('GALLERY');
   const [filter, setFilter] = useState<'ALL' | 'CLIENT' | 'PROSPECT' | 'VIP'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Auto-refresh on mount to ensure fresh data
+  React.useEffect(() => {
+    if (onRefresh) onRefresh();
+  }, []);
 
   // Check AI Access
   const hasAiAccess = !!currentUser?.apiKeys?.gemini || !!currentUser?.apiKeys?.openai;

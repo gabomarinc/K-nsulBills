@@ -635,6 +635,12 @@ const AppContent: React.FC = () => {
           currencySymbol={currentUser.defaultCurrency === 'EUR' ? '€' : '$'}
           currentUser={currentUser}
           onSelectClient={(name) => { setSelectedClientName(name); setActiveView(AppView.CLIENT_DETAIL); }}
+          onRefresh={async () => {
+            if (currentUser) {
+              const clients = await fetchClientsFromDb(currentUser.id);
+              setDbClients(clients);
+            }
+          }}
         />
       )}
 
