@@ -1,11 +1,18 @@
 <!DOCTYPE html>
 <html lang="es">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" type="image/png" href="https://konsul.digital/wp-content/uploads/2025/07/logo-app-konsul.png" />
-    <title>Kônsul Bills - Gestión Inteligente</title>
-    <meta name="description" content="Software de facturación resiliente para autónomos y Pymes. Offline-first, automatización con IA y soporte humano inmediato." />
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="https://konsul.digital/wp-content/uploads/2025/07/logo-app-konsul.png" />
+  <title>Kônsul Bills - Gestión Inteligente</title>
+  <meta name="description"
+    content="Software de facturación resiliente para autónomos y Pymes. Offline-first, automatización con IA y soporte humano inmediato." />
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#27bea5" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Kônsul Bills" />
   <script type="importmap">
 {
   "imports": {
@@ -27,8 +34,21 @@
 }
 </script>
 </head>
-  <body class="bg-slate-50 text-slate-900">
-    <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
-  </body>
+
+<body class="bg-slate-50 text-slate-900">
+  <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').then(registration => {
+          console.log('SW registered');
+        }).catch(err => {
+          console.log('SW registration failed: ', err);
+        });
+      });
+    }
+  </script>
+</body>
+
 </html>

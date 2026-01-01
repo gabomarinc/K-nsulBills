@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { AppView, ProfileType, UserProfile } from '../types';
 import SupportWidget from './SupportWidget';
+import MobileQuickActions from './MobileQuickActions';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -45,7 +46,7 @@ const Layout: React.FC<LayoutProps> = ({
     <div className="min-h-screen bg-[#F8FAFC] flex">
       {/* Sidebar */}
       <aside
-        className={`${isCollapsed ? 'w-20' : 'w-64'} bg-white border-r border-slate-100 flex-shrink-0 flex flex-col transition-all duration-300 relative group/sidebar h-screen sticky top-0 z-40`}
+        className={`${isCollapsed ? 'w-20' : 'w-64'} hidden md:flex bg-white border-r border-slate-100 flex-shrink-0 flex-col transition-all duration-300 relative group/sidebar h-screen sticky top-0 z-40`}
       >
         {/* Toggle Button */}
         <button
@@ -169,13 +170,18 @@ const Layout: React.FC<LayoutProps> = ({
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden relative">
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 lg:p-12 custom-scrollbar">
-          {children}
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 lg:p-12 custom-scrollbar flex flex-col items-center">
+          <div className="w-full max-w-screen-xl">
+            {children}
+          </div>
         </div>
       </main>
 
       {/* SUPPORT CHATBOT */}
       <SupportWidget apiKeys={currentProfile.apiKeys} />
+
+      {/* MOBILE QUICK ACTIONS */}
+      <MobileQuickActions onNavigate={onNavigate} />
     </div>
   );
 };

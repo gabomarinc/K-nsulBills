@@ -1,0 +1,17 @@
+{
+    "name": "Kônsul Bills - Gestión Inteligente",
+    "short_name": "Kônsul Bills",
+    "description": "Software de facturación para autónomos y Pymes.",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#f8fafc",
+    "theme_color": "#27bea5",
+    "icons": [
+        {
+            "src": "https://konsul.digital/wp-content/uploads/2025/07/logo-app-konsul.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any maskable"
+        }
+    ]
+}

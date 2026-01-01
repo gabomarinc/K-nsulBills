@@ -230,73 +230,70 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
 
         <button
           onClick={onCreateClient || (() => onCreateDocument())}
-          className="bg-[#1c2938] text-white px-6 py-3.5 rounded-2xl font-bold hover:bg-[#27bea5] transition-all flex items-center gap-2 shadow-xl group"
+          className="w-full md:w-auto bg-[#1c2938] text-white px-6 py-4 md:py-3.5 rounded-2xl font-bold hover:bg-[#27bea5] transition-all flex items-center justify-center gap-2 shadow-xl group active:scale-95"
         >
           <UserPlus className="w-5 h-5 group-hover:scale-110 transition-transform" /> <span>Nuevo Cliente</span>
         </button>
       </div>
 
-      {/* KPI GRID */}
-      <div className="hidden md:grid grid-cols-4 gap-6">
+      {/* KPI Section - Standard (Always Visible) */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6 pb-4 md:pb-0">
         {/* Card 1: Active Clients */}
-        <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 relative overflow-hidden group hover:shadow-md transition-all">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-full -translate-y-1/2 translate-x-1/2"></div>
+        <div className="bg-white p-4 md:p-6 rounded-[1.5rem] md:rounded-[2rem] shadow-sm border border-slate-50 relative overflow-hidden group hover:shadow-md transition-all">
+          <div className="absolute top-0 right-0 w-20 h-20 bg-blue-50 rounded-full -translate-y-1/2 translate-x-1/2"></div>
           <div className="relative z-10">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl"><Users className="w-6 h-6" /></div>
+            <div className="flex items-center gap-2 md:gap-3 mb-2 md:mb-4">
+              <div className="p-2 bg-blue-50 text-blue-600 rounded-lg md:rounded-xl"><Users className="w-4 h-4 md:w-6 md:h-6" /></div>
             </div>
-            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Clientes Activos</p>
-            <h3 className="text-2xl font-bold text-[#1c2938] mt-1 tracking-tight">{stats.totalActiveClients}</h3>
+            <p className="text-slate-400 text-[10px] md:text-xs font-bold uppercase tracking-widest">Clientes Activos</p>
+            <h3 className="text-lg md:text-2xl font-bold text-[#1c2938] mt-0.5 md:mt-1 tracking-tight">{stats.totalActiveClients}</h3>
           </div>
         </div>
 
         {/* Card 2: Portfolio Value (INVOICED BASED) */}
-        <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 relative overflow-hidden group hover:shadow-md transition-all">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-amber-50 rounded-full -translate-y-1/2 translate-x-1/2"></div>
+        <div className="bg-white p-4 md:p-6 rounded-[1.5rem] md:rounded-[2rem] shadow-sm border border-slate-50 relative overflow-hidden group hover:shadow-md transition-all">
+          <div className="absolute top-0 right-0 w-20 h-20 bg-amber-50 rounded-full -translate-y-1/2 translate-x-1/2"></div>
           <div className="relative z-10">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl"><Wallet className="w-6 h-6" /></div>
+            <div className="flex items-center gap-2 md:gap-3 mb-2 md:mb-4">
+              <div className="p-2 bg-amber-50 text-amber-600 rounded-lg md:rounded-xl"><Wallet className="w-4 h-4 md:w-6 md:h-6" /></div>
             </div>
-            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Valor Cartera (Fac.)</p>
-            <h3 className="text-2xl font-bold text-[#1c2938] mt-1 tracking-tight">{currencySymbol} {stats.totalPortfolioValue.toLocaleString()}</h3>
+            <p className="text-slate-400 text-[10px] md:text-xs font-bold uppercase tracking-widest truncate">Valor Cartera (Fac.)</p>
+            <h3 className="text-lg md:text-2xl font-bold text-[#1c2938] mt-0.5 md:mt-1 tracking-tight">{currencySymbol} {stats.totalPortfolioValue.toLocaleString()}</h3>
           </div>
         </div>
 
         {/* Card 3: Avg Ticket (INVOICED BASED) */}
-        <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 relative overflow-hidden group hover:shadow-md transition-all">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-purple-50 rounded-full -translate-y-1/2 translate-x-1/2"></div>
+        <div className="bg-white p-4 md:p-6 rounded-[1.5rem] md:rounded-[2rem] shadow-sm border border-slate-50 relative overflow-hidden group hover:shadow-md transition-all">
+          <div className="absolute top-0 right-0 w-20 h-20 bg-purple-50 rounded-full -translate-y-1/2 translate-x-1/2"></div>
           <div className="relative z-10">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2.5 bg-purple-50 text-purple-600 rounded-xl"><BarChart3 className="w-6 h-6" /></div>
+            <div className="flex items-center gap-2 md:gap-3 mb-2 md:mb-4">
+              <div className="p-2 bg-purple-50 text-purple-600 rounded-lg md:rounded-xl"><BarChart3 className="w-4 h-4 md:w-6 md:h-6" /></div>
             </div>
-            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Ticket Promedio</p>
-            <h3 className="text-2xl font-bold text-[#1c2938] mt-1 tracking-tight">{currencySymbol} {stats.avgGlobalTicket.toLocaleString(undefined, { maximumFractionDigits: 0 })}</h3>
+            <p className="text-slate-400 text-[10px] md:text-xs font-bold uppercase tracking-widest truncate">Ticket Promedio</p>
+            <h3 className="text-lg md:text-2xl font-bold text-[#1c2938] mt-0.5 md:mt-1 tracking-tight">{currencySymbol} {stats.avgGlobalTicket.toLocaleString(undefined, { maximumFractionDigits: 0 })}</h3>
           </div>
         </div>
 
         {/* Card 4: Radar (REAL DATA) */}
-        <div className="bg-[#1c2938] p-6 rounded-[2rem] shadow-lg relative overflow-hidden group text-white">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-[#27bea5] rounded-full blur-[40px] opacity-20 -translate-y-1/2 translate-x-1/2"></div>
+        <div className="bg-[#1c2938] p-4 md:p-6 rounded-[1.5rem] md:rounded-[2rem] shadow-lg relative overflow-hidden group text-white">
+          <div className="absolute top-0 right-0 w-24 h-24 md:w-32 md:h-32 bg-[#27bea5] rounded-full blur-[30px] md:blur-[40px] opacity-20 -translate-y-1/2 translate-x-1/2"></div>
           <div className="relative z-10 h-full flex flex-col justify-between">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2.5 bg-white/10 text-[#27bea5] rounded-xl"><Sparkles className="w-6 h-6" /></div>
-              {!hasAiAccess && <Lock className="w-4 h-4 text-slate-400" />}
+            <div className="flex items-center justify-between mb-2 md:mb-4">
+              <div className="p-2 bg-white/10 text-[#27bea5] rounded-lg md:rounded-xl"><Sparkles className="w-4 h-4 md:w-6 md:h-6" /></div>
+              {!hasAiAccess && <Lock className="w-3 h-3 md:w-4 md:h-4 text-slate-400" />}
             </div>
 
             <div>
-              <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Radar de Oportunidad</p>
+              <p className="text-slate-400 text-[10px] md:text-xs font-bold uppercase tracking-widest mb-0.5 md:mb-1">Oportunidades</p>
               {stats.totalPipelineValue > 0 ? (
                 <>
-                  <h3 className="text-2xl font-bold leading-tight mb-1">{currencySymbol} {stats.totalPipelineValue.toLocaleString()}</h3>
-                  <p className="text-xs text-[#27bea5] font-medium flex items-center gap-1">
-                    <Target className="w-3 h-3" /> {stats.openOpportunitiesCount} Cotizaciones en curso
+                  <h3 className="text-base md:text-2xl font-bold leading-tight mb-0.5 md:mb-1 truncate">{currencySymbol} {stats.totalPipelineValue.toLocaleString()}</h3>
+                  <p className="text-[9px] md:text-xs text-[#27bea5] font-medium flex items-center gap-1">
+                    <Target className="w-3 h-3" /> <span className="truncate">{stats.openOpportunitiesCount} Activas</span>
                   </p>
                 </>
               ) : (
-                <>
-                  <h3 className="text-lg font-bold leading-tight mb-2 text-slate-300">Sin Datos Suficientes</h3>
-                  <p className="text-[10px] text-slate-400 font-medium">Genera cotizaciones para activar el radar.</p>
-                </>
+                <h3 className="text-xs md:text-lg font-bold text-slate-300">Sin Datos</h3>
               )}
             </div>
           </div>
@@ -324,6 +321,31 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
 
       {filteredClients.length > 0 ? (
         <>
+          {/* Mobile View (List) */}
+          <div className="md:hidden space-y-4">
+            {filteredClients.map((client) => (
+              <div
+                key={client.name}
+                onClick={() => onSelectClient && onSelectClient(client.name)}
+                className={`bg-white p-4 rounded-2xl border ${client.isVip ? 'border-amber-100 bg-gradient-to-br from-amber-50/30 to-white' : 'border-slate-50'} shadow-sm flex items-center justify-between active:bg-slate-50 transition-colors`}
+              >
+                <div className="flex items-center gap-4">
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-sm font-bold ${client.isVip ? 'bg-amber-100 text-amber-700' : getRandomColor(client.name)}`}>
+                    {client.isVip ? <Crown className="w-5 h-5 fill-amber-700" /> : getInitials(client.name)}
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-[#1c2938] text-base leading-tight">{client.name}</h4>
+                    <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">{client.status === 'CLIENT' ? 'Cliente' : 'Prospecto'}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="font-bold text-[#1c2938] text-sm">{currencySymbol} {client.displayValue.toLocaleString()}</p>
+                  {client.isVip && <span className="text-[9px] font-bold text-amber-600 uppercase tracking-widest">VIP</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+
           {/* Desktop View (Grid/List) */}
           <div className="hidden md:grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {filteredClients.map((client) => (
