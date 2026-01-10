@@ -21,27 +21,24 @@ const MobileQuickActions: React.FC<MobileQuickActionsProps> = ({ onNavigate }) =
         <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[60] md:hidden">
             {/* Menu Options */}
             {isOpen && (
-                <div className="absolute bottom-20 left-1/2 -translate-x-1/2 flex flex-col items-center gap-4 mb-2 animate-in slide-in-from-bottom-10 duration-300 w-max">
+                <div className="absolute bottom-20 left-1/2 -translate-x-1/2 flex flex-col items-center gap-4 mb-2 animate-in slide-in-from-bottom-10 duration-500 w-max">
                     <MenuOption
-                        icon={<FileText size={20} />}
-                        label="Documentos"
-                        onClick={() => handleAction(AppView.INVOICES)}
-                        color="bg-white"
-                        isCentered={true}
+                        icon={<FileText size={22} />}
+                        label="Nueva Factura"
+                        onClick={() => handleAction(AppView.WIZARD)}
+                        color="bg-teal-50 text-teal-500"
                     />
                     <MenuOption
-                        icon={<Users size={20} />}
-                        label="Clientes"
-                        onClick={() => handleAction(AppView.CLIENTS)}
-                        color="bg-white"
-                        isCentered={true}
+                        icon={<TrendingDown size={22} />}
+                        label="Nuevo Gasto"
+                        onClick={() => handleAction(AppView.EXPENSE_WIZARD)}
+                        color="bg-amber-50 text-amber-500"
                     />
                     <MenuOption
-                        icon={<TrendingDown size={20} />}
-                        label="Gastos"
-                        onClick={() => handleAction(AppView.EXPENSES)}
-                        color="bg-white"
-                        isCentered={true}
+                        icon={<Users size={22} />}
+                        label="Nuevo Cliente"
+                        onClick={() => handleAction(AppView.CLIENT_WIZARD)}
+                        color="bg-purple-50 text-purple-500"
                     />
                 </div>
             )}
@@ -49,23 +46,25 @@ const MobileQuickActions: React.FC<MobileQuickActionsProps> = ({ onNavigate }) =
             {/* Backdrop */}
             {isOpen && (
                 <div
-                    className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[-1] animate-in fade-in duration-300"
+                    className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[-1] animate-in fade-in duration-500"
                     onClick={() => setIsOpen(false)}
                 />
             )}
 
             {/* Main FAB */}
-            <button
-                onClick={toggleMenu}
-                className={`
-          w-14 h-14 rounded-full flex items-center justify-center text-white shadow-lg 
-          transition-all duration-300 ease-out active:scale-95
-          ${isOpen ? 'bg-slate-800 rotate-45' : 'bg-[#27bea5]'}
-          hover:shadow-[0_8px_30px_rgb(39,190,165,0.4)]
-        `}
-            >
-                {isOpen ? <X size={28} /> : <Plus size={28} />}
-            </button>
+            <div className="relative group">
+                <div className={`absolute inset-0 bg-[#27bea5] rounded-full blur-xl opacity-20 group-hover:opacity-40 transition-opacity ${isOpen ? 'hidden' : ''}`}></div>
+                <button
+                    onClick={toggleMenu}
+                    className={`
+                        w-16 h-16 rounded-full flex items-center justify-center text-white shadow-2xl 
+                        transition-all duration-500 cubic-bezier(0.4, 0, 0.2, 1) active:scale-95 relative z-10
+                        ${isOpen ? 'bg-slate-800 rotate-[135deg]' : 'bg-[#27bea5]'}
+                    `}
+                >
+                    <Plus size={32} />
+                </button>
+            </div>
         </div>
     );
 };
@@ -75,18 +74,17 @@ const MenuOption: React.FC<{
     label: string;
     onClick: () => void;
     color: string;
-    isCentered?: boolean;
-}> = ({ icon, label, onClick, color, isCentered }) => (
+}> = ({ icon, label, onClick, color }) => (
     <button
         onClick={onClick}
-        className={`flex ${isCentered ? 'flex-col-reverse' : 'items-center'} gap-3 group animate-in fade-in zoom-in duration-200 items-center`}
+        className="flex items-center gap-4 bg-white px-6 py-4 rounded-[3rem] shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-white/20 transition-all active:scale-95 group animate-in fade-in slide-in-from-bottom-4 duration-300 w-full min-w-[240px]"
     >
-        <span className="bg-white text-slate-700 font-bold text-[10px] px-2 py-1 rounded-lg shadow-sm border border-slate-100 uppercase tracking-wider">
-            {label}
-        </span>
-        <div className={`w-14 h-14 ${color} text-[#27bea5] rounded-full flex items-center justify-center shadow-lg border border-slate-50 transition-transform active:scale-90`}>
+        <div className={`w-12 h-12 ${color} rounded-full flex items-center justify-center transition-transform group-hover:scale-110`}>
             {icon}
         </div>
+        <span className="text-[#1c2938] font-bold text-base tracking-tight flex-1 text-left">
+            {label}
+        </span>
     </button>
 );
 

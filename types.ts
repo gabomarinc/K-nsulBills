@@ -110,6 +110,8 @@ export interface FiscalConfig {
   itbmsRegistered: boolean; // Manual override
 }
 
+export type FollowUpProfile = 'PASSIVE' | 'NORMAL' | 'AGGRESSIVE' | 'OFF';
+
 export interface UserProfile {
   id: string;
   name: string;
@@ -123,6 +125,9 @@ export interface UserProfile {
 
   // NEW: Structured Fiscal Profile
   fiscalConfig?: FiscalConfig;
+
+  // NEW: Automatic Follow-up
+  followUpProfile?: FollowUpProfile;
 
   // Branding
   branding?: BrandingConfig;

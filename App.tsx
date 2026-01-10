@@ -32,6 +32,7 @@ import {
   saveCatalogItemToDb,
   deleteCatalogItemFromDb
 } from './services/neon';
+import { processInvoicesFollowUp } from './services/followUpService';
 
 // Wrapper Component to use Hooks
 const AppContent: React.FC = () => {
@@ -143,6 +144,20 @@ const AppContent: React.FC = () => {
         if (docs) {
           setInvoices(docs);
           setIsOffline(false);
+
+          // NEW: RUN AUTOMATED FOLLOW-UP PROCESS
+          // Only if not offline and has a profile set
+          if (currentUser.followUpProfile && currentUser.followUpProfile !== 'OFF') {
+            const count = await processInvoicesFollowUp(docs, currentUser, (updated) => {
+              setInvoices(prev => prev.map(i => i.id === updated.id ? updated : i));
+            });
+
+            if (count > 0) {
+              setTimeout(() => {
+                alert.addToast('info', 'Seguimiento de Pagos', `IA: Se han enviado ${count} recordatorios de pago automáticamente.`);
+              }, 2000);
+            }
+          }
         } else {
           setIsOffline(true);
         }

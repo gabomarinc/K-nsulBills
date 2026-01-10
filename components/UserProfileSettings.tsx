@@ -6,7 +6,8 @@ import {
   User, Mail, Phone, Globe, Briefcase,
   Key, Save, Loader2, ChevronRight, Zap, Eye, EyeOff,
   CheckCircle2, XCircle, Layout, Palette, Crown, UploadCloud,
-  ExternalLink, ShieldCheck, AlertCircle, Lock, AlertTriangle, Scale, Calculator, Sparkles, Coins
+  ExternalLink, ShieldCheck, AlertCircle, Lock, AlertTriangle, Scale, Calculator, Sparkles, Coins,
+  Bell, Activity, Clock
 } from 'lucide-react';
 import { updateUserProfileInDb, updateUserPassword } from '../services/neon';
 import { UserProfile, BrandingConfig, FiscalConfig, PaymentIntegration } from '../types';
@@ -942,6 +943,51 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
               >
                 {isChangingPassword ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Actualizar Contraseña'}
               </button>
+            </div>
+          </div>
+
+          {/* CARD: FOLLOW-UP CONFIGURATION */}
+          <div className="bg-white p-8 rounded-[2rem] shadow-sm hover:shadow-md transition-shadow duration-300 border border-slate-50">
+            <h3 className="text-xl font-bold text-[#1c2938] mb-6 flex items-center gap-3">
+              <div className="p-2 bg-amber-50 rounded-xl text-amber-500">
+                <Bell className="w-6 h-6" />
+              </div>
+              Seguimiento de Pagos
+            </h3>
+
+            <p className="text-sm text-slate-500 mb-6">
+              Configura cómo quieres que la IA recuerde a tus clientes sus pagos pendientes.
+            </p>
+
+            <div className="space-y-3">
+              {[
+                { id: 'OFF', label: 'Desactivado', desc: 'No se envían recordatorios automáticos.', icon: XCircle, color: 'text-slate-400' },
+                { id: 'PASSIVE', label: 'Pasivo', desc: '1 recordatorio a los 7 días de vencimiento.', icon: Clock, color: 'text-blue-500' },
+                { id: 'NORMAL', label: 'Normal', desc: 'Recordatorios a los 3, 7 y 15 días.', icon: Activity, color: 'text-[#27bea5]' },
+                { id: 'AGGRESSIVE', label: 'Agresivo', desc: 'Recordatorios frecuentes (cada 2-3 días).', icon: Zap, color: 'text-orange-500' },
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  onClick={() => handleInputChange('followUpProfile', opt.id)}
+                  className={`w-full text-left p-4 rounded-2xl border-2 transition-all group flex items-start gap-4 ${profile.followUpProfile === opt.id
+                    ? 'border-[#27bea5] bg-[#27bea5]/5'
+                    : 'border-slate-50 hover:border-slate-200 bg-slate-50/50'
+                    }`}
+                >
+                  <div className={`p-2 rounded-lg bg-white shadow-sm ${opt.color}`}>
+                    <opt.icon className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1">
+                    <p className={`font-bold text-sm ${profile.followUpProfile === opt.id ? 'text-[#1c2938]' : 'text-slate-600'}`}>{opt.label}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">{opt.desc}</p>
+                  </div>
+                  {profile.followUpProfile === opt.id && (
+                    <div className="bg-[#27bea5] text-white p-1 rounded-full">
+                      <Check className="w-3 h-3" />
+                    </div>
+                  )}
+                </button>
+              ))}
             </div>
           </div>
 
