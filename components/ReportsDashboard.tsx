@@ -13,8 +13,9 @@ import {
   Clock, AlertTriangle, Trophy, FileText, Lock, ArrowRight, Table, Scale, Landmark, Calculator, PiggyBank, Briefcase, ShieldCheck, AlertCircle, FileWarning, XCircle, RefreshCw, ChevronDown, ChevronRight, Package, Tag
 } from 'lucide-react';
 import { Invoice, FinancialAnalysisResult, DeepDiveReport, UserProfile } from '../types';
-import { generateFinancialAnalysis, generateDeepDiveReport, AI_ERROR_BLOCKED } from '../services/geminiService';
+import { generateFinancialAnalysis, generateDeepDiveReport, AI_ERROR_BLOCKED, generateTaxAdvisory } from '../services/geminiService';
 import { sendEmail } from '../services/resendService';
+import { calculatePanamaISR, TaxCalculationResult } from '../services/taxCalculator';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 
@@ -43,6 +44,10 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
   // Export State
   const [isExporting, setIsExporting] = useState<string | null>(null); // 'pdf' | 'email' | null
   const [emailStatus, setEmailStatus] = useState<'IDLE' | 'SENDING' | 'SUCCESS' | 'ERROR'>('IDLE');
+
+  // Tax Simulation State
+  const [taxAdvisory, setTaxAdvisory] = useState<{ advisory: string, points: string[] } | null>(null);
+  const [isAuditingTax, setIsAuditingTax] = useState(false);
 
   // Refs for individual report sections
   const overviewRef = useRef<HTMLDivElement>(null);
@@ -458,7 +463,30 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
     const taxPayable = debitFiscal - creditFiscal - totalWithholding;
     const isCreditBalance = taxPayable < 0;
 
+    // --- PROJECTION: ANNUAL ISR (ISR Simulation) ---
+    // Extract current year data
+    const thisYearInvoices = filteredInvoices.filter(i => {
+      const d = new Date(i.date);
+      return d.getFullYear() === new Date().getFullYear();
+    });
+
+    const annualIncome = thisYearInvoices
+      .filter(i => i.type === 'Invoice' && !['Borrador', 'Rechazada', 'Incobrable'].includes(i.status))
+      .reduce((sum, i) => sum + i.total, 0);
+
+    const annualExpenses = filteredInvoices
+      .filter(i => i.type === 'Expense')
+      .reduce((sum, i) => sum + i.total, 0);
+
+    const isrProjection = calculatePanamaISR(
+      annualIncome,
+      annualExpenses,
+      currentUser.fiscalConfig.entityType,
+      currentUser.fiscalConfig.specialRegime
+    );
+
     const insights = [];
+    // ... (rest of insights)
     if (voucherCount > 0) insights.push({ type: 'alert', title: 'Fuga de Crédito Fiscal', text: `Detectamos ${voucherCount} gastos registrados como "Voucher" o sin factura fiscal. Esto representa dinero que no puedes deducir.` });
 
     const bigSalesNoRetention = filteredInvoices.some(inv => inv.type === 'Invoice' && inv.total > 1000 && !inv.withholdingAmount && (inv.status === 'Pagada' || inv.status === 'Aceptada'));
@@ -469,8 +497,33 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
     const unpaidInvoices = filteredInvoices.filter(i => i.type === 'Invoice' && i.status === 'Enviada' && i.items.some(it => it.tax > 0));
     if (unpaidInvoices.length > 0) insights.push({ type: 'tip', title: 'Obligación por Devengo', text: `Recuerda: El ITBMS de las facturas emitidas (${unpaidInvoices.length}) se debe declarar este mes, aunque aún no las hayas cobrado.` });
 
-    return { debitFiscal, creditFiscal, withholdings: totalWithholding, payable: taxPayable, isCreditBalance, nonDeductibleTotal: nonDeductibleExpenses, insights };
+    return { debitFiscal, creditFiscal, withholdings: totalWithholding, payable: taxPayable, isCreditBalance, nonDeductibleTotal: nonDeductibleExpenses, insights, isrProjection };
   }, [data, currentUser, timeRange, filteredInvoices]);
+
+  const handleTaxAudit = async (isrData: TaxCalculationResult) => {
+    if (!hasAiAccess) return;
+    setIsAuditingTax(true);
+    setTaxAdvisory(null);
+
+    const summary = `
+      ESTIMACIÓN ISR PROYECTADA:
+      - Renta Neta Gravable: $${isrData.taxableIncome.toLocaleString()}
+      - Impuesto Estimado: $${isrData.estimatedTax.toLocaleString()}
+      - Tasa Efectiva: ${isrData.effectiveRate.toFixed(1)}%
+      
+      DESGLOSE BRACKETS:
+      ${isrData.brackets.map(b => `- ${b.range}: ${b.rate} ($${b.amount.toLocaleString()})`).join('\n')}
+    `;
+
+    try {
+      const result = await generateTaxAdvisory(summary, currentUser?.fiscalConfig, apiKey);
+      if (result) setTaxAdvisory(result);
+    } catch (e) {
+      console.error("Audit Tax Error:", e);
+    } finally {
+      setIsAuditingTax(false);
+    }
+  };
 
   // --- HANDLERS ---
   const handleAnalyze = async () => {
@@ -1397,6 +1450,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
 
           {/* Top: Estimated Tax Liability (LIQUIDACIÓN ITBMS) */}
           <div className={`rounded-[2.5rem] p-8 text-white relative overflow-hidden shadow-xl mb-8 ${fiscalData.isCreditBalance ? 'bg-gradient-to-r from-emerald-600 to-teal-500' : 'bg-gradient-to-r from-amber-600 to-orange-500'}`}>
+            {/* ... (existing ITBMS content) ... */}
             <div className="absolute top-0 right-0 w-96 h-96 bg-white rounded-full blur-[120px] opacity-10 -translate-y-1/2 translate-x-1/2"></div>
             <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
               <div>
@@ -1411,7 +1465,6 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                 </p>
               </div>
 
-              {/* The Fiscal Formula Visualization */}
               <div className="flex-1 w-full max-w-lg bg-white/10 p-6 rounded-2xl border border-white/20">
                 <div className="flex justify-between items-center text-sm mb-2 opacity-80">
                   <span>Débito (Ventas)</span>
@@ -1429,6 +1482,95 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                   <span>Resultado Neto</span>
                   <span>{currencySymbol}{fiscalData.payable.toFixed(2)}</span>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* NEW: ISR ANNUAL SIMULATION PROJECTION */}
+          <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-slate-50 mb-8 overflow-hidden relative group">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-[#27bea5]/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-[#27bea5]/10 transition-colors"></div>
+
+            <div className="flex flex-col xl:flex-row justify-between gap-8 relative z-10">
+              <div className="flex-1">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl">
+                    <Calculator className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-bold text-[#1c2938]">Simulador ISR Anual</h3>
+                    <p className="text-slate-400 text-sm">Predicción de Impuesto sobre la Renta basado en tus facturas y gastos del año actual.</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                  <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Renta Neta Gravable</p>
+                    <h4 className="text-3xl font-bold text-[#1c2938]">{currencySymbol}{fiscalData.isrProjection.taxableIncome.toLocaleString()}</h4>
+                    <p className="text-xs text-slate-400 mt-1">Base imponible proyectada</p>
+                  </div>
+                  <div className="p-6 bg-[#1c2938] text-white rounded-2xl shadow-xl shadow-indigo-900/10">
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Impuesto Proyectado</p>
+                    <h4 className="text-3xl font-bold">{currencySymbol}{fiscalData.isrProjection.estimatedTax.toLocaleString()}</h4>
+                    <p className="text-xs text-[#27bea5] font-bold mt-1">Tasa Efectiva: {fiscalData.isrProjection.effectiveRate.toFixed(1)}%</p>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <h5 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <Landmark className="w-3 h-3" /> Tabla de Cálculo (Panamá)
+                  </h5>
+                  <div className="bg-white border border-slate-100 rounded-xl overflow-hidden divide-y divide-slate-50">
+                    {fiscalData.isrProjection.brackets.map((b, i) => (
+                      <div key={i} className="flex justify-between items-center p-3 text-sm">
+                        <span className="text-slate-500 font-medium">{b.range} <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-400 ml-2">{b.rate}</span></span>
+                        <span className="font-bold text-[#1c2938]">{currencySymbol}{b.amount.toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* AI ADVISORY SIDEBAR */}
+              <div className="xl:w-80 bg-slate-50 rounded-[2rem] p-6 border border-slate-100 flex flex-col items-center justify-center text-center">
+                {!taxAdvisory ? (
+                  <>
+                    <div className="p-4 bg-white rounded-full shadow-sm mb-4">
+                      <BrainCircuit className={`w-10 h-10 ${isAuditingTax ? 'text-[#27bea5] animate-pulse' : 'text-slate-300'}`} />
+                    </div>
+                    <h4 className="font-bold text-[#1c2938] mb-2">Auditoría IA</h4>
+                    <p className="text-sm text-slate-400 mb-6">Analiza tu proyección con inteligencia artificial para encontrar optimizaciones legales.</p>
+                    <button
+                      onClick={() => handleTaxAudit(fiscalData.isrProjection)}
+                      disabled={isAuditingTax || !hasAiAccess}
+                      className="w-full bg-white text-[#1c2938] px-6 py-3 rounded-xl font-bold shadow-sm hover:bg-[#27bea5] hover:text-white transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {isAuditingTax ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                      {isAuditingTax ? 'Auditando...' : 'Optimizar ISR'}
+                    </button>
+                  </>
+                ) : (
+                  <div className="text-left w-full h-full flex flex-col animate-in fade-in">
+                    <div className="flex justify-between items-center mb-4">
+                      <h4 className="font-bold text-[#27bea5] flex items-center gap-2 text-sm uppercase tracking-wider">
+                        <ShieldCheck className="w-4 h-4" /> Consejo IA
+                      </h4>
+                      <button onClick={() => setTaxAdvisory(null)} className="text-slate-400 hover:text-red-500">
+                        <RefreshCw className="w-3 h-3" />
+                      </button>
+                    </div>
+                    <p className="text-sm text-[#1c2938] font-medium leading-relaxed mb-4 italic">
+                      "{taxAdvisory.advisory}"
+                    </p>
+                    <div className="space-y-2 mt-auto">
+                      {taxAdvisory.points.map((p, i) => (
+                        <div key={i} className="flex gap-2 text-xs text-slate-500 bg-white p-2 rounded-lg border border-slate-100 italic">
+                          <Check className="w-3 h-3 text-[#27bea5] flex-shrink-0" />
+                          <span>{p}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

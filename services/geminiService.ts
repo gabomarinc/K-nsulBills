@@ -449,3 +449,44 @@ export const generateRevenueInsight = async (
         return null;
     }
 };
+
+export const generateTaxAdvisory = async (
+    taxSummary: string,
+    fiscalConfig?: any,
+    keys?: AiKeys
+): Promise<{ advisory: string, points: string[] } | null> => {
+    try {
+        const ai = getAiClient(keys, false);
+        const schema: Schema = {
+            type: Type.OBJECT,
+            properties: {
+                advisory: { type: Type.STRING },
+                points: { type: Type.ARRAY, items: { type: Type.STRING } }
+            },
+            required: ['advisory', 'points']
+        };
+
+        const response: GenerateContentResponse = await withTimeout(ai.models.generateContent({
+            model: GEMINI_MODEL_ID,
+            contents: `Eres un Asesor Fiscal experto en leyes de Panamá (DGI).
+      
+      CONTEXTO TRIBUTARIO REAL:
+      ${taxSummary}
+      
+      ENTITY DATA: ${JSON.stringify(fiscalConfig)}
+      
+      TU TAREA:
+      1. Genera un consejo ejecutivo (advisory) sobre la carga fiscal proyectada.
+      2. Provee 3 puntos accionables (points) para optimizar o cumplir con la DGI.
+      3. Idioma: Español.
+      4. Menciona específicamente leyes o figuras como "Gastos Deducibles", "Caja de Seguro Social (si aplica)", o "Aviso de Operación".`,
+            config: { responseMimeType: "application/json", responseSchema: schema }
+        }));
+
+        const cleaned = cleanJson(response.text || "{}");
+        return JSON.parse(cleaned);
+    } catch (e) {
+        console.error("Tax Advisory Error:", e);
+        return null;
+    }
+};
