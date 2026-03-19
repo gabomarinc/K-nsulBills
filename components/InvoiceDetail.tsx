@@ -5,8 +5,7 @@ import {
   CheckCircle2, Loader2, Send, MessageCircle, Smartphone, Mail, Check, AlertTriangle, Edit2, 
   ChevronDown, XCircle, Wallet, ArrowRight, X, Trash2, CreditCard, Clock, StickyNote, Lock, Link
 } from 'lucide-react';
-import html2canvas from 'html2canvas';
-import { jsPDF } from 'jspdf';
+import html2pdf from 'html2pdf.js';
 import { Invoice, UserProfile, TimelineEvent, InvoiceStatus } from '../types';
 import DocumentTimeline from './DocumentTimeline';
 import { sendEmail, generateDocumentHtml, getEmailStatus } from '../services/resendService';
@@ -216,39 +215,17 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
     try {
         if (!documentRef.current) throw new Error("No se pudo capturar el documento.");
         
-        const canvas = await html2canvas(documentRef.current, {
-            scale: 2,
-            useCORS: true, 
-            logging: false,
-            backgroundColor: '#ffffff'
-        });
+        const opt = {
+            margin:       10,
+            filename:     `${isQuote ? 'Cotizacion' : 'Factura'}_${invoice.id}.pdf`,
+            image:        { type: 'jpeg' as const, quality: 0.8 },
+            html2canvas:  { scale: 1.5, useCORS: true, logging: false },
+            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
+            pagebreak:    { mode: ['css', 'legacy'] }
+        };
 
-        const imgData = canvas.toDataURL('image/jpeg', 0.95);
-        const pdf = new jsPDF({
-            orientation: 'portrait',
-            unit: 'mm',
-            format: 'a4'
-        });
-
-        const imgProps = pdf.getImageProperties(imgData);
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pageHeight = pdf.internal.pageSize.getHeight();
-        const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-
-        let heightLeft = pdfHeight;
-        let position = 0;
-
-        pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, pdfHeight);
-        heightLeft -= pageHeight;
-
-        while (heightLeft > 0) {
-            position -= pageHeight;
-            pdf.addPage();
-            pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, pdfHeight);
-            heightLeft -= pageHeight;
-        }
-
-        const pdfBase64 = pdf.output('datauristring').split(',')[1];
+        const pdfBase64 = await html2pdf().from(documentRef.current).set(opt).outputPdf('datauristring');
+        const pureBase64 = pdfBase64.split(',')[1];
 
         const htmlContent = generateDocumentHtml(invoice, issuer);
         const docTypeName = isQuote ? 'Cotización' : 'Factura';
@@ -262,7 +239,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
             senderName: issuer.legalName || issuer.name, 
             attachments: [{
                 filename: `${docTypeName}_${invoice.id}.pdf`,
-                content: pdfBase64
+                content: pureBase64
             }]
         });
 
@@ -300,28 +277,16 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
   const handleDownloadPdf = async () => {
       if (!documentRef.current) return;
       
-      const canvas = await html2canvas(documentRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const imgProps = pdf.getImageProperties(imgData);
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-      
-      let heightLeft = pdfHeight;
-      let position = 0;
+      const opt = {
+          margin:       10,
+          filename:     `${isQuote ? 'Cotizacion' : 'Factura'}_${invoice.id}.pdf`,
+          image:        { type: 'jpeg' as const, quality: 0.8 },
+          html2canvas:  { scale: 1.5, useCORS: true, logging: false },
+          jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
+          pagebreak:    { mode: ['css', 'legacy'] }
+      };
 
-      pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
-      heightLeft -= pageHeight;
-
-      while (heightLeft > 0) {
-          position -= pageHeight;
-          pdf.addPage();
-          pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
-          heightLeft -= pageHeight;
-      }
-
-      pdf.save(`${isQuote ? 'Cotizacion' : 'Factura'}_${invoice.id}.pdf`);
+      await html2pdf().from(documentRef.current).set(opt).save();
       alert.addToast('success', 'PDF Descargado');
   };
 
@@ -402,7 +367,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
           <div>
               <div className="flex items-center gap-3 mb-4">
                 {logo ? (
-                   <img src={logo} alt="Logo" className="h-24 max-w-[250px] object-contain" />
+                   <img src={logo} alt="Logo" className="h-[96px] w-auto max-w-[250px] object-contain" />
                 ) : (
                   <div className="w-16 h-16 bg-slate-100 rounded-lg flex items-center justify-center text-slate-400">
                     <Building2 className="w-8 h-8" />
@@ -473,7 +438,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
             </thead>
             <tbody className="divide-y divide-slate-50">
               {invoice.items.map((item, idx) => (
-                <tr key={idx}>
+                <tr key={idx} className="break-inside-avoid">
                   <td className="py-5">
                     <p className="font-medium text-slate-800 text-lg">{item.description}</p>
                     {item.details && <p className="text-sm text-slate-500 mt-1 whitespace-pre-wrap leading-relaxed">{item.details}</p>}
