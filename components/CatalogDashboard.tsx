@@ -22,7 +22,11 @@ interface CatalogDashboardProps {
 
 const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry, apiKey, onSaveItem, onDeleteItem, referenceHourlyRate, currentUser }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 12;
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  React.useEffect(() => { setCurrentPage(1); }, [searchTerm]);
   const [editingItem, setEditingItem] = useState<CatalogItem | null>(null);
   
   // Loading State for Save
@@ -45,6 +49,9 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
   const filteredItems = items.filter(item => 
     item.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const totalPages = Math.ceil(filteredItems.length / ITEMS_PER_PAGE);
+  const currentItems = filteredItems.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   const handleEdit = (item: CatalogItem) => {
     setEditingItem(item);
@@ -176,7 +183,7 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
 
       {/* GRID LAYOUT */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {filteredItems.map(item => (
+        {currentItems.map(item => (
            <div key={item.id} className="bg-white p-8 rounded-[2rem] shadow-sm hover:shadow-xl border border-slate-50 hover:border-[#27bea5]/30 transition-all duration-300 group relative flex flex-col hover:-translate-y-1">
               
               {/* Top Row */}
@@ -233,6 +240,28 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
           </div>
         )}
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex justify-center items-center gap-4 pt-8 pb-4">
+          <button 
+            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
+            className="px-5 py-2.5 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 disabled:opacity-50 hover:bg-slate-50 transition-colors shadow-sm"
+          >
+            Anterior
+          </button>
+          <span className="text-sm font-bold text-slate-400">
+            {currentPage} de {totalPages}
+          </span>
+          <button 
+            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages}
+            className="px-5 py-2.5 border border-slate-200 rounded-xl text-sm font-bold text-[#1c2938] disabled:opacity-50 hover:bg-slate-50 transition-colors shadow-sm bg-white"
+          >
+            Siguiente
+          </button>
+        </div>
+      )}
 
       {/* MODAL - Visceral: Clean Studio Feel */}
       {isModalOpen && (

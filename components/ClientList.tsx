@@ -40,6 +40,10 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
   const [viewMode, setViewMode] = useState<'LIST' | 'GALLERY'>('GALLERY');
   const [filter, setFilter] = useState<'ALL' | 'CLIENT' | 'PROSPECT' | 'VIP'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 12;
+
+  React.useEffect(() => { setCurrentPage(1); }, [searchTerm, filter]);
 
   // Auto-refresh on mount to ensure fresh data
   React.useEffect(() => {
@@ -210,6 +214,9 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
     return b.displayValue - a.displayValue;
   });
 
+  const totalPages = Math.ceil(filteredClients.length / ITEMS_PER_PAGE);
+  const currentClients = filteredClients.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
   const getInitials = (name: string) => name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
   const getRandomColor = (name: string) => {
     const colors = ['bg-rose-100 text-rose-600', 'bg-blue-100 text-blue-600', 'bg-teal-100 text-teal-600', 'bg-indigo-100 text-indigo-600'];
@@ -323,7 +330,7 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
         <>
           {/* Mobile View (List) */}
           <div className="md:hidden space-y-4">
-            {filteredClients.map((client) => (
+            {currentClients.map((client) => (
               <div
                 key={client.name}
                 onClick={() => onSelectClient && onSelectClient(client.name)}
@@ -348,7 +355,7 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
 
           {/* Desktop View (Grid/List) */}
           <div className="hidden md:grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredClients.map((client) => (
+            {currentClients.map((client) => (
               <div
                 key={client.name}
                 onClick={() => onSelectClient && onSelectClient(client.name)}
@@ -390,6 +397,28 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
               </div>
             ))}
           </div>
+
+          {totalPages > 1 && (
+            <div className="flex justify-center items-center gap-4 pt-8 pb-4">
+              <button 
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-5 py-2.5 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 disabled:opacity-50 hover:bg-slate-50 transition-colors shadow-sm"
+              >
+                Anterior
+              </button>
+              <span className="text-sm font-bold text-slate-400">
+                {currentPage} de {totalPages}
+              </span>
+              <button 
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="px-5 py-2.5 border border-slate-200 rounded-xl text-sm font-bold text-[#1c2938] disabled:opacity-50 hover:bg-slate-50 transition-colors shadow-sm bg-white"
+              >
+                Siguiente
+              </button>
+            </div>
+          )}
         </>
       ) : (
         <div className="py-20 text-center border-2 border-dashed border-slate-100 rounded-[3rem] bg-slate-50/50">

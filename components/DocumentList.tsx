@@ -49,6 +49,11 @@ const DocumentList: React.FC<DocumentListProps> = ({
 
    const [currentStage, setCurrentStage] = useState<DocStage>('ALL_ACTIVE');
    const [searchTerm, setSearchTerm] = useState('');
+   const [currentPage, setCurrentPage] = useState(1);
+   const ITEMS_PER_PAGE = 12;
+
+   // Reset page when views/filters change
+   useEffect(() => { setCurrentPage(1); }, [searchTerm, currentStage, docTypeFilter, viewMode]);
 
    // Quick Action Menu State
    const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
@@ -277,6 +282,9 @@ const DocumentList: React.FC<DocumentListProps> = ({
       return false;
    });
 
+   const totalPages = Math.ceil(filteredDocs.length / ITEMS_PER_PAGE);
+   const currentDocs = filteredDocs.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
    // --- TABS CONFIGURATION ---
    const getTabs = () => {
       if (docTypeFilter === 'INVOICE') {
@@ -388,7 +396,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
       return (
          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-               {filteredDocs.length > 0 ? filteredDocs.map(doc => (
+               {filteredDocs.length > 0 ? currentDocs.map(doc => (
                   <div
                      key={doc.id}
                      className="group bg-white rounded-[2rem] border border-slate-100 hover:border-[#27bea5]/30 shadow-sm hover:shadow-xl transition-all duration-300 relative overflow-hidden flex flex-col hover:-translate-y-2 h-[280px]"
@@ -712,7 +720,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
             <div className="space-y-4">
                {/* Mobile List Rendering */}
                <div className="md:hidden space-y-4">
-                  {filteredDocs.map((doc) => (
+                  {currentDocs.map((doc) => (
                      <div key={doc.id} onClick={() => onSelectInvoice(doc)} className="bg-white p-4 rounded-2xl border border-slate-50 shadow-sm flex items-center justify-between">
                         <div className="flex items-center gap-4">
                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${doc.type === 'Quote' ? 'bg-purple-50 text-purple-600' : 'bg-blue-50 text-blue-600'}`}>
@@ -742,7 +750,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
                      <div className="col-span-2 text-center">Estado</div>
                      <div className="col-span-1"></div>
                   </div>
-                  {filteredDocs.map((doc) => (
+                  {currentDocs.map((doc) => (
                      <div key={doc.id} onClick={() => onSelectInvoice(doc)} className="group bg-white rounded-3xl p-4 md:px-8 md:py-5 border border-slate-50 shadow-sm hover:shadow-lg cursor-pointer grid grid-cols-12 items-center relative overflow-visible">
                         <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${doc.type === 'Quote' ? 'bg-[#27bea5]' : 'bg-[#1c2938]'}`}></div>
                         <div className="col-span-4 w-full flex items-center gap-4">
@@ -783,6 +791,29 @@ const DocumentList: React.FC<DocumentListProps> = ({
                      </div>
                   ))}
                </div>
+            </div>
+         )}
+
+         {/* GLOBAL PAGINATION CONTROLS */}
+         {totalPages > 1 && (
+            <div className="flex justify-center items-center gap-4 pt-4 pb-4">
+               <button 
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-5 py-2.5 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 disabled:opacity-50 hover:bg-slate-50 transition-colors shadow-sm"
+               >
+                  Anterior
+               </button>
+               <span className="text-sm font-bold text-slate-400">
+                  {currentPage} de {totalPages}
+               </span>
+               <button 
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-5 py-2.5 border border-slate-200 rounded-xl text-sm font-bold text-[#1c2938] disabled:opacity-50 hover:bg-slate-50 transition-colors shadow-sm bg-white"
+               >
+                  Siguiente
+               </button>
             </div>
          )}
       </div>
