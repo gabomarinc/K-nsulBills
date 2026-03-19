@@ -216,9 +216,9 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
         if (!documentRef.current) throw new Error("No se pudo capturar el documento.");
         
         const opt = {
-            margin:       10,
+            margin:       [20, 10, 20, 10] as [number, number, number, number], // top, right, bottom, left
             filename:     `${isQuote ? 'Cotizacion' : 'Factura'}_${invoice.id}.pdf`,
-            image:        { type: 'jpeg' as const, quality: 0.8 },
+            image:        { type: 'jpeg' as const, quality: 0.75 },
             html2canvas:  { scale: 1.5, useCORS: true, logging: false },
             jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
             pagebreak:    { mode: ['css', 'legacy'] }
@@ -278,9 +278,9 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
       if (!documentRef.current) return;
       
       const opt = {
-          margin:       10,
+          margin:       [20, 10, 20, 10] as [number, number, number, number], // top, right, bottom, left
           filename:     `${isQuote ? 'Cotizacion' : 'Factura'}_${invoice.id}.pdf`,
-          image:        { type: 'jpeg' as const, quality: 0.8 },
+          image:        { type: 'jpeg' as const, quality: 0.75 },
           html2canvas:  { scale: 1.5, useCORS: true, logging: false },
           jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
           pagebreak:    { mode: ['css', 'legacy'] }
@@ -566,7 +566,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
           </thead>
           <tbody className="divide-y divide-slate-200">
              {invoice.items.map((item, idx) => (
-                <tr key={idx}>
+                <tr key={idx} className="break-inside-avoid">
                    <td className="py-4 font-serif text-slate-700">
                       <p>{item.description}</p>
                       {item.details && <p className="text-sm text-slate-500 mt-1 italic">{item.details}</p>}
@@ -650,7 +650,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
 
        <div className="space-y-4 mb-16">
           {invoice.items.map((item, idx) => (
-             <div key={idx} className="flex justify-between items-start py-4 border-b border-slate-50">
+             <div key={idx} className="flex justify-between items-start py-4 border-b border-slate-50 break-inside-avoid">
                 <div>
                    <p className="font-medium text-slate-900 text-lg">{item.description}</p>
                    {item.details && <p className="text-sm text-slate-500 mt-1">{item.details}</p>}
