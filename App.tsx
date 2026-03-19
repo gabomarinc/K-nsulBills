@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { AppView, Invoice, UserProfile, CatalogItem, InvoiceStatus, TimelineEvent, DbClient } from './types';
+import { AppView, Invoice, UserProfile, CatalogItem, InvoiceStatus, TimelineEvent, DbClient, AccountantTask, ProfileType } from './types';
 import LoginScreen from './components/LoginScreen';
 import OnboardingWizard from './components/OnboardingWizard';
 import Layout from './components/Layout';
@@ -16,6 +16,10 @@ import CatalogDashboard from './components/CatalogDashboard';
 import ExpenseTracker from './components/ExpenseTracker';
 import ExpenseWizard from './components/ExpenseWizard';
 import ClientWizard from './components/ClientWizard';
+import AccountantDashboard from './components/AccountantDashboard';
+import AiTaskManager from './components/AiTaskManager';
+import FiscalCalculators from './components/FiscalCalculators';
+import TaxCalendar from './components/TaxCalendar';
 import { AlertProvider, useAlert } from './components/AlertSystem';
 import {
   authenticateUser,
@@ -47,7 +51,47 @@ const AppContent: React.FC = () => {
   const [isOffline, setIsOffline] = useState(false);
   const [isSessionLoading, setIsSessionLoading] = useState(true);
 
+  // Accountant Specific State
+  const [managedCompanies, setManagedCompanies] = useState<UserProfile[]>([]);
+  const [accountantTasks, setAccountantTasks] = useState<AccountantTask[]>([]);
+  const [calcType, setCalcType] = useState<'INTEREST' | 'SANCTION'>('INTEREST');
+
   const alert = useAlert(); // Hook for alerts
+
+  const handleLoginSuccess = async (user: UserProfile) => {
+    // Detect role strictly from ProfileType
+    const isAccountant = user.type === ProfileType.ACCOUNTANT || user.isAccountant;
+
+    // Ensure sync between type and flag
+    const finalUser = { ...user, isAccountant };
+
+    setCurrentUser(finalUser);
+    const view = isAccountant ? AppView.ACCOUNTANT_DASHBOARD : AppView.DASHBOARD;
+    setActiveView(view);
+    localStorage.setItem('konsul_session_id', finalUser.id);
+    localStorage.setItem('konsul_user_data', JSON.stringify(finalUser));
+
+    // Load accountant dummy data if role is accountant
+    if (isAccountant) {
+      setManagedCompanies([
+        { id: 'c1', name: 'Mi Dulce Hogar S.A.', taxId: '123456-1-123456', fiscalConfig: { entityType: 'JURIDICA' } } as UserProfile,
+        { id: 'c2', name: 'Tech Solutions Panamá', taxId: '654321-2-654321', fiscalConfig: { entityType: 'JURIDICA' } } as UserProfile,
+        { id: 'c3', name: 'Dr. Roberto Mendoza', taxId: '8-888-888', fiscalConfig: { entityType: 'NATURAL' } } as UserProfile,
+      ]);
+      setAccountantTasks([
+        { id: 't1', userId: finalUser.id, title: 'Presentar ITBMS Enero', dueDate: '2026-01-15', priority: 'HIGH', status: 'PENDING', linkedClientId: 'Mi Dulce Hogar S.A.', aiSuggestion: 'Priorizar por flujo de caja' },
+        { id: 't2', userId: finalUser.id, title: 'Revisión Planilla SIPE', dueDate: '2026-01-20', priority: 'MEDIUM', status: 'PENDING', linkedClientId: 'Tech Solutions Panamá' },
+      ]);
+    }
+    alert.addToast('success', `Bienvenido, ${user.name}`, isAccountant ? 'Panel de Contador Activado.' : 'Tu sesión ha iniciado correctamente.');
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setActiveView(AppView.DASHBOARD);
+    localStorage.removeItem('konsul_session_id');
+    localStorage.removeItem('konsul_user_data');
+  };
 
   // SESSION RESTORATION LOGIC
   useEffect(() => {
@@ -188,22 +232,6 @@ const AppContent: React.FC = () => {
     }
   }, [currentUser?.id]); // Only re-run if ID changes
 
-  const handleLoginSuccess = (user: UserProfile) => {
-    localStorage.setItem('konsul_session_id', user.id);
-    localStorage.setItem('konsul_user_data', JSON.stringify(user));
-    setCurrentUser(user);
-    alert.addToast('success', `Bienvenido, ${user.name}`, 'Tu sesión ha iniciado correctamente.');
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('konsul_session_id');
-    localStorage.removeItem('konsul_user_data');
-    setCurrentUser(null);
-    setInvoices([]);
-    setDbClients([]);
-    setCatalogItems([]);
-    setActiveView(AppView.DASHBOARD);
-  };
 
   const handleOnboardingComplete = async (data: Partial<UserProfile> & { password?: string, email?: string }) => {
     if (data.password && data.email) {
@@ -489,9 +517,18 @@ const AppContent: React.FC = () => {
   };
 
   const handleUpdateProfile = async (updated: UserProfile) => {
-    setCurrentUser(updated);
-    localStorage.setItem('konsul_user_data', JSON.stringify(updated));
-    await updateUserProfileInDb(updated);
+    // Ensure isAccountant flag stays synced with official ProfileType
+    const isNowAccountant = updated.type === ProfileType.ACCOUNTANT;
+
+    const finalProfile = {
+      ...updated,
+      isAccountant: isNowAccountant
+    };
+
+    setCurrentUser(finalProfile);
+    localStorage.setItem('konsul_user_data', JSON.stringify(finalProfile));
+    await updateUserProfileInDb(finalProfile);
+
     alert.addToast('success', 'Perfil Actualizado', 'Tus cambios se han guardado.');
   };
 
@@ -668,6 +705,34 @@ const AppContent: React.FC = () => {
           onSave={handleSaveNewClient}
           onCancel={() => setActiveView(AppView.CLIENTS)}
         />
+      )}
+
+      {/* --- ACCOUNTANT VIEWS --- */}
+      {activeView === AppView.ACCOUNTANT_DASHBOARD && (
+        <AccountantDashboard
+          currentUser={currentUser!}
+          managedCompanies={managedCompanies}
+          onSelectCompany={(c) => alert.addToast('info', 'Switching View', `Accediendo a ${c.name}...`)}
+          onViewCalculator={(type) => { setCalcType(type); setActiveView(AppView.FISCAL_CALCULATORS); }}
+          onViewTasks={() => setActiveView(AppView.AI_TASKS)}
+          onViewCalendar={() => setActiveView(AppView.TAX_CALENDAR)}
+        />
+      )}
+
+      {activeView === AppView.AI_TASKS && (
+        <AiTaskManager
+          tasks={accountantTasks}
+          onAddTask={() => { }}
+          onUpdateStatus={(id, s) => setAccountantTasks(prev => prev.map(t => t.id === id ? { ...t, status: s } : t))}
+        />
+      )}
+
+      {activeView === AppView.FISCAL_CALCULATORS && (
+        <FiscalCalculators initialType={calcType} onBack={() => setActiveView(AppView.ACCOUNTANT_DASHBOARD)} />
+      )}
+
+      {activeView === AppView.TAX_CALENDAR && (
+        <TaxCalendar onBack={() => setActiveView(AppView.ACCOUNTANT_DASHBOARD)} />
       )}
 
       {activeView === AppView.CLIENT_DETAIL && selectedClientName && (

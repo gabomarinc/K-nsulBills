@@ -129,6 +129,8 @@ const mapUserRowToProfile = (row: any): UserProfile => {
     renewalDate: row.renewal_date || profileSettings.renewalDate,
 
     ...profileSettings, // Spread the rest (branding, apiKeys, etc.)
+    managedUserIds: row.managed_user_ids || profileSettings.managedUserIds || [],
+    isAccountant: row.type === 'ACCOUNTANT' || !!profileSettings.isAccountant,
     isOnboardingComplete: true
   } as UserProfile;
 };
@@ -319,7 +321,8 @@ export const createUserInDb = async (profile: Partial<UserProfile>, password: st
 
     // Ensure we keep bankAccountType and fiscalConfig inside profileData JSON
 
-    const dbType = (profile.type || '').includes('Empresa') ? 'COMPANY' : 'FREELANCE';
+    const dbType = profile.type === 'Contador Público / Firma' ? 'ACCOUNTANT' :
+      (profile.type || '').includes('Empresa') ? 'COMPANY' : 'FREELANCE';
 
     // Insert into new columns as well
     await client.query(
@@ -372,11 +375,12 @@ export const updateUserProfileInDb = async (profile: UserProfile): Promise<boole
     // profileData.bankAccountType should be present if it was in 'profile'
     // profileData.fiscalConfig should be present if it was in 'profile'
 
-    if (!profile.fiscalConfig) {
+    if (!profile.fiscalConfig && profile.type !== 'Contador Público / Firma') {
       console.warn("Saving profile without fiscalConfig - checks might fail later.");
     }
 
-    const dbType = (profile.type || '').includes('Empresa') ? 'COMPANY' : 'FREELANCE';
+    const dbType = profile.type === 'Contador Público / Firma' ? 'ACCOUNTANT' :
+      (profile.type || '').includes('Empresa') ? 'COMPANY' : 'FREELANCE';
 
     await client.query(
       `UPDATE users 

@@ -11,9 +11,12 @@ import {
   Users,
   TrendingDown,
   ChevronLeft,
-  LogOut
+  LogOut,
+  Sparkles,
+  Calculator,
+  Calendar
 } from 'lucide-react';
-import { AppView, ProfileType, UserProfile } from '../types';
+import { AppView, ProfileType, UserProfile, AccountantTask } from '../types';
 import SupportWidget from './SupportWidget';
 import MobileQuickActions from './MobileQuickActions';
 
@@ -137,6 +140,36 @@ const Layout: React.FC<LayoutProps> = ({
             isCollapsed={isCollapsed}
             onClick={() => onNavigate(AppView.SETTINGS)}
           />
+
+          {/* Accountant Specific Items */}
+          {currentProfile.isAccountant && (
+            <>
+              <div className="pt-4 pb-2">
+                <p className={`text-[10px] font-bold text-slate-300 uppercase tracking-[0.2em] ${isCollapsed ? 'hidden' : 'block px-4'}`}>Herramientas</p>
+              </div>
+              <NavItem
+                icon={<Sparkles size={24} />}
+                label="Gestor IA"
+                isActive={activeView === AppView.AI_TASKS}
+                isCollapsed={isCollapsed}
+                onClick={() => onNavigate(AppView.AI_TASKS)}
+              />
+              <NavItem
+                icon={<Calculator size={24} />}
+                label="Liquidadores"
+                isActive={activeView === AppView.FISCAL_CALCULATORS}
+                isCollapsed={isCollapsed}
+                onClick={() => onNavigate(AppView.FISCAL_CALCULATORS)}
+              />
+              <NavItem
+                icon={<Calendar size={24} />}
+                label="Calendario"
+                isActive={activeView === AppView.TAX_CALENDAR}
+                isCollapsed={isCollapsed}
+                onClick={() => onNavigate(AppView.TAX_CALENDAR)}
+              />
+            </>
+          )}
         </nav>
 
         {/* Profile & Footer */}

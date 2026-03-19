@@ -12,11 +12,16 @@ export enum AppView {
   EXPENSES = 'EXPENSES', // New Expenses View
   EXPENSE_WIZARD = 'EXPENSE_WIZARD', // New Expense Creation Flow
   CLIENT_WIZARD = 'CLIENT_WIZARD', // New Client Creation Flow
+  ACCOUNTANT_DASHBOARD = 'ACCOUNTANT_DASHBOARD',
+  AI_TASKS = 'AI_TASKS',
+  FISCAL_CALCULATORS = 'FISCAL_CALCULATORS',
+  TAX_CALENDAR = 'TAX_CALENDAR',
 }
 
 export enum ProfileType {
   FREELANCE = 'Autónomo',
   COMPANY = 'Empresa (SAS/SL)',
+  ACCOUNTANT = 'Contador Público / Firma',
 }
 
 // NEW: Database Client Structure
@@ -171,6 +176,23 @@ export interface UserProfile {
 
   avatar: string;
   isOnboardingComplete: boolean;
+
+  // Accountant Specific
+  managedUserIds?: string[];
+  isAccountant?: boolean;
+}
+
+export interface AccountantTask {
+  id: string;
+  userId: string;
+  title: string;
+  description?: string;
+  dueDate: string;
+  priority: 'HIGH' | 'MEDIUM' | 'LOW';
+  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
+  category?: 'FISCAL' | 'ADMIN' | 'AUDIT';
+  linkedClientId?: string;
+  aiSuggestion?: string;
 }
 
 export interface InvoiceItem {
