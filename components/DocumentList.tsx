@@ -59,6 +59,8 @@ const DocumentList: React.FC<DocumentListProps> = ({
    const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
 
    const [isSyncingStripe, setIsSyncingStripe] = useState(false);
+   const [unlinkedPayments, setUnlinkedPayments] = useState<any[]>([]);
+   const [showManualSync, setShowManualSync] = useState(false);
 
    // Check AI Access
    const hasAiAccess = !!currentUser?.apiKeys?.gemini || !!currentUser?.apiKeys?.openai;
@@ -152,17 +154,33 @@ const DocumentList: React.FC<DocumentListProps> = ({
          });
          const data = await res.json();
          if (data.success && data.payments) {
-            let count = 0;
+            let autoCount = 0;
+            const unlinked: any[] = [];
+
             // Iterate over payments, find matching unpaid invoices
             for (const payment of data.payments) {
                const invoice = invoices.find(i => i.id === payment.invoiceId && i.status !== 'Pagada' && i.status !== 'Rechazada');
-               if (invoice) {
+               if (payment.invoiceId && invoice) {
                   onUpdateStatus(invoice.id, 'Pagada');
-                  count++;
+                  autoCount++;
+               } else {
+                  // Payment from Stripe not automatically recognized
+                  unlinked.push(payment);
                }
             }
-            if (count > 0) alert(`Se sincronizaron y marcaron como Pagadas ${count} facturas desde Stripe.`);
-            else alert('Sincronización completa. No se encontraron pagos nuevos pendientes en Stripe.');
+            
+            setUnlinkedPayments(unlinked);
+            
+            if (autoCount > 0) {
+                // Notify about automatic ones
+                alert(`Sincronización automática: ${autoCount} facturas marcadas como Pagadas.`);
+            }
+
+            if (unlinked.length > 0) {
+                setShowManualSync(true);
+            } else if (autoCount === 0) {
+                alert('Sincronización completa. No se encontraron nuevos pagos en Stripe.');
+            }
          } else {
             alert(data.error || 'Error al conectar con Stripe para sincronizar.');
          }
@@ -862,6 +880,102 @@ const DocumentList: React.FC<DocumentListProps> = ({
                   Siguiente
                </button>
             </div>
+         )}
+
+         {/* MANUAL STRIPE SYNC MODAL */}
+         {showManualSync && (
+             <div className="fixed inset-0 bg-[#1c2938]/60 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in">
+                 <div className="bg-white rounded-[2.5rem] p-0 w-full max-w-4xl shadow-2xl animate-in zoom-in-95 relative overflow-hidden flex flex-col max-h-[90vh]">
+                     
+                     {/* Header */}
+                     <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                         <div>
+                             <h3 className="text-2xl font-bold text-[#1c2938] flex items-center gap-3">
+                                 <Lock className="w-6 h-6 text-[#635BFF]" /> Conciliación de Pagos
+                             </h3>
+                             <p className="text-slate-500 text-sm mt-1">
+                                 Encontramos {unlinkedPayments.length} pagos en Stripe sin asociación automática.
+                             </p>
+                         </div>
+                         <button 
+                             onClick={() => setShowManualSync(false)}
+                             className="p-3 rounded-2xl hover:bg-white hover:shadow-sm text-slate-400 transition-all"
+                         >
+                             <XCircle className="w-6 h-6" />
+                         </button>
+                     </div>
+
+                     {/* Content (Scrollable) */}
+                     <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+                         <div className="space-y-4">
+                             {unlinkedPayments.map((payment, idx) => (
+                                 <div key={payment.stripeSessionId} className="bg-slate-50 rounded-3xl p-6 border border-slate-100 flex flex-col md:flex-row justify-between items-center gap-6 group hover:border-[#635BFF]/30 transition-all">
+                                     <div className="flex-1">
+                                         <div className="flex items-center gap-2 mb-1">
+                                             <span className="text-xs font-bold text-[#635BFF] bg-[#635BFF]/10 px-2 py-0.5 rounded-full uppercase tracking-tighter">Stripe Payment</span>
+                                             <span className="text-xs text-slate-400">{new Date(payment.date).toLocaleDateString()}</span>
+                                         </div>
+                                         <p className="font-bold text-slate-900 text-lg uppercase">{payment.customerName}</p>
+                                         <p className="text-sm text-slate-500 font-medium">{payment.description}</p>
+                                         <p className="text-xs text-slate-400 mt-1">{payment.customerEmail}</p>
+                                     </div>
+
+                                     <div className="text-right px-6 border-x border-slate-200 hidden md:block">
+                                         <p className="text-xs text-slate-400 font-bold uppercase mb-1">Monto Recibido</p>
+                                         <p className="text-2xl font-black text-slate-900">{payment.currency} {payment.amountPaid.toFixed(2)}</p>
+                                     </div>
+
+                                     <div className="flex flex-col gap-2 w-full md:w-64">
+                                         <p className="text-[10px] text-slate-400 font-bold uppercase px-1">Asociar a Factura Local:</p>
+                                         <select 
+                                           className="w-full bg-white border border-slate-200 rounded-xl py-2 px-3 text-sm font-bold text-slate-700 outline-none focus:border-[#1c2938] transition-all"
+                                           onChange={(e) => {
+                                               const val = e.target.value;
+                                               const updated = [...unlinkedPayments];
+                                               updated[idx].targetInvoiceId = val;
+                                               setUnlinkedPayments(updated);
+                                           }}
+                                           value={payment.targetInvoiceId || ""}
+                                         >
+                                             <option value="">-- Seleccionar Factura --</option>
+                                             {invoices
+                                               .filter(i => i.type === 'Invoice' && i.status !== 'Pagada' && i.status !== 'Rechazada')
+                                               .sort((a, b) => b.id.localeCompare(a.id))
+                                               .map(inv => (
+                                                 <option key={inv.id} value={inv.id}>
+                                                     #{inv.id} - {inv.clientName} ({inv.currency} {inv.total.toFixed(2)})
+                                                 </option>
+                                             ))}
+                                         </select>
+                                         <button 
+                                           disabled={!payment.targetInvoiceId}
+                                           onClick={() => {
+                                               if (onUpdateStatus) {
+                                                   onUpdateStatus(payment.targetInvoiceId, 'Pagada');
+                                                   // Remove from list
+                                                   const updated = unlinkedPayments.filter(p => p.stripeSessionId !== payment.stripeSessionId);
+                                                   setUnlinkedPayments(updated);
+                                                   if (updated.length === 0) setShowManualSync(false);
+                                               }
+                                           }}
+                                           className="w-full bg-[#1c2938] text-white py-2 rounded-xl text-xs font-bold hover:bg-[#27bea5] transition-all shadow-sm active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
+                                         >
+                                             Ligar y Marcar Pagada
+                                         </button>
+                                     </div>
+                                 </div>
+                             ))}
+                         </div>
+                     </div>
+
+                     {/* Footer */}
+                     <div className="p-6 border-t border-slate-100 text-center bg-slate-50/30">
+                         <p className="text-xs text-slate-400">
+                             Al asociar un pago, el estado de la factura local cambiará a <strong className="text-emerald-600">Pagada</strong> automáticamente.
+                         </p>
+                     </div>
+                 </div>
+             </div>
          )}
       </div>
    );

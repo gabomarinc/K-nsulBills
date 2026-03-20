@@ -22,13 +22,17 @@ export default async function handler(req, res) {
     const syncedPayments = [];
 
     for (const session of sessions.data) {
-      // Only process completed payments that have our metadata
-      if (session.payment_status === 'paid' && session.metadata && session.metadata.invoiceId) {
+      // Only process completed payments
+      if (session.payment_status === 'paid') {
         syncedPayments.push({
-          invoiceId: session.metadata.invoiceId,
+          invoiceId: session.metadata?.invoiceId || null,
           amountPaid: session.amount_total / 100, // Convert from cents
+          currency: session.currency?.toUpperCase() || 'USD',
           stripeSessionId: session.id,
-          date: new Date(session.created * 1000).toISOString()
+          date: new Date(session.created * 1000).toISOString(),
+          customerName: session.customer_details?.name || 'Cliente Desconocido',
+          customerEmail: session.customer_details?.email || '',
+          description: session.metadata?.invoiceDesc || 'Pago Directo Stripe'
         });
       }
     }
