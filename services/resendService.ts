@@ -200,10 +200,26 @@ export const sendDocumentEmail = async (
 /**
  * Generates the Professional HTML Template for Invoice/Quote.
  */
-export const generateDocumentHtml = (invoice: Invoice, issuer: UserProfile): string => {
+export const generateDocumentHtml = (invoice: Invoice, issuer: UserProfile, paymentUrl?: string): string => {
   const isQuote = invoice.type === 'Quote';
   const docTypeLabel = isQuote ? 'Cotización' : 'Factura';
   const color = issuer.branding?.primaryColor || '#1c2938';
+
+  const paymentButton = paymentUrl ? `
+    <!-- BOTON DE PAGO -->
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-top: 32px;">
+        <tr>
+            <td align="center">
+                <a href="${paymentUrl}" style="background-color: ${color}; color: #ffffff; padding: 16px 32px; border-radius: 12px; text-decoration: none; font-weight: bold; font-size: 16px; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                    Pagar ${docTypeLabel} Online
+                </a>
+            </td>
+        </tr>
+    </table>
+    <p style="color: #94a3b8; font-size: 12px; margin-top: 16px; text-align: center;">
+        Link seguro via Stripe
+    </p>
+  ` : '';
 
   return `
 <!DOCTYPE html>
@@ -251,6 +267,8 @@ export const generateDocumentHtml = (invoice: Invoice, issuer: UserProfile): str
                                     </td>
                                 </tr>
                             </table>
+
+                            ${paymentButton}
 
                             <p style="color: #94a3b8; font-size: 14px; margin-top: 32px; text-align: center;">
                                 Si tienes alguna pregunta, no dudes en responder a este correo.

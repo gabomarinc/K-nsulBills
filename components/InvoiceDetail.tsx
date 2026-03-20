@@ -140,9 +140,9 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
       }, 1000);
   };
 
-  const handleStripe = async () => {
+  const handleStripe = async (silent = false) => {
       try {
-          if(!issuer.paymentIntegration?.stripeSecretKey) return;
+          if(!issuer.paymentIntegration?.stripeSecretKey) return null;
           const res = await fetch('/api/stripe-checkout', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -157,13 +157,16 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
           });
           const data = await res.json();
           if(data.url) {
-              window.location.href = data.url;
+              if (!silent) window.location.href = data.url;
+              return data.url;
           } else {
-              alert.addToast('error', 'Error Stripe', data.error || 'Error al conectar con Stripe');
+              if (!silent) alert.addToast('error', 'Error Stripe', data.error || 'Error al conectar con Stripe');
+              return null;
           }
       } catch(error) {
           console.error(error);
-          alert.addToast('error', 'Error Stripe', 'Error al inicializar Checkout');
+          if (!silent) alert.addToast('error', 'Error Stripe', 'Error al inicializar Checkout');
+          return null;
       }
   };
 
@@ -248,7 +251,13 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
         const pdfBase64 = await html2pdf().from(documentRef.current).set(opt).outputPdf('datauristring');
         const pureBase64 = pdfBase64.split(',')[1];
 
-        const htmlContent = generateDocumentHtml(invoice, issuer);
+        // Generate Stripe link if configured to include in Email button
+        let paymentUrl = undefined;
+        if (!isQuote && issuer.paymentIntegration?.stripeSecretKey) {
+            paymentUrl = await handleStripe(true);
+        }
+
+        const htmlContent = generateDocumentHtml(invoice, issuer, paymentUrl);
         const docTypeName = isQuote ? 'Cotización' : 'Factura';
         const emailSubject = `${docTypeName} #${invoice.id} - ${issuer.name}`;
 
@@ -308,6 +317,10 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
           pagebreak:    { mode: ['css', 'legacy'] }
       };
 
+      // To make the PDF interactive, we ensure the Stripe link is visible in the documentRef
+      // Before capturing. Since we want it to be a real link, we've added it to the renderModern/renderClassic
+      
+      alert.addToast('info', 'Generando PDF', 'Preparando documento interactivo...');
       await html2pdf().from(documentRef.current).set(opt).save();
       alert.addToast('success', 'PDF Descargado');
   };
@@ -379,7 +392,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                   )}
                   {hasStripe && (
                       <button 
-                        onClick={handleStripe}
+                        onClick={() => handleStripe()}
                         className="flex-1 bg-[#635BFF] text-white py-2.5 px-4 rounded-xl font-bold hover:bg-[#5249e5] transition-colors shadow-sm flex items-center justify-center gap-2"
                       >
                           <Lock className="w-4 h-4" /> Stripe
@@ -510,8 +523,26 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                      {issuer.bankAccount || 'No configurado'}
                   </p>
                   
-                  {/* Payment Buttons (PagueloFacil / Yappy) */}
+                  {/* Payment Buttons (PagueloFacil / Yappy / Stripe) */}
                   {renderPaymentButtons()}
+
+                  {/* PDF Link for interactive Payment */}
+                  {issuer.paymentIntegration?.stripeSecretKey && !isQuote && (
+                      <div className="mt-4 p-4 border border-dashed border-indigo-200 rounded-lg text-center bg-indigo-50/30">
+                          <p className="text-[10px] text-slate-400 uppercase font-bold mb-2">Pago Electrónico Directo</p>
+                          <a 
+                            href={`https://bills.konsul.com/pay/${invoice.id}`} 
+                            className="text-indigo-600 font-bold text-sm hover:underline flex items-center justify-center gap-1"
+                            onClick={(e) => {
+                                e.preventDefault();
+                                handleStripe();
+                            }}
+                          >
+                             <Link className="w-3 h-3" /> Pagar Factura Online
+                          </a>
+                          <p className="text-[9px] text-slate-400 mt-1">Este enlace es interactivo en el PDF</p>
+                      </div>
+                  )}
                 </div>
               )}
             </div>
@@ -648,6 +679,23 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                <p className="font-serif text-sm text-slate-600">{issuer.bankName}</p>
                <p className="font-serif text-sm text-slate-600 font-bold">{issuer.bankAccountType}: {issuer.bankAccount}</p>
                {renderPaymentButtons()}
+
+               {/* PDF Link for interactive Payment */}
+               {issuer.paymentIntegration?.stripeSecretKey && !isQuote && (
+                   <div className="mt-4 p-4 border border-slate-200 rounded text-center">
+                       <p className="font-serif text-[10px] text-slate-400 uppercase font-bold mb-1">Pago Directo Online</p>
+                       <a 
+                         href={`https://bills.konsul.com/pay/${invoice.id}`} 
+                         className="text-slate-900 font-serif font-bold text-sm hover:underline"
+                         onClick={(e) => {
+                             e.preventDefault();
+                             handleStripe();
+                         }}
+                       >
+                          Click aquí para pagar vía Stripe
+                       </a>
+                   </div>
+               )}
            </div>
        )}
 
@@ -692,7 +740,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
           ))}
        </div>
 
-       <div className="flex justify-end">
+        <div className="flex justify-end mb-8">
           <div className="text-right space-y-1">
              <div className="flex justify-end gap-8 text-sm text-slate-500">
                 <span>Subtotal</span>
@@ -715,6 +763,37 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
              </h2>
           </div>
        </div>
+
+       {/* PAYMENT INFO MINIMAL */}
+       {!isQuote && (
+           <div className="border-t border-slate-100 pt-8 mt-auto">
+                <div className="flex flex-col md:flex-row justify-between items-start gap-8">
+                    <div className="text-sm">
+                        <p className="font-bold text-slate-900 mb-2">Datos de Pago</p>
+                        <p className="text-slate-600">{issuer.legalName || issuer.name}</p>
+                        <p className="text-slate-500">{issuer.bankName} • {issuer.bankAccount}</p>
+                    </div>
+                    <div>
+                        {renderPaymentButtons()}
+                        {issuer.paymentIntegration?.stripeSecretKey && (
+                            <div className="mt-4 text-right">
+                                <a 
+                                  href={`https://bills.konsul.com/pay/${invoice.id}`} 
+                                  className="text-xs font-bold uppercase tracking-widest hover:underline"
+                                  style={{ color: color }}
+                                  onClick={(e) => {
+                                      e.preventDefault();
+                                      handleStripe();
+                                  }}
+                                >
+                                   Pagar vía Stripe →
+                                </a>
+                            </div>
+                        )}
+                    </div>
+                </div>
+           </div>
+       )}
 
        {invoice.notes && (
            <div className="mt-16 text-slate-500 text-sm">
