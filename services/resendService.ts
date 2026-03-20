@@ -29,6 +29,7 @@ interface EmailPayload {
   data?: any;
   senderName?: string;
   attachments?: Attachment[];
+  emailConfig?: any; // To pass custom SMTP settings to backend
 }
 
 /**
@@ -66,6 +67,10 @@ export const sendEmail = async (
 
     if (payload.attachments && payload.attachments.length > 0) {
       body.attachments = payload.attachments;
+    }
+
+    if (payload.emailConfig) {
+      body.emailConfig = payload.emailConfig;
     }
 
     const response = await fetch('/api/send', {
@@ -178,7 +183,8 @@ export const sendDocumentEmail = async (
   htmlContent: string,
   issuerName: string,
   attachments?: Attachment[],
-  ccEmail?: string
+  ccEmail?: string,
+  emailConfig?: any
 ) => {
   return sendEmail({
     to: recipientEmail,
@@ -186,7 +192,8 @@ export const sendDocumentEmail = async (
     subject: subject,
     html: htmlContent,
     senderName: issuerName,
-    attachments: attachments
+    attachments: attachments,
+    emailConfig: emailConfig
   });
 };
 

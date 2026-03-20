@@ -86,7 +86,7 @@ export interface DocumentSequences {
 }
 
 export interface PaymentIntegration {
-  provider: 'PAGUELOFACIL' | 'YAPPY' | 'BOTH';
+  provider: 'PAGUELOFACIL' | 'YAPPY' | 'STRIPE' | 'MULTIPLE' | 'BOTH';
   enabled: boolean;
   // PagueloFacil
   cclw?: string; // Codigo de Comercio (Merchant ID)
@@ -94,6 +94,8 @@ export interface PaymentIntegration {
   // Yappy
   yappyMerchantId?: string;
   yappySecretKey?: string;
+  // Stripe
+  stripeSecretKey?: string;
 }
 
 // New: Configuration for the Hourly Rate Calculator

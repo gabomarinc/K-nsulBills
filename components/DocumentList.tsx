@@ -58,6 +58,8 @@ const DocumentList: React.FC<DocumentListProps> = ({
    // Quick Action Menu State
    const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
 
+   const [isSyncingStripe, setIsSyncingStripe] = useState(false);
+
    // Check AI Access
    const hasAiAccess = !!currentUser?.apiKeys?.gemini || !!currentUser?.apiKeys?.openai;
 
@@ -136,6 +138,41 @@ const DocumentList: React.FC<DocumentListProps> = ({
 
       return { currentRevenue, prevRevenue, percentageChange };
    }, [invoices]);
+
+   // --- STRIPE SYNC LOGIC ---
+   const handleSyncStripe = async () => {
+      if (!currentUser?.paymentIntegration?.stripeSecretKey || !onUpdateStatus) return;
+      
+      setIsSyncingStripe(true);
+      try {
+         const res = await fetch('/api/stripe-sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ stripeSecretKey: currentUser.paymentIntegration.stripeSecretKey })
+         });
+         const data = await res.json();
+         if (data.success && data.payments) {
+            let count = 0;
+            // Iterate over payments, find matching unpaid invoices
+            for (const payment of data.payments) {
+               const invoice = invoices.find(i => i.id === payment.invoiceId && i.status !== 'Pagada' && i.status !== 'Rechazada');
+               if (invoice) {
+                  onUpdateStatus(invoice.id, 'Pagada');
+                  count++;
+               }
+            }
+            if (count > 0) alert(`Se sincronizaron y marcaron como Pagadas ${count} facturas desde Stripe.`);
+            else alert('Sincronización completa. No se encontraron pagos nuevos pendientes en Stripe.');
+         } else {
+            alert(data.error || 'Error al conectar con Stripe para sincronizar.');
+         }
+      } catch (err) {
+         console.error(err);
+         alert('Hubo un error al intentar sincronizar con Stripe.');
+      } finally {
+         setIsSyncingStripe(false);
+      }
+   };
 
    // --- TRIGGER AI INSIGHT (CACHED) ---
    useEffect(() => {
@@ -712,6 +749,16 @@ const DocumentList: React.FC<DocumentListProps> = ({
                      className="w-full h-full pl-12 pr-6 py-3 bg-transparent border-none rounded-2xl text-sm font-medium text-[#1c2938] focus:bg-slate-50 focus:ring-0 outline-none"
                   />
                </div>
+               {currentUser?.paymentIntegration?.stripeSecretKey && (
+                  <button
+                     onClick={handleSyncStripe}
+                     disabled={isSyncingStripe}
+                     className="px-4 py-3 bg-indigo-50 text-[#635BFF] rounded-2xl font-bold flex items-center gap-2 hover:bg-indigo-100 transition-colors disabled:opacity-50"
+                  >
+                     <RefreshCw className={`w-4 h-4 ${isSyncingStripe ? 'animate-spin' : ''}`} />
+                     <span className="hidden md:inline">Sync Stripe</span>
+                  </button>
+               )}
             </div>
          </div>
 

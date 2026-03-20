@@ -32,7 +32,7 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
   const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   // Logo upload ref
-  const [activePaymentTab, setActivePaymentTab] = useState<'PAGUELOFACIL' | 'YAPPY'>('PAGUELOFACIL');
+  const [activePaymentTab, setActivePaymentTab] = useState<'PAGUELOFACIL' | 'YAPPY' | 'STRIPE'>('PAGUELOFACIL');
 
   // Stripe Portal State
   const [isRedirectingToPortal, setIsRedirectingToPortal] = useState(false);
@@ -125,10 +125,12 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
       const hasPaguelo = !!updatedInt.cclw && !!updatedInt.token;
       const hasYappy = !!updatedInt.yappyMerchantId && !!updatedInt.yappySecretKey;
 
-      let newProvider: 'PAGUELOFACIL' | 'YAPPY' | 'BOTH' = updatedInt.provider;
-      if (hasPaguelo && hasYappy) newProvider = 'BOTH';
+      let newProvider: 'PAGUELOFACIL' | 'YAPPY' | 'STRIPE' | 'MULTIPLE' | 'BOTH' = updatedInt.provider;
+      if (hasPaguelo && hasYappy && !!updatedInt.stripeSecretKey) newProvider = 'MULTIPLE';
+      else if (hasPaguelo && hasYappy) newProvider = 'BOTH';
       else if (hasYappy) newProvider = 'YAPPY';
       else if (hasPaguelo) newProvider = 'PAGUELOFACIL';
+      else if (!!updatedInt.stripeSecretKey) newProvider = 'STRIPE';
 
       return { ...prev, paymentIntegration: { ...updatedInt, provider: newProvider } };
     });
@@ -291,7 +293,8 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
   }, [profile.fiscalConfig]);
 
   const isPagueloConfigured = !!profile.paymentIntegration?.cclw && !!profile.paymentIntegration?.token;
-  const isYappyConfigured = !!profile.paymentIntegration?.yappyMerchantId && !!profile.paymentIntegration?.yappySecretKey;
+  const isYappyConfigured = !!profile.paymentIntegration?.yappyMerchantId || !!profile.paymentIntegration?.yappySecretKey;
+  const isStripeConfigured = !!profile.paymentIntegration?.stripeSecretKey;
 
   return (
     <div className="max-w-6xl mx-auto space-y-10 animate-in fade-in pb-12 relative">
@@ -668,6 +671,13 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                           Yappy
                           {isYappyConfigured && <CheckCircle2 className="w-3 h-3 text-green-400" />}
                         </button>
+                        <button
+                          onClick={() => setActivePaymentTab('STRIPE')}
+                          className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${activePaymentTab === 'STRIPE' ? 'bg-[#635BFF] text-white shadow-sm' : 'text-slate-400 hover:text-white'} `}
+                        >
+                          Stripe
+                          {isStripeConfigured && <CheckCircle2 className="w-3 h-3 text-green-400" />}
+                        </button>
                       </div>
 
                       {/* PAGUELOFACIL FORM */}
@@ -782,10 +792,138 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                         </div>
                       )}
 
+                      {/* STRIPE FORM */}
+                      {activePaymentTab === 'STRIPE' && (
+                        <div className="space-y-4 animate-in fade-in">
+                          {/* LOGO */}
+                          <div className="bg-white p-3 rounded-xl flex items-center justify-center mb-4 shadow-sm">
+                            <img
+                              src="https://upload.wikimedia.org/wikipedia/commons/b/ba/Stripe_Logo%2C_revised_2016.svg"
+                              alt="Stripe"
+                              className="h-8"
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-[#635BFF] uppercase tracking-widest flex items-center gap-1">
+                              <Key className="w-3 h-3" /> Secret Key (API Key)
+                            </label>
+                            <div className="relative">
+                              <input
+                                type={showKeys['stripe_secret'] ? "text" : "password"}
+                                value={profile.paymentIntegration?.stripeSecretKey || ''}
+                                onChange={(e) => handlePaymentConfigChange('stripeSecretKey', e.target.value)}
+                                className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-[#635BFF] transition-colors font-mono pr-10"
+                                placeholder="sk_live_... o sk_test_..."
+                              />
+                              <button
+                                onClick={() => toggleKeyVisibility('stripe_secret')}
+                                className="absolute right-3 top-3 text-slate-500 hover:text-white transition-colors"
+                              >
+                                {showKeys['stripe_secret'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                              </button>
+                            </div>
+                            <p className="text-xs text-slate-400 mt-1">
+                              Puedes crear una Restrict Key en Stripe Dashboard {'>'} Developers {'>'} API keys.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
                     </div>
                   )}
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* CARD: EMAIL CONFIGURATION */}
+          <div className="bg-gradient-to-br from-[#1c2938] to-slate-900 p-8 rounded-[2rem] shadow-xl text-white relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500 rounded-full blur-[80px] opacity-10 -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+
+            <h3 className="text-xl font-bold mb-2 flex items-center gap-3 relative z-10">
+              <div className="p-2 bg-white/10 rounded-xl text-blue-400">
+                <Mail className="w-6 h-6" />
+              </div>
+              Configuración de Correo
+            </h3>
+            <p className="text-sm text-slate-400 mb-8 ml-14 max-w-lg">
+              Conecta tu propio servidor SMTP para enviar facturas y cotizaciones directamente desde tu correo personal o corporativo.
+            </p>
+
+            <div className="space-y-6 relative z-10">
+              {/* Provider Selection */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Proveedor de Envíos</label>
+                <div className="flex gap-2 bg-black/20 p-1 rounded-xl">
+                  <button 
+                    onClick={() => setProfile(p => ({...p, emailConfig: { ...p.emailConfig, provider: 'SYSTEM' } as any}))}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${(!profile.emailConfig?.provider || profile.emailConfig?.provider === 'SYSTEM') ? 'bg-[#27bea5] text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+                  >
+                    Por Defecto (Sistema)
+                  </button>
+                  <button 
+                    onClick={() => setProfile(p => ({...p, emailConfig: { ...p.emailConfig, provider: 'SMTP' } as any}))}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${profile.emailConfig?.provider === 'SMTP' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+                  >
+                    SMTP Personalizado
+                  </button>
+                </div>
+              </div>
+
+              {/* SMTP Settings */}
+              {profile.emailConfig?.provider === 'SMTP' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in pt-4 border-t border-white/10">
+                  <div className="space-y-2 md:col-span-1">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Servidor (Host)</label>
+                    <input 
+                      value={profile.emailConfig?.host || ''}
+                      onChange={(e) => setProfile(p => ({...p, emailConfig: {...p.emailConfig, host: e.target.value} as any}))}
+                      placeholder="smtp.gmail.com"
+                      className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-blue-400 transition-colors font-mono"
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-1">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Puerto</label>
+                    <select
+                      value={profile.emailConfig?.port || 465}
+                      onChange={(e) => setProfile(p => ({...p, emailConfig: {...p.emailConfig, port: parseInt(e.target.value)} as any}))}
+                      className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-blue-400 transition-colors appearance-none cursor-pointer"
+                    >
+                      <option value={465} className="text-slate-900">465 (SSL/TLS)</option>
+                      <option value={587} className="text-slate-900">587 (STARTTLS)</option>
+                      <option value={25} className="text-slate-900">25 (No Seguro)</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Usuario (Correo)</label>
+                    <input 
+                      value={profile.emailConfig?.user || ''}
+                      onChange={(e) => setProfile(p => ({...p, emailConfig: {...p.emailConfig, user: e.target.value} as any}))}
+                      placeholder="tu@correo.com"
+                      className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-blue-400 transition-colors"
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Contraseña de Aplicación</label>
+                    <div className="relative">
+                      <input 
+                        type={showKeys['smtp_pass'] ? "text" : "password"}
+                        value={profile.emailConfig?.password || ''}
+                        onChange={(e) => setProfile(p => ({...p, emailConfig: {...p.emailConfig, password: e.target.value} as any}))}
+                        placeholder="••••••••••••••••"
+                        className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-blue-400 transition-colors pr-10"
+                      />
+                      <button 
+                        onClick={() => toggleKeyVisibility('smtp_pass')}
+                        className="absolute right-3 top-3 text-slate-500 hover:text-white transition-colors"
+                      >
+                        {showKeys['smtp_pass'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

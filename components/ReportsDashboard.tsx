@@ -186,7 +186,8 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
         subject: `Reporte: ${title}`,
         html: `<p>Adjunto encontrarás el reporte generado desde Kônsul.</p>`,
         senderName: currentUser.name,
-        attachments: [{ filename: `${title}.pdf`, content: pureBase64 }]
+        attachments: [{ filename: `${title}.pdf`, content: pureBase64 }],
+        emailConfig: currentUser.emailConfig
       });
 
       if (result.success) { setEmailStatus('SUCCESS'); setTimeout(() => setEmailStatus('IDLE'), 3000); } else { setEmailStatus('ERROR'); setTimeout(() => setEmailStatus('IDLE'), 3000); }

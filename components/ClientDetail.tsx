@@ -16,6 +16,7 @@ interface ClientDetailProps {
   onSelectInvoice: (invoice: Invoice) => void;
   onUpdateClientContact: (oldName: string, newContact: DbClient) => void;
   onCreateDocument?: (type: 'Invoice' | 'Quote', clientData: DbClient) => void; // Updated prop signature
+  onDeleteClient?: (id: string, name: string) => void;
   currencySymbol: string;
 }
 
@@ -27,6 +28,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
   onSelectInvoice,
   onUpdateClientContact,
   onCreateDocument,
+  onDeleteClient,
   currencySymbol 
 }) => {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -129,7 +131,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
   const handleProfileSave = () => {
     const updatedProfile = {
       ...dbClientData, 
-      name: clientName,
+      name: editForm.name || clientName,
       email: editForm.email,
       address: editForm.address,
       taxId: editForm.taxId,
@@ -296,6 +298,20 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                </div>
 
                <div className="space-y-5">
+                  {/* Name */}
+                  {isEditingProfile && (
+                     <div className="group">
+                        <label className="text-[10px] uppercase font-bold text-[#27bea5] tracking-wider flex items-center gap-1 mb-1">
+                           Nombre Comercial
+                        </label>
+                        <input 
+                           value={editForm.name}
+                           onChange={(e) => setEditForm({...editForm, name: e.target.value})}
+                           className="w-full p-2 bg-slate-50 border rounded-lg text-sm outline-none focus:border-[#27bea5]"
+                        />
+                     </div>
+                  )}
+
                   {/* Email */}
                   <div className="group">
                      <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1 mb-1">
@@ -367,12 +383,22 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                   </div>
 
                   {isEditingProfile && (
-                     <button 
-                       onClick={handleProfileSave}
-                       className="w-full py-3 bg-[#1c2938] text-white rounded-xl font-bold text-sm hover:bg-[#27bea5] transition-colors flex items-center justify-center gap-2 mt-4 shadow-lg"
-                     >
-                        <Save className="w-4 h-4" /> Guardar Perfil
-                     </button>
+                     <div className="flex flex-col gap-3 mt-4">
+                        <button 
+                          onClick={handleProfileSave}
+                          className="w-full py-3 bg-[#1c2938] text-white rounded-xl font-bold text-sm hover:bg-[#27bea5] transition-colors flex items-center justify-center gap-2 shadow-lg"
+                        >
+                           <Save className="w-4 h-4" /> Guardar Perfil
+                        </button>
+                        {onDeleteClient && dbClientData?.id && (
+                           <button 
+                             onClick={() => onDeleteClient(dbClientData.id as string, clientName)}
+                             className="w-full py-3 bg-red-50 text-red-600 border border-red-100 rounded-xl font-bold text-sm hover:bg-red-100 transition-colors flex items-center justify-center gap-2"
+                           >
+                              <Trash2 className="w-4 h-4" /> Eliminar Cliente
+                           </button>
+                        )}
+                     </div>
                   )}
                </div>
             </div>

@@ -976,3 +976,24 @@ export const deleteInvoiceFromDb = async (id: string, userId: string): Promise<b
     return false;
   }
 };
+
+/**
+ * DELETE CLIENT/PROSPECT
+ */
+export const deleteClientFromDb = async (id: string, userId: string): Promise<boolean> => {
+  const client = getDbClient();
+  if (!client) return false;
+  try {
+    await client.connect();
+    // Attempt delete from both tables if present
+    await client.query('DELETE FROM clients WHERE id = $1 AND user_id = $2', [id, userId]);
+    await client.query('DELETE FROM prospects WHERE id = $1 AND user_id = $2', [id, userId]);
+    await client.end();
+    
+    logAuditAction(userId, 'DELETE_CLIENT', { clientId: id });
+    return true;
+  } catch (error) {
+    console.error("Delete Client Error:", error);
+    return false;
+  }
+};

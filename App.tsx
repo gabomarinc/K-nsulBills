@@ -32,6 +32,7 @@ import {
   saveProviderToDb,
   getUserById,
   fetchClientsFromDb,
+  deleteClientFromDb,
   fetchCatalogItemsFromDb,
   saveCatalogItemToDb,
   deleteCatalogItemFromDb
@@ -463,6 +464,32 @@ const AppContent: React.FC = () => {
     alert.addToast('success', 'Cliente Guardado', `${clientData.name} ha sido añadido a tu directorio.`);
   };
 
+  const handleDeleteClient = async (id: string, name: string) => {
+    if (!currentUser) return;
+
+    const confirmed = await alert.confirm({
+      title: '¿Eliminar Cliente?',
+      message: `¿Estás seguro que deseas eliminar a ${name}? Esta acción es irreversible.`,
+      confirmText: 'Sí, Eliminar',
+      cancelText: 'Cancelar',
+      type: 'danger'
+    });
+
+    if (confirmed) {
+      await deleteClientFromDb(id, currentUser.id);
+      
+      const updatedClients = dbClients.filter(c => c.id !== id);
+      setDbClients(updatedClients);
+      
+      if (selectedClientName === name) {
+        setSelectedClientName(null);
+        setActiveView(AppView.CLIENTS);
+      }
+      
+      alert.addToast('info', 'Cliente Eliminado', `${name} ha sido borrado correctamente.`);
+    }
+  };
+
   const handleDeleteInvoice = async (id: string) => {
     if (!currentUser) return;
 
@@ -765,6 +792,7 @@ const AppContent: React.FC = () => {
           onCreateDocument={(type, clientData) => {
             handleCreateDocumentForClient(clientData, type);
           }}
+          onDeleteClient={handleDeleteClient}
         />
       )}
 
