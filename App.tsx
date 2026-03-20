@@ -354,7 +354,7 @@ const AppContent: React.FC = () => {
     alert.addToast('success', 'Documento Guardado', `El documento ${invoice.id} se ha guardado exitosamente.`);
   };
 
-  const handleUpdateStatus = async (id: string, newStatus: InvoiceStatus) => {
+  const handleUpdateStatus = async (id: string, newStatus: InvoiceStatus, extras?: Partial<Invoice>) => {
     if (!currentUser) return;
 
     const targetInvoice = invoices.find(i => i.id === id);
@@ -407,11 +407,13 @@ const AppContent: React.FC = () => {
       id: Date.now().toString(),
       type: 'STATUS_CHANGE',
       title: `Estado cambiado a ${newStatus}`,
+      description: extras?.notes || '',
       timestamp: new Date().toISOString()
     };
 
-    const updatedInvoice = {
+    const updatedInvoice: Invoice = {
       ...targetInvoice,
+      ...extras,
       status: newStatus,
       timeline: [...(targetInvoice.timeline || []), event]
     };

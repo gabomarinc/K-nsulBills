@@ -16,7 +16,7 @@ interface DocumentListProps {
    invoices: Invoice[];
    onSelectInvoice: (invoice: Invoice) => void;
    onCreateNew: () => void;
-   onUpdateStatus?: (id: string, status: InvoiceStatus) => void; // Replaces specific actions
+   onUpdateStatus?: (id: string, status: InvoiceStatus, extras?: Partial<Invoice>) => void; // Replaces specific actions
    onDeleteInvoice?: (id: string) => void;
    onEditInvoice?: (invoice: Invoice) => void;
    // Legacy props kept optional to avoid break, but now handled by onUpdateStatus
@@ -142,55 +142,70 @@ const DocumentList: React.FC<DocumentListProps> = ({
    }, [invoices]);
 
    // --- STRIPE SYNC LOGIC ---
-   const handleSyncStripe = async () => {
-      if (!currentUser?.paymentIntegration?.stripeSecretKey || !onUpdateStatus) return;
-      
-      setIsSyncingStripe(true);
-      try {
-         const res = await fetch('/api/stripe-sync', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ stripeSecretKey: currentUser.paymentIntegration.stripeSecretKey })
-         });
-         const data = await res.json();
-         if (data.success && data.payments) {
-            let autoCount = 0;
-            const unlinked: any[] = [];
+    const handleSyncStripe = async () => {
+       if (!currentUser?.paymentIntegration?.stripeSecretKey || !onUpdateStatus) return;
+       
+       setIsSyncingStripe(true);
+       try {
+          const res = await fetch('/api/stripe-sync', {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({ stripeSecretKey: currentUser.paymentIntegration.stripeSecretKey })
+          });
+          const data = await res.json();
+          if (data.success && data.payments) {
+             let autoCount = 0;
+             const unlinked: any[] = [];
 
-            // Iterate over payments, find matching unpaid invoices
-            for (const payment of data.payments) {
-               const invoice = invoices.find(i => i.id === payment.invoiceId && i.status !== 'Pagada' && i.status !== 'Rechazada');
-               if (payment.invoiceId && invoice) {
-                  onUpdateStatus(invoice.id, 'Pagada');
-                  autoCount++;
-               } else {
-                  // Payment from Stripe not automatically recognized
-                  unlinked.push(payment);
-               }
-            }
-            
-            setUnlinkedPayments(unlinked);
-            
-            if (autoCount > 0) {
-                // Notify about automatic ones
-                alert(`Sincronización automática: ${autoCount} facturas marcadas como Pagadas.`);
-            }
+             // Iterate over payments
+             for (const payment of data.payments) {
+                // Find matching invoice
+                // 1. Check if we already synced this Stripe session ID to ANY invoice
+                const alreadySynced = invoices.some(i => i.stripeMapping?.includes(payment.stripeSessionId));
+                if (alreadySynced) continue;
 
-            if (unlinked.length > 0) {
-                setShowManualSync(true);
-            } else if (autoCount === 0) {
-                alert('Sincronización completa. No se encontraron nuevos pagos en Stripe.');
-            }
-         } else {
-            alert(data.error || 'Error al conectar con Stripe para sincronizar.');
-         }
-      } catch (err) {
-         console.error(err);
-         alert('Hubo un error al intentar sincronizar con Stripe.');
-      } finally {
-         setIsSyncingStripe(false);
-      }
-   };
+                const invoice = invoices.find(i => i.id === payment.invoiceId && i.status !== 'Pagada' && i.status !== 'Rechazada');
+                
+                if (payment.invoiceId && invoice) {
+                   // Automatic Match
+                   const currentPaid = invoice.amountPaid || 0;
+                   const newTotalPaid = currentPaid + payment.amountPaid;
+                   const isTotal = newTotalPaid >= invoice.total;
+                   
+                   onUpdateStatus(invoice.id, isTotal ? 'Pagada' : 'Abonada', {
+                       amountPaid: newTotalPaid,
+                       stripeMapping: [...(invoice.stripeMapping || []), payment.stripeSessionId],
+                       notes: `Sincronización automática Stripe: ${payment.currency} ${payment.amountPaid.toFixed(2)}`
+                   } as any);
+                   
+                   autoCount++;
+                } else {
+                   // Only add to unlinked if it hasn't been synced before
+                   unlinked.push(payment);
+                }
+             }
+             
+             setUnlinkedPayments(unlinked);
+             
+             if (autoCount > 0) {
+                 alert(`Sincronización automática: ${autoCount} transacciones procesadas.`);
+             }
+
+             if (unlinked.length > 0) {
+                 setShowManualSync(true);
+             } else if (autoCount === 0) {
+                 alert('Sincronización completa. No se encontraron nuevos pagos en Stripe.');
+             }
+          } else {
+             alert(data.error || 'Error al conectar con Stripe para sincronizar.');
+          }
+       } catch (err) {
+          console.error(err);
+          alert('Hubo un error al intentar sincronizar con Stripe.');
+       } finally {
+          setIsSyncingStripe(false);
+       }
+    };
 
    // --- TRIGGER AI INSIGHT (CACHED) ---
    useEffect(() => {
@@ -951,16 +966,28 @@ const DocumentList: React.FC<DocumentListProps> = ({
                                            disabled={!payment.targetInvoiceId}
                                            onClick={() => {
                                                if (onUpdateStatus) {
-                                                   onUpdateStatus(payment.targetInvoiceId, 'Pagada');
-                                                   // Remove from list
-                                                   const updated = unlinkedPayments.filter(p => p.stripeSessionId !== payment.stripeSessionId);
-                                                   setUnlinkedPayments(updated);
-                                                   if (updated.length === 0) setShowManualSync(false);
+                                                   const targetInv = invoices.find(i => i.id === payment.targetInvoiceId);
+                                                   if (targetInv) {
+                                                       const currentPaid = targetInv.amountPaid || 0;
+                                                       const newTotalPaid = currentPaid + payment.amountPaid;
+                                                       const isTotal = newTotalPaid >= targetInv.total;
+
+                                                       onUpdateStatus(targetInv.id, isTotal ? 'Pagada' : 'Abonada', {
+                                                           amountPaid: newTotalPaid,
+                                                           stripeMapping: [...(targetInv.stripeMapping || []), payment.stripeSessionId],
+                                                           notes: `Manual Link Stripe: ${payment.currency} ${payment.amountPaid.toFixed(2)}`
+                                                       } as any);
+
+                                                       // Remove from list
+                                                       const updated = unlinkedPayments.filter(p => p.stripeSessionId !== payment.stripeSessionId);
+                                                       setUnlinkedPayments(updated);
+                                                       if (updated.length === 0) setShowManualSync(false);
+                                                   }
                                                }
                                            }}
                                            className="w-full bg-[#1c2938] text-white py-2 rounded-xl text-xs font-bold hover:bg-[#27bea5] transition-all shadow-sm active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
                                          >
-                                             Ligar y Marcar Pagada
+                                             Ligar y Aplicar Pago
                                          </button>
                                      </div>
                                  </div>

@@ -256,6 +256,9 @@ export interface Invoice {
   successProbability?: number; // 0-100 (Only for Quotes)
   receiptUrl?: string; // New: For Expense receipts
   resendEmailId?: string; // New: Track email status via Resend
+
+  // Payment Tracking
+  stripeMapping?: string[]; // Array of Stripe Session/Payment IDs linked to this doc
 }
 
 export interface ParsedInvoiceData {

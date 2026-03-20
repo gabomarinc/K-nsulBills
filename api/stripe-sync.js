@@ -16,31 +16,54 @@ export default async function handler(req, res) {
       apiVersion: '2023-10-16',
     });
 
-    // Fetch the last 100 checkout sessions that were successful
-    const sessions = await stripe.checkout.sessions.list({ limit: 100 });
+    // 1. Fetch the last 100 checkout sessions
+    const sessions = await stripe.checkout.sessions.list({ 
+        limit: 100
+    });
 
-    const syncedPayments = [];
+    // 2. Also fetch the last 100 PaymentIntents (for cases where checkout wasn't used)
+    const paymentIntents = await stripe.paymentIntents.list({
+        limit: 100
+    });
 
+    const syncedPayments = new Map();
+
+    // Process Sessions first (better metadata)
     for (const session of sessions.data) {
-      // Only process completed payments
-      if (session.payment_status === 'paid') {
-        syncedPayments.push({
+      if (session.payment_status === 'paid' && session.payment_intent) {
+        const piId = typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent.id;
+        syncedPayments.set(piId, {
           invoiceId: session.metadata?.invoiceId || null,
-          amountPaid: session.amount_total / 100, // Convert from cents
+          amountPaid: session.amount_total / 100,
           currency: session.currency?.toUpperCase() || 'USD',
           stripeSessionId: session.id,
+          stripePaymentIntentId: piId,
           date: new Date(session.created * 1000).toISOString(),
           customerName: session.customer_details?.name || 'Cliente Desconocido',
           customerEmail: session.customer_details?.email || '',
-          description: session.metadata?.invoiceDesc || 'Pago Directo Stripe'
+          description: session.metadata?.invoiceDesc || 'Pago Stripe (Checkout)'
         });
       }
     }
 
-    // You could also fetch PaymentIntents if you use direct elements, 
-    // but for Checkout Sessions, the list above is perfect.
+    // Process PIs (for direct ones or historical ones)
+    for (const pi of paymentIntents.data) {
+      if (pi.status === 'succeeded' && !syncedPayments.has(pi.id)) {
+        syncedPayments.set(pi.id, {
+          invoiceId: pi.metadata?.invoiceId || null,
+          amountPaid: pi.amount_received / 100,
+          currency: pi.currency?.toUpperCase() || 'USD',
+          stripeSessionId: null, // No session associated
+          stripePaymentIntentId: pi.id,
+          date: new Date(pi.created * 1000).toISOString(),
+          customerName: pi.receipt_email || 'Comprador Directo',
+          customerEmail: pi.receipt_email || '',
+          description: pi.metadata?.invoiceDesc || pi.description || 'Transacción Stripe'
+        });
+      }
+    }
 
-    return res.status(200).json({ success: true, payments: syncedPayments });
+    return res.status(200).json({ success: true, payments: Array.from(syncedPayments.values()) });
   } catch (error) {
     console.error('Stripe Sync Error:', error);
     return res.status(500).json({ error: 'Error al consultar transacciones', details: error.message });
