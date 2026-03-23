@@ -240,10 +240,16 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
         if (!documentRef.current) throw new Error("No se pudo capturar el documento.");
         
         const opt = {
-            margin:       [20, 10, 20, 10] as [number, number, number, number], // top, right, bottom, left
+            margin:       [15, 10, 15, 10] as [number, number, number, number], 
             filename:     `${isQuote ? 'Cotizacion' : 'Factura'}_${invoice.id}.pdf`,
-            image:        { type: 'jpeg' as const, quality: 0.75 },
-            html2canvas:  { scale: 1.5, useCORS: true, logging: false },
+            image:        { type: 'jpeg' as const, quality: 0.98 },
+            html2canvas:  { 
+                scale: 2, 
+                useCORS: true, 
+                letterRendering: true,
+                logging: false,
+                backgroundColor: '#ffffff'
+            },
             jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
             pagebreak:    { mode: ['css', 'legacy'] }
         };
@@ -309,10 +315,16 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
       if (!documentRef.current) return;
       
       const opt = {
-          margin:       [20, 10, 20, 10] as [number, number, number, number], // top, right, bottom, left
+          margin:       [15, 10, 15, 10] as [number, number, number, number],
           filename:     `${isQuote ? 'Cotizacion' : 'Factura'}_${invoice.id}.pdf`,
-          image:        { type: 'jpeg' as const, quality: 0.75 },
-          html2canvas:  { scale: 1.5, useCORS: true, logging: false },
+          image:        { type: 'jpeg' as const, quality: 0.98 },
+          html2canvas:  { 
+              scale: 2, 
+              useCORS: true, 
+              letterRendering: true,
+              logging: false,
+              backgroundColor: '#ffffff'
+          },
           jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
           pagebreak:    { mode: ['css', 'legacy'] }
       };
@@ -404,9 +416,9 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
   };
 
   const renderModern = () => (
-    <div className="bg-white shadow-xl rounded-none md:rounded-lg overflow-hidden min-h-[800px] flex flex-col relative print:shadow-none">
+    <div className="bg-white shadow-xl rounded-xl overflow-hidden min-h-[1050px] flex flex-col relative print:shadow-none w-[800px] border border-slate-100">
       <div className="h-4 w-full" style={{ backgroundColor: color }}></div>
-      <div className="p-8 md:p-12 flex-1">
+      <div className="p-12 flex-1">
         <div className="flex justify-between items-start mb-12">
           <div>
               <div className="flex items-center gap-3 mb-4">
@@ -456,9 +468,9 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                 disabled={!onUpdateStatus}
               >
                 {invoice.status === 'PendingSync' ? 'Offline' : invoice.status}
-                {onUpdateStatus && <ChevronDown className="w-3 h-3" />}
+                {onUpdateStatus && <ChevronDown className="w-3 h-3" data-html2canvas-ignore />}
               </button>
-              {showStatusMenu && renderStatusOptions()}
+              {showStatusMenu && <div data-html2canvas-ignore>{renderStatusOptions()}</div>}
             </div>
           </div>
         </div>
@@ -496,7 +508,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
           </table>
         </div>
 
-        <div className="flex flex-col md:flex-row gap-12">
+        <div className="flex flex-row gap-12">
             <div className="flex-1 space-y-6">
               {/* NOTES SECTION */}
               {invoice.notes && (
@@ -522,9 +534,10 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                      <span className="text-xs font-bold text-slate-400 uppercase mr-1">{issuer.bankAccountType || 'Cuenta'}:</span> 
                      {issuer.bankAccount || 'No configurado'}
                   </p>
-                  
-                  {/* Payment Buttons (PagueloFacil / Yappy / Stripe) */}
-                  {renderPaymentButtons()}
+                        {/* Payment Buttons (PagueloFacil / Yappy / Stripe) - HIDDEN IN PDF */}
+       <div data-html2canvas-ignore>
+           {renderPaymentButtons()}
+       </div>
 
                   {/* PDF Link for interactive Payment */}
                   {issuer.paymentIntegration?.stripeSecretKey && !isQuote && (
@@ -547,7 +560,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
               )}
             </div>
 
-            <div className="w-full md:w-80 space-y-4">
+            <div className="w-80 space-y-4">
               <div className="flex justify-between text-slate-500 text-lg">
                 <span>Subtotal</span>
                 <span>${subtotal.toFixed(2)}</span>
@@ -597,7 +610,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
   );
 
   const renderClassic = () => (
-    <div className="bg-white shadow-xl min-h-[800px] flex flex-col relative print:shadow-none p-12 md:p-16 border-t-[12px]" style={{ borderColor: color }}>
+    <div className="bg-white shadow-xl min-h-[1050px] flex flex-col relative print:shadow-none p-16 border-t-[12px] w-[800px]" style={{ borderColor: color }}>
        <div className="text-center border-b-4 border-slate-100 pb-8 mb-8">
           <h1 className="text-3xl font-serif font-bold text-slate-800 uppercase tracking-widest mb-1">{issuer.name}</h1>
           {issuer.legalName && <p className="text-slate-600 font-serif font-bold text-sm mb-1">{issuer.legalName}</p>}
@@ -706,7 +719,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
   );
 
   const renderMinimal = () => (
-    <div className="bg-white shadow-xl min-h-[800px] flex flex-col relative print:shadow-none p-12 font-sans">
+    <div className="bg-white shadow-xl min-h-[1050px] flex flex-col relative print:shadow-none p-12 font-sans w-[800px]">
        <div className="flex justify-between items-center mb-16">
           <div className="flex items-center gap-3">
              <div className="w-4 h-4 rounded-full" style={{ backgroundColor: color }}></div>
@@ -773,7 +786,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                         <p className="text-slate-600">{issuer.legalName || issuer.name}</p>
                         <p className="text-slate-500">{issuer.bankName} • {issuer.bankAccount}</p>
                     </div>
-                    <div>
+                    <div data-html2canvas-ignore>
                         {renderPaymentButtons()}
                         {issuer.paymentIntegration?.stripeSecretKey && (
                             <div className="mt-4 text-right">
@@ -800,23 +813,6 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                {invoice.notes}
            </div>
        )}
-
-       {/* BANK INFO MINIMAL */}
-       {!isQuote && (
-           <div className="mt-16 pt-8 border-t border-slate-100">
-               <div className="flex flex-col md:flex-row justify-between items-end">
-                   <div className="text-sm text-slate-500">
-                       <p className="font-bold mb-1">Información de Pago</p>
-                       <p className="font-medium text-slate-800">{issuer.legalName || issuer.name}</p>
-                       <p>{issuer.bankName}</p>
-                       <p><span className="font-bold uppercase text-xs">{issuer.bankAccountType}</span>: {issuer.bankAccount}</p>
-                   </div>
-                   <div className="mt-4 md:mt-0">
-                       {renderPaymentButtons()}
-                   </div>
-               </div>
-           </div>
-       )}
     </div>
   );
 
@@ -839,8 +835,8 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
          </div>
 
          {/* INCREASED PADDING BOTTOM TO pb-32 FOR BETTER SCROLLING */}
-         <div className="flex-1 bg-slate-100 rounded-3xl p-4 md:p-8 overflow-y-auto custom-scrollbar shadow-inner border border-slate-200/50 pb-32">
-            <div ref={documentRef} className="max-w-[800px] mx-auto transition-all duration-500 min-h-full">
+          <div className="flex-1 bg-slate-100 rounded-3xl p-4 md:p-8 overflow-y-auto custom-scrollbar shadow-inner border border-slate-200/50 pb-32 flex justify-center">
+            <div ref={documentRef} className="w-[800px] transition-all duration-500 min-h-full">
                {branding.templateStyle === 'Classic' ? renderClassic() : 
                 branding.templateStyle === 'Minimal' ? renderMinimal() : 
                 renderModern()}
