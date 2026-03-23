@@ -240,7 +240,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
         if (!documentRef.current) throw new Error("No se pudo capturar el documento.");
         
         const opt = {
-            margin:       [15, 10, 15, 10] as [number, number, number, number], 
+            margin:       [10, 10, 10, 10] as [number, number, number, number], 
             filename:     `${isQuote ? 'Cotizacion' : 'Factura'}_${invoice.id}.pdf`,
             image:        { type: 'jpeg' as const, quality: 0.98 },
             html2canvas:  { 
@@ -315,7 +315,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
       if (!documentRef.current) return;
       
       const opt = {
-          margin:       [15, 10, 15, 10] as [number, number, number, number],
+          margin:       [10, 10, 10, 10] as [number, number, number, number],
           filename:     `${isQuote ? 'Cotizacion' : 'Factura'}_${invoice.id}.pdf`,
           image:        { type: 'jpeg' as const, quality: 0.98 },
           html2canvas:  { 
@@ -416,7 +416,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
   };
 
   const renderModern = () => (
-    <div className="bg-white shadow-xl rounded-xl overflow-hidden min-h-[1050px] flex flex-col relative print:shadow-none w-[800px] border border-slate-100">
+    <div className="bg-white shadow-xl rounded-xl overflow-hidden min-h-[1050px] flex flex-col relative print:shadow-none w-[190mm] border border-slate-100">
       <div className="h-4 w-full" style={{ backgroundColor: color }}></div>
       <div className="p-12 flex-1">
         <div className="flex justify-between items-start mb-12">
@@ -610,7 +610,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
   );
 
   const renderClassic = () => (
-    <div className="bg-white shadow-xl min-h-[1050px] flex flex-col relative print:shadow-none p-16 border-t-[12px] w-[800px]" style={{ borderColor: color }}>
+    <div className="bg-white shadow-xl min-h-[1050px] flex flex-col relative print:shadow-none p-16 border-t-[12px] w-[190mm]" style={{ borderColor: color }}>
        <div className="text-center border-b-4 border-slate-100 pb-8 mb-8">
           <h1 className="text-3xl font-serif font-bold text-slate-800 uppercase tracking-widest mb-1">{issuer.name}</h1>
           {issuer.legalName && <p className="text-slate-600 font-serif font-bold text-sm mb-1">{issuer.legalName}</p>}
@@ -719,7 +719,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
   );
 
   const renderMinimal = () => (
-    <div className="bg-white shadow-xl min-h-[1050px] flex flex-col relative print:shadow-none p-12 font-sans w-[800px]">
+    <div className="bg-white shadow-xl min-h-[1050px] flex flex-col relative print:shadow-none p-12 font-sans w-[190mm]">
        <div className="flex justify-between items-center mb-16">
           <div className="flex items-center gap-3">
              <div className="w-4 h-4 rounded-full" style={{ backgroundColor: color }}></div>
@@ -836,7 +836,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
 
          {/* INCREASED PADDING BOTTOM TO pb-32 FOR BETTER SCROLLING */}
           <div className="flex-1 bg-slate-100 rounded-3xl p-4 md:p-8 overflow-y-auto custom-scrollbar shadow-inner border border-slate-200/50 pb-32 flex justify-center">
-            <div ref={documentRef} className="w-[800px] transition-all duration-500 min-h-full">
+            <div ref={documentRef} className="w-[190mm] transition-all duration-500 min-h-full">
                {branding.templateStyle === 'Classic' ? renderClassic() : 
                 branding.templateStyle === 'Minimal' ? renderMinimal() : 
                 renderModern()}

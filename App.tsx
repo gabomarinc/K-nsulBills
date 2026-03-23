@@ -93,7 +93,7 @@ const AppContent: React.FC = () => {
     const finalUser = { ...user, isAccountant };
     setCurrentUser(finalUser);
     const view = isAccountant ? AppView.ACCOUNTANT_DASHBOARD : AppView.DASHBOARD;
-    setActiveView(view);
+    handleNavigate(view);
     localStorage.setItem('konsul_session_id', finalUser.id);
     localStorage.setItem('konsul_user_data', JSON.stringify(finalUser));
 
@@ -113,8 +113,7 @@ const AppContent: React.FC = () => {
 
   const handleLogout = () => {
     setCurrentUser(null);
-    setActiveView(AppView.DASHBOARD);
-    window.history.pushState({}, '', '/dashboard');
+    handleNavigate(AppView.DASHBOARD);
     localStorage.removeItem('konsul_session_id');
     localStorage.removeItem('konsul_user_data');
   };
@@ -219,7 +218,7 @@ const AppContent: React.FC = () => {
       const path = window.location.pathname;
       const initialView = Object.keys(viewToPath).find(key => viewToPath[key] === path) as AppView;
       if (initialView) {
-        setActiveView(initialView);
+        handleNavigate(initialView);
       }
 
       if (storedUserStr) {
@@ -595,7 +594,7 @@ const AppContent: React.FC = () => {
     const updatedClients = await fetchClientsFromDb(currentUser.id);
     setDbClients(updatedClients);
 
-    setActiveView(AppView.CLIENTS);
+    handleNavigate(AppView.CLIENTS);
     alert.addToast('success', 'Cliente Guardado', `${clientData.name} ha sido añadido a tu directorio.`);
   };
 
@@ -642,7 +641,7 @@ const AppContent: React.FC = () => {
       
       if (selectedClientName === name) {
         setSelectedClientName(null);
-        setActiveView(AppView.CLIENTS);
+        handleNavigate(AppView.CLIENTS);
       }
       
       alert.addToast('info', 'Cliente Eliminado', `${name} ha sido borrado correctamente.`);
@@ -666,7 +665,7 @@ const AppContent: React.FC = () => {
 
       if (selectedInvoice?.id === id) {
         setSelectedInvoice(null);
-        setActiveView(AppView.INVOICES);
+        handleNavigate(AppView.INVOICES);
       }
 
       await deleteInvoiceFromDb(id, currentUser.id);
@@ -676,12 +675,12 @@ const AppContent: React.FC = () => {
 
   const handleEditInvoice = (invoice: Invoice) => {
     setDocumentToEdit(invoice);
-    setActiveView(AppView.WIZARD);
+    handleNavigate(AppView.WIZARD);
   };
 
   const handleEditExpense = (expense: Invoice) => {
     setDocumentToEdit(expense);
-    setActiveView(AppView.EXPENSE_WIZARD);
+    handleNavigate(AppView.EXPENSE_WIZARD);
   };
 
   const handleCreateDocumentForClient = (client: DbClient, type: 'Invoice' | 'Quote') => {
@@ -699,7 +698,7 @@ const AppContent: React.FC = () => {
       items: []
     };
     setDocumentToEdit(templateDoc);
-    setActiveView(AppView.WIZARD);
+    handleNavigate(AppView.WIZARD);
   };
 
   const handleUpdateProfile = async (updated: UserProfile) => {
@@ -804,9 +803,9 @@ const AppContent: React.FC = () => {
           recentInvoices={invoices}
           isOffline={isOffline}
           pendingCount={invoices.filter(i => i.status === 'PendingSync').length}
-          onNewAction={() => { setDocumentToEdit(null); setActiveView(AppView.WIZARD); }}
-          onSelectInvoice={(inv) => { setSelectedInvoice(inv); setActiveView(AppView.INVOICE_DETAIL); }}
-          onNavigate={setActiveView}
+          onNewAction={() => { setDocumentToEdit(null); handleNavigate(AppView.WIZARD); }}
+          onSelectInvoice={(inv) => { setSelectedInvoice(inv); handleNavigate(AppView.INVOICE_DETAIL); }}
+          onNavigate={handleNavigate}
           currentUser={currentUser!}
         />
       )}
@@ -816,11 +815,11 @@ const AppContent: React.FC = () => {
           currentUser={currentUser}
           isOffline={isOffline}
           onSave={handleSaveInvoice}
-          onCancel={() => { setDocumentToEdit(null); setActiveView(AppView.DASHBOARD); }}
-          onViewDetail={() => setActiveView(AppView.INVOICES)}
+          onCancel={() => { setDocumentToEdit(null); handleNavigate(AppView.DASHBOARD); }}
+          onViewDetail={() => handleNavigate(AppView.INVOICES)}
           onSelectInvoiceForDetail={(inv) => {
             setSelectedInvoice(inv);
-            setActiveView(AppView.INVOICE_DETAIL);
+            handleNavigate(AppView.INVOICE_DETAIL);
           }}
           initialData={documentToEdit}
           dbClients={dbClients}
@@ -832,8 +831,8 @@ const AppContent: React.FC = () => {
       {activeView === AppView.INVOICES && (
         <DocumentList
           invoices={invoices}
-          onSelectInvoice={(inv) => { setSelectedInvoice(inv); setActiveView(AppView.INVOICE_DETAIL); }}
-          onCreateNew={() => { setDocumentToEdit(null); setActiveView(AppView.WIZARD); }}
+          onSelectInvoice={(inv) => { setSelectedInvoice(inv); handleNavigate(AppView.INVOICE_DETAIL); }}
+          onCreateNew={() => { setDocumentToEdit(null); handleNavigate(AppView.WIZARD); }}
           onDeleteInvoice={handleDeleteInvoice}
           onEditInvoice={handleEditInvoice}
           onUpdateStatus={handleUpdateStatus}
@@ -848,7 +847,7 @@ const AppContent: React.FC = () => {
         <InvoiceDetail
           invoice={selectedInvoice}
           issuer={currentUser}
-          onBack={() => setActiveView(AppView.INVOICES)}
+          onBack={() => handleNavigate(AppView.INVOICES)}
           onUpdateInvoice={(updated) => {
             setInvoices(invoices.map(i => i.id === updated.id ? updated : i));
             setSelectedInvoice(updated);
@@ -869,13 +868,13 @@ const AppContent: React.FC = () => {
               handleCreateDocumentForClient(client, 'Invoice');
             } else {
               setDocumentToEdit(null);
-              setActiveView(AppView.WIZARD);
+              handleNavigate(AppView.WIZARD);
             }
           }}
-          onCreateClient={() => setActiveView(AppView.CLIENT_WIZARD)}
+          onCreateClient={() => handleNavigate(AppView.CLIENT_WIZARD)}
           currencySymbol={currentUser.defaultCurrency === 'EUR' ? '€' : '$'}
           currentUser={currentUser}
-          onSelectClient={(name) => { setSelectedClientName(name); setActiveView(AppView.CLIENT_DETAIL); }}
+          onSelectClient={(name) => { setSelectedClientName(name); handleNavigate(AppView.CLIENT_DETAIL); }}
           onRefresh={async () => {
             if (currentUser) {
               const [clients, docs] = await Promise.all([
@@ -892,7 +891,7 @@ const AppContent: React.FC = () => {
       {activeView === AppView.CLIENT_WIZARD && (
         <ClientWizard
           onSave={handleSaveNewClient}
-          onCancel={() => setActiveView(AppView.CLIENTS)}
+          onCancel={() => handleNavigate(AppView.CLIENTS)}
         />
       )}
 
@@ -902,9 +901,9 @@ const AppContent: React.FC = () => {
           currentUser={currentUser!}
           managedCompanies={managedCompanies}
           onSelectCompany={(c) => alert.addToast('info', 'Switching View', `Accediendo a ${c.name}...`)}
-          onViewCalculator={(type) => { setCalcType(type); setActiveView(AppView.FISCAL_CALCULATORS); }}
-          onViewTasks={() => setActiveView(AppView.AI_TASKS)}
-          onViewCalendar={() => setActiveView(AppView.TAX_CALENDAR)}
+          onViewCalculator={(type) => { setCalcType(type); handleNavigate(AppView.FISCAL_CALCULATORS); }}
+          onViewTasks={() => handleNavigate(AppView.AI_TASKS)}
+          onViewCalendar={() => handleNavigate(AppView.TAX_CALENDAR)}
         />
       )}
 
@@ -917,11 +916,11 @@ const AppContent: React.FC = () => {
       )}
 
       {activeView === AppView.FISCAL_CALCULATORS && (
-        <FiscalCalculators initialType={calcType} onBack={() => setActiveView(AppView.ACCOUNTANT_DASHBOARD)} />
+        <FiscalCalculators initialType={calcType} onBack={() => handleNavigate(AppView.ACCOUNTANT_DASHBOARD)} />
       )}
 
       {activeView === AppView.TAX_CALENDAR && (
-        <TaxCalendar onBack={() => setActiveView(AppView.ACCOUNTANT_DASHBOARD)} />
+        <TaxCalendar onBack={() => handleNavigate(AppView.ACCOUNTANT_DASHBOARD)} />
       )}
 
       {activeView === AppView.CLIENT_DETAIL && selectedClientName && currentUser && (
@@ -931,11 +930,11 @@ const AppContent: React.FC = () => {
           dbClientData={dbClients.find(c => c.name.trim().toLowerCase() === selectedClientName.trim().toLowerCase())}
           onBack={() => {
             setSelectedClientName(null);
-            setActiveView(AppView.CLIENTS);
+            handleNavigate(AppView.CLIENTS);
           }}
           onSelectInvoice={(inv) => {
             setSelectedInvoice(inv);
-            setActiveView(AppView.INVOICE_DETAIL);
+            handleNavigate(AppView.INVOICE_DETAIL);
           }}
           onUpdateClientContact={handleSaveClient}
           onCreateDocument={(type, data) => handleCreateDocumentForClient(data, type)}
@@ -949,7 +948,7 @@ const AppContent: React.FC = () => {
         <ExpenseTracker
           invoices={invoices}
           currencySymbol={currentUser.defaultCurrency === 'EUR' ? '€' : '$'}
-          onCreateExpense={() => { setDocumentToEdit(null); setActiveView(AppView.EXPENSE_WIZARD); }}
+          onCreateExpense={() => { setDocumentToEdit(null); handleNavigate(AppView.EXPENSE_WIZARD); }}
           onEditExpense={handleEditExpense}
           currentProfile={currentUser}
           onUpdateProfile={handleUpdateProfile}
@@ -959,8 +958,8 @@ const AppContent: React.FC = () => {
       {activeView === AppView.EXPENSE_WIZARD && (
         <ExpenseWizard
           currentUser={currentUser}
-          onSave={(inv) => { handleSaveInvoice(inv); setActiveView(AppView.EXPENSES); }}
-          onCancel={() => setActiveView(AppView.EXPENSES)}
+          onSave={(inv) => { handleSaveInvoice(inv); handleNavigate(AppView.EXPENSES); }}
+          onCancel={() => handleNavigate(AppView.EXPENSES)}
           initialData={documentToEdit}
         />
       )}
