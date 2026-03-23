@@ -167,8 +167,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
                 const alreadySynced = invoices.some(i => 
                     i.stripeMapping?.includes(payment.stripeSessionId) || 
                     i.stripeMapping?.includes(payment.stripePaymentIntentId) ||
-                    i.stripeMapping?.includes(payment.stripeInvoiceId) ||
-                    i.stripeMapping?.includes(payment.stripeCustomerId)
+                    i.stripeMapping?.includes(payment.stripeInvoiceId)
                 );
                 if (alreadySynced) continue;
 
@@ -1044,7 +1043,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
                                                         .sort((a, b) => b.id.localeCompare(a.id))
                                                         .map(inv => (
                                                           <option key={inv.id} value={inv.id}>
-                                                              #{inv.id} - {inv.clientName}
+                                                              #{inv.id} - {inv.clientName} ({currencySymbol}{inv.total.toLocaleString()})
                                                           </option>
                                                       ))}
                                                   </select>

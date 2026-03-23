@@ -38,6 +38,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
   const [newTag, setNewTag] = useState('');
   
   const [isEditingNote, setIsEditingNote] = useState(false);
+  const [isEditingStripeId, setIsEditingStripeId] = useState(false);
   const [tempNote, setTempNote] = useState('');
 
   // OPTIMISTIC STATE: To show changes immediately before DB refresh
@@ -498,6 +499,72 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                     >
                         {clientData.notes || <span className="italic text-amber-700/50">Escribe aquí notas privadas sobre el cliente...</span>}
                     </p>
+                )}
+            </div>
+
+            {/* INTEGRATIONS CARD (New & Prominent) */}
+            <div className={`p-6 rounded-[2rem] border transition-all ${clientData.stripeCustomerId ? 'bg-indigo-50/50 border-indigo-100' : 'bg-slate-50 border-slate-100'}`}>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-bold text-slate-800 flex items-center gap-2 text-xs uppercase tracking-wider">
+                        <CreditCard className={`w-4 h-4 ${clientData.stripeCustomerId ? 'text-indigo-500' : 'text-slate-400'}`} /> Conexión Stripe
+                    </h3>
+                    {clientData.stripeCustomerId && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
+                </div>
+
+                {!clientData.stripeCustomerId || isEditingStripeId ? (
+                    <div className="space-y-3">
+                        <p className="text-[11px] text-slate-500 leading-relaxed italic">
+                            Vincula este cliente con Stripe para automatizar la creación de facturas cuando recibas pagos.
+                        </p>
+                        <div className="flex gap-2">
+                            <input 
+                                value={editForm.stripeCustomerId || ''}
+                                onChange={(e) => setEditForm({...editForm, stripeCustomerId: e.target.value})}
+                                className="flex-1 p-2 bg-white border border-slate-200 rounded-xl text-xs font-mono outline-none focus:border-indigo-400"
+                                placeholder="cus_..."
+                                autoFocus={isEditingStripeId}
+                            />
+                            {isEditingStripeId && (
+                                <button 
+                                    onClick={() => {
+                                        handleProfileSave();
+                                        setIsEditingStripeId(false);
+                                    }}
+                                    className="px-3 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700"
+                                >
+                                    OK
+                                </button>
+                            )}
+                        </div>
+                        {!isEditingStripeId && (
+                            <button 
+                                onClick={() => setIsEditingStripeId(true)}
+                                className="w-full py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-indigo-600 hover:text-white hover:border-indigo-600 transition-all flex items-center justify-center gap-2 shadow-sm"
+                            >
+                                <Plus className="w-3.5 h-3.5" /> Vincular ID de Stripe
+                            </button>
+                        )}
+                    </div>
+                ) : (
+                    <div className="space-y-4">
+                        <div>
+                            <label className="text-[9px] uppercase font-bold text-indigo-400 tracking-wider block mb-1">Customer ID Asociado</label>
+                            <div className="flex items-center gap-2">
+                                <code className="bg-white px-2 py-1 rounded-lg border border-indigo-100 text-xs font-mono text-indigo-700 flex-1">{clientData.stripeCustomerId}</code>
+                                <button 
+                                    onClick={() => setIsEditingStripeId(true)}
+                                    className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-all"
+                                    title="Editar ID"
+                                >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2 bg-emerald-50 p-2 rounded-xl border border-emerald-100/50">
+                            <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
+                            <span className="text-[10px] font-bold text-emerald-700 leading-none">Automatización Activa</span>
+                        </div>
+                    </div>
                 )}
             </div>
 
