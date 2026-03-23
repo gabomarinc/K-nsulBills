@@ -4,7 +4,7 @@ import {
   ArrowLeft, Mail, MapPin, Building2, Crown, 
   Clock, CheckCircle2, FileText, FileBadge, 
   TrendingUp, Edit2, Calendar, Save, X, Phone,
-  ExternalLink, Send, Wallet, Trash2, Tag, StickyNote, Plus, Check, Sparkles, CreditCard
+  ExternalLink, Send, Wallet, Trash2, Tag, StickyNote, Plus, Check, Sparkles, CreditCard, Search, User, Building, Loader2
 } from 'lucide-react';
 import { Invoice, InvoiceStatus, DbClient } from '../types';
 
@@ -18,6 +18,7 @@ interface ClientDetailProps {
   onCreateDocument?: (type: 'Invoice' | 'Quote', clientData: DbClient) => void; // Updated prop signature
   onDeleteClient?: (id: string, name: string) => void;
   currencySymbol: string;
+  stripeSecretKey?: string; // NEW
 }
 
 const ClientDetail: React.FC<ClientDetailProps> = ({ 
@@ -29,7 +30,8 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
   onUpdateClientContact,
   onCreateDocument,
   onDeleteClient,
-  currencySymbol 
+  currencySymbol,
+  stripeSecretKey
 }) => {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   
@@ -40,6 +42,12 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [isEditingStripeId, setIsEditingStripeId] = useState(false);
   const [tempNote, setTempNote] = useState('');
+
+  // Stripe Selector States
+  const [showStripeSelector, setShowStripeSelector] = useState(false);
+  const [stripeCustomers, setStripeCustomers] = useState<any[]>([]);
+  const [isLoadingStripeCustomers, setIsLoadingStripeCustomers] = useState(false);
+  const [stripeSearch, setStripeSearch] = useState('');
 
   // OPTIMISTIC STATE: To show changes immediately before DB refresh
   const [optimisticOverrides, setOptimisticOverrides] = useState<{
@@ -127,6 +135,37 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
         setTempNote(clientData.notes || '');
     }
   }, [clientData, isEditingProfile, isEditingNote]);
+
+  // --- STRIPE CUSTOMER FETCHING ---
+  const fetchStripeCustomers = async () => {
+      if (!stripeSecretKey) return;
+      setIsLoadingStripeCustomers(true);
+      try {
+          const response = await fetch('/api/stripe-customers', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ stripeSecretKey })
+          });
+          const data = await response.json();
+          if (data.success) {
+              setStripeCustomers(data.customers);
+          }
+      } catch (err) {
+          console.error('Error fetching Stripe customers:', err);
+      } finally {
+          setIsLoadingStripeCustomers(false);
+      }
+  };
+
+  const filteredStripeCustomers = useMemo(() => {
+      if (!stripeSearch) return stripeCustomers;
+      const s = stripeSearch.toLowerCase();
+      return stripeCustomers.filter(c => 
+          c.name.toLowerCase().includes(s) || 
+          c.email.toLowerCase().includes(s) || 
+          c.id.toLowerCase().includes(s)
+      );
+  }, [stripeCustomers, stripeSearch]);
 
   // --- HANDLERS ---
 
@@ -512,38 +551,45 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                 </div>
 
                 {!clientData.stripeCustomerId || isEditingStripeId ? (
-                    <div className="space-y-3">
+                    <div className="space-y-4">
                         <p className="text-[11px] text-slate-500 leading-relaxed italic">
                             Vincula este cliente con Stripe para automatizar la creación de facturas cuando recibas pagos.
                         </p>
+                        
+                        <button 
+                            onClick={() => {
+                                setIsEditingStripeId(true);
+                                setShowStripeSelector(true);
+                                fetchStripeCustomers();
+                            }}
+                            className="w-full py-3 bg-indigo-600 text-white rounded-2xl text-xs font-bold hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-md shadow-indigo-200/50"
+                        >
+                            <Search className="w-4 h-4" /> Buscar Cliente en Stripe
+                        </button>
+
+                        <div className="flex items-center gap-2 pt-2">
+                            <div className="h-px bg-slate-200 flex-1"></div>
+                            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-tighter">O ID Manual</span>
+                            <div className="h-px bg-slate-200 flex-1"></div>
+                        </div>
+
                         <div className="flex gap-2">
                             <input 
                                 value={editForm.stripeCustomerId || ''}
                                 onChange={(e) => setEditForm({...editForm, stripeCustomerId: e.target.value})}
-                                className="flex-1 p-2 bg-white border border-slate-200 rounded-xl text-xs font-mono outline-none focus:border-indigo-400"
+                                className="flex-1 p-2 bg-white border border-slate-200 rounded-xl text-[10px] font-mono outline-none focus:border-indigo-400"
                                 placeholder="cus_..."
-                                autoFocus={isEditingStripeId}
                             />
-                            {isEditingStripeId && (
-                                <button 
-                                    onClick={() => {
-                                        handleProfileSave();
-                                        setIsEditingStripeId(false);
-                                    }}
-                                    className="px-3 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700"
-                                >
-                                    OK
-                                </button>
-                            )}
-                        </div>
-                        {!isEditingStripeId && (
                             <button 
-                                onClick={() => setIsEditingStripeId(true)}
-                                className="w-full py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-indigo-600 hover:text-white hover:border-indigo-600 transition-all flex items-center justify-center gap-2 shadow-sm"
+                                onClick={() => {
+                                    handleProfileSave();
+                                    setIsEditingStripeId(false);
+                                }}
+                                className="px-3 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-indigo-600 hover:text-white transition-colors"
                             >
-                                <Plus className="w-3.5 h-3.5" /> Vincular ID de Stripe
+                                OK
                             </button>
-                        )}
+                        </div>
                     </div>
                 ) : (
                     <div className="space-y-4">
@@ -552,7 +598,11 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                             <div className="flex items-center gap-2">
                                 <code className="bg-white px-2 py-1 rounded-lg border border-indigo-100 text-xs font-mono text-indigo-700 flex-1">{clientData.stripeCustomerId}</code>
                                 <button 
-                                    onClick={() => setIsEditingStripeId(true)}
+                                    onClick={() => {
+                                        setIsEditingStripeId(true);
+                                        setShowStripeSelector(true);
+                                        fetchStripeCustomers();
+                                    }}
                                     className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-all"
                                     title="Editar ID"
                                 >
@@ -567,6 +617,93 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                     </div>
                 )}
             </div>
+
+            {/* STRIPE CUSTOMER SELECTOR MODAL */}
+            {showStripeSelector && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200">
+                        <div className="p-8 border-b border-slate-50">
+                            <div className="flex justify-between items-center mb-6">
+                                <div>
+                                    <h3 className="text-xl font-black text-[#1c2938]">Vincular con Stripe</h3>
+                                    <p className="text-sm text-slate-400">Selecciona el cliente correspondiente en Stripe</p>
+                                </div>
+                                <button onClick={() => setShowStripeSelector(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+                                    <X className="w-6 h-6 text-slate-400" />
+                                </button>
+                            </div>
+
+                            <div className="relative">
+                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                <input 
+                                    type="text" 
+                                    placeholder="Buscar por nombre, email o ID (cus_...)"
+                                    value={stripeSearch}
+                                    onChange={(e) => setStripeSearch(e.target.value)}
+                                    className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:border-indigo-400 focus:bg-white transition-all"
+                                    autoFocus
+                                />
+                            </div>
+                        </div>
+
+                        <div className="max-h-[400px] overflow-y-auto p-4 space-y-2 bg-slate-50/50">
+                            {isLoadingStripeCustomers ? (
+                                <div className="py-12 text-center space-y-3">
+                                    <Loader2 className="w-10 h-10 text-indigo-500 animate-spin mx-auto" />
+                                    <p className="text-sm text-slate-500 font-medium">Consultando clientes en Stripe...</p>
+                                </div>
+                            ) : filteredStripeCustomers.length > 0 ? (
+                                filteredStripeCustomers.map(customer => (
+                                    <button 
+                                        key={customer.id}
+                                        onClick={() => {
+                                            setEditForm({ ...editForm, stripeCustomerId: customer.id });
+                                            setOptimisticOverrides(prev => ({ ...prev, stripeCustomerId: customer.id }));
+                                            onUpdateClientContact(clientName, {
+                                                ...dbClientData,
+                                                name: clientName,
+                                                email: clientData.email,
+                                                address: clientData.address,
+                                                taxId: clientData.taxId,
+                                                phone: clientData.phone,
+                                                tags: clientData.tags,
+                                                notes: clientData.notes,
+                                                stripeCustomerId: customer.id
+                                            } as any);
+                                            setShowStripeSelector(false);
+                                            setIsEditingStripeId(false);
+                                        }}
+                                        className="w-full p-4 bg-white border border-slate-100 rounded-2xl text-left hover:border-indigo-400 hover:shadow-md transition-all group flex items-center justify-between"
+                                    >
+                                        <div className="flex items-center gap-4">
+                                            <div className="p-2 bg-slate-50 text-slate-400 rounded-xl group-hover:bg-indigo-50 group-hover:text-indigo-500 transition-colors">
+                                                <User className="w-5 h-5" />
+                                            </div>
+                                            <div>
+                                                <p className="font-bold text-slate-800 text-sm group-hover:text-indigo-600">{customer.name}</p>
+                                                <p className="text-xs text-slate-400">{customer.email || 'No email'}</p>
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <code className="text-[10px] font-mono text-slate-300 group-hover:text-indigo-300">{customer.id}</code>
+                                        </div>
+                                    </button>
+                                ))
+                            ) : (
+                                <div className="py-12 text-center">
+                                    <Building className="w-10 h-10 text-slate-200 mx-auto mb-2" />
+                                    <p className="text-sm text-slate-400">No encontramos clientes con ese nombre.</p>
+                                </div>
+                            )}
+                        </div>
+                        
+                        <div className="p-6 bg-white border-t border-slate-50 text-center">
+                            <p className="text-[11px] text-slate-400 uppercase tracking-widest font-bold mb-1">¿No encuentras al cliente?</p>
+                            <p className="text-[11px] text-slate-400">Asegúrate de que esté creado en tu Panel de Stripe.</p>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* QUICK ACTIONS CARD */}
             <div className="bg-[#27bea5]/5 p-6 rounded-[2rem] border border-[#27bea5]/20">

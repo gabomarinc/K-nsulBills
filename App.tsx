@@ -483,6 +483,30 @@ const AppContent: React.FC = () => {
     alert.addToast('success', 'Cliente Guardado', `${clientData.name} ha sido añadido a tu directorio.`);
   };
 
+  const handleSaveClient = async (oldName: string | null, updatedClient: DbClient) => {
+    if (!currentUser) return;
+    
+    // Loose matching logic for finding the original client record
+    const existing = dbClients.find(c => 
+      c.name.trim().toLowerCase() === (oldName || updatedClient.name).trim().toLowerCase()
+    );
+    const currentStatus = existing?.status || updatedClient.status || 'PROSPECT';
+
+    const res = await saveClientToDb(updatedClient, currentUser.id, currentStatus);
+    if (res.success) {
+      const updated = await fetchClientsFromDb(currentUser.id);
+      setDbClients(updated);
+      
+      // Update selected name if needed
+      if (oldName && updatedClient.name !== oldName) {
+        setSelectedClientName(updatedClient.name);
+      }
+      alert.addToast('success', 'Cliente Actualizado');
+    } else {
+      alert.addToast('error', 'Error al Guardar', res.error);
+    }
+  };
+
   const handleDeleteClient = async (id: string, name: string) => {
     if (!currentUser) return;
 
@@ -783,37 +807,24 @@ const AppContent: React.FC = () => {
         <TaxCalendar onBack={() => setActiveView(AppView.ACCOUNTANT_DASHBOARD)} />
       )}
 
-      {activeView === AppView.CLIENT_DETAIL && selectedClientName && (
-        <ClientDetail
+      {activeView === AppView.CLIENT_DETAIL && selectedClientName && currentUser && (
+        <ClientDetail 
           clientName={selectedClientName}
           invoices={invoices}
-          // Use flexible matching (trim + lowercase) to find DB data even if invoice name varies slightly
           dbClientData={dbClients.find(c => c.name.trim().toLowerCase() === selectedClientName.trim().toLowerCase())}
-          onBack={() => setActiveView(AppView.CLIENTS)}
-          onSelectInvoice={(inv) => { setSelectedInvoice(inv); setActiveView(AppView.INVOICE_DETAIL); }}
-          currencySymbol={currentUser.defaultCurrency === 'EUR' ? '€' : '$'}
-          onUpdateClientContact={async (oldName, updatedClient) => {
-            // Same loose matching logic for updates
-            const existing = dbClients.find(c => c.name.trim().toLowerCase() === oldName.trim().toLowerCase());
-            const currentStatus = existing?.status || 'PROSPECT';
-
-            const res = await saveClientToDb(updatedClient, currentUser.id, currentStatus);
-            if (res.success) {
-              const updated = await fetchClientsFromDb(currentUser.id);
-              setDbClients(updated);
-              // Ensure we update the selected name if the user edited the name itself
-              if (updatedClient.name !== selectedClientName) {
-                setSelectedClientName(updatedClient.name);
-              }
-              alert.addToast('success', 'Cliente Actualizado');
-            } else {
-              alert.addToast('error', 'Error', res.error);
-            }
+          onBack={() => {
+            setSelectedClientName(null);
+            setActiveView(AppView.CLIENTS);
           }}
-          onCreateDocument={(type, clientData) => {
-            handleCreateDocumentForClient(clientData, type);
+          onSelectInvoice={(inv) => {
+            setSelectedInvoice(inv);
+            setActiveView(AppView.INVOICE_DETAIL);
           }}
+          onUpdateClientContact={handleSaveClient}
+          onCreateDocument={(type, data) => handleCreateDocumentForClient(data, type)}
           onDeleteClient={handleDeleteClient}
+          currencySymbol={currentUser.defaultCurrency === 'EUR' ? '€' : '$'}
+          stripeSecretKey={currentUser.paymentIntegration?.stripeSecretKey}
         />
       )}
 
