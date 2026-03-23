@@ -16,9 +16,10 @@ import {
   Calculator,
   Calendar
 } from 'lucide-react';
-import { AppView, ProfileType, UserProfile, AccountantTask } from '../types';
+import { AppView, ProfileType, UserProfile, AccountantTask, BreadcrumbItem } from '../types';
 import SupportWidget from './SupportWidget';
 import MobileQuickActions from './MobileQuickActions';
+import { ChevronRight } from 'lucide-react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -29,7 +30,8 @@ interface LayoutProps {
   isOffline: boolean;
   onToggleOffline: () => void;
   pendingInvoicesCount: number;
-  onLogout?: () => void; // New Prop
+  onLogout?: () => void;
+  breadcrumbs?: BreadcrumbItem[];
 }
 
 const Layout: React.FC<LayoutProps> = ({
@@ -41,7 +43,8 @@ const Layout: React.FC<LayoutProps> = ({
   isOffline,
   onToggleOffline,
   pendingInvoicesCount,
-  onLogout
+  onLogout,
+  breadcrumbs
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -205,6 +208,24 @@ const Layout: React.FC<LayoutProps> = ({
       <main className="flex-1 flex flex-col h-screen overflow-hidden relative">
         <div className="flex-1 overflow-y-auto p-4 md:p-8 lg:p-12 custom-scrollbar flex flex-col items-center">
           <div className="w-full max-w-screen-xl">
+            {/* BREADCRUMBS BAR */}
+            {breadcrumbs && breadcrumbs.length > 0 && (
+              <div className="flex items-center gap-2 mb-8 text-[10px] font-bold uppercase tracking-widest animate-in slide-in-from-top-2 duration-500">
+                {breadcrumbs.map((crumb, idx) => (
+                  <React.Fragment key={idx}>
+                    <button 
+                      onClick={() => onNavigate(crumb.view)}
+                      className={`flex items-center gap-2 transition-all hover:scale-105 active:scale-95 ${idx === breadcrumbs.length - 1 ? 'text-[#1c2938]' : 'text-slate-400 hover:text-[#27bea5]'}`}
+                    >
+                      {crumb.icon}
+                      {crumb.label}
+                    </button>
+                    {idx < breadcrumbs.length - 1 && <ChevronRight className="w-3.5 h-3.5 text-slate-300" />}
+                  </React.Fragment>
+                ))}
+              </div>
+            )}
+            
             {children}
           </div>
         </div>

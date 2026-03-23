@@ -1,6 +1,9 @@
-
-import React, { useState, useEffect } from 'react';
-import { AppView, Invoice, UserProfile, CatalogItem, InvoiceStatus, TimelineEvent, DbClient, AccountantTask, ProfileType } from './types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { AppView, Invoice, UserProfile, CatalogItem, InvoiceStatus, TimelineEvent, DbClient, AccountantTask, ProfileType, BreadcrumbItem } from './types';
+import { 
+  ChevronRight, Home, Users, FileText, Settings, 
+  BarChart3, BookOpen, Wallet, Target, Calculator, Calendar as CalendarIcon 
+} from 'lucide-react';
 import LoginScreen from './components/LoginScreen';
 import OnboardingWizard from './components/OnboardingWizard';
 import Layout from './components/Layout';
@@ -39,6 +42,31 @@ import {
 } from './services/neon';
 import { processInvoicesFollowUp } from './services/followUpService';
 import { performAutomatedStripeSync } from './services/stripeSyncService';
+
+// --- ROUTING CONFIG ---
+const viewToPath: Record<string, string> = {
+  [AppView.DASHBOARD]: '/dashboard',
+  [AppView.WIZARD]: '/wizard',
+  [AppView.INVOICES]: '/documents',
+  [AppView.CLIENTS]: '/clients',
+  [AppView.CLIENT_DETAIL]: '/clients',
+  [AppView.SETTINGS]: '/settings',
+  [AppView.INVOICE_DETAIL]: '/documents',
+  [AppView.REPORTS]: '/reports',
+  [AppView.CATALOG]: '/catalog',
+  [AppView.EXPENSES]: '/expenses',
+  [AppView.EXPENSE_WIZARD]: '/expenses/new',
+  [AppView.CLIENT_WIZARD]: '/clients/new',
+  [AppView.ACCOUNTANT_DASHBOARD]: '/accountant',
+  [AppView.AI_TASKS]: '/tasks',
+  [AppView.FISCAL_CALCULATORS]: '/calculators',
+  [AppView.TAX_CALENDAR]: '/calendar',
+};
+
+const pathToView = Object.entries(viewToPath).reduce((acc, [view, path]) => {
+  acc[path] = view as AppView;
+  return acc;
+}, {} as Record<string, AppView>);
 
 // Wrapper Component to use Hooks
 const AppContent: React.FC = () => {
@@ -91,9 +119,100 @@ const AppContent: React.FC = () => {
   const handleLogout = () => {
     setCurrentUser(null);
     setActiveView(AppView.DASHBOARD);
+    window.location.hash = viewToPath[AppView.DASHBOARD];
     localStorage.removeItem('konsul_session_id');
     localStorage.removeItem('konsul_user_data');
   };
+
+  // --- ROUTING LOGIC ---
+  
+  // 1. Sync State to URL
+  useEffect(() => {
+    if (!currentUser) return;
+    
+    let path = viewToPath[activeView] || '/dashboard';
+    
+    // Add sub-context to URL if needed
+    if (activeView === AppView.CLIENT_DETAIL && selectedClientName) {
+      path += `/${encodeURIComponent(selectedClientName)}`;
+    } else if (activeView === AppView.INVOICE_DETAIL && selectedInvoice) {
+      path += `/${encodeURIComponent(selectedInvoice.id)}`;
+    }
+    
+    if (window.location.hash !== `#${path}`) {
+      window.location.hash = path;
+    }
+  }, [activeView, selectedClientName, selectedInvoice, currentUser]);
+
+  // 2. Sync URL to State (Deep Linking & Back Button)
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#', '');
+      if (!hash || hash === '/') return;
+
+      const segments = hash.split('/').filter(Boolean);
+      const mainPath = `/${segments[0]}`;
+      const subParam = segments[1] ? decodeURIComponent(segments[1]) : null;
+
+      const targetView = pathToView[mainPath];
+      
+      if (targetView) {
+        // Special handling for details
+        if (mainPath === '/clients' && subParam) {
+           setActiveView(AppView.CLIENT_DETAIL);
+           setSelectedClientName(subParam);
+        } else if (mainPath === '/documents' && subParam) {
+           setActiveView(AppView.INVOICE_DETAIL);
+           // We need the full invoice object, so we find it in the current state
+           const found = invoices.find(i => i.id === subParam);
+           if (found) setSelectedInvoice(found);
+           else setActiveView(AppView.INVOICES); // Fallback if not loaded yet
+        } else {
+           setActiveView(targetView);
+        }
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    // Initial check
+    if (currentUser) handleHashChange();
+    
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [currentUser, invoices]);
+
+  // --- BREADCRUMBS HELPER ---
+  const breadcrumbs = useMemo(() => {
+    const items: BreadcrumbItem[] = [{ label: 'Inicio', view: AppView.DASHBOARD, icon: <Home className="w-3 h-3" /> }];
+    
+    if (activeView === AppView.DASHBOARD) return items;
+
+    // Mapping for intermediate labels
+    const labels: Record<string, string> = {
+      [AppView.INVOICES]: 'Documentos',
+      [AppView.CLIENTS]: 'Directorio',
+      [AppView.CLIENT_DETAIL]: 'Cliente',
+      [AppView.SETTINGS]: 'Configuración',
+      [AppView.REPORTS]: 'Reportes',
+      [AppView.CATALOG]: 'Catálogo',
+      [AppView.EXPENSES]: 'Gastos',
+      [AppView.ACCOUNTANT_DASHBOARD]: 'Contador',
+    };
+
+    // Main Category
+    if (activeView === AppView.CLIENT_DETAIL) {
+      items.push({ label: 'Directorio', view: AppView.CLIENTS, icon: <Users className="w-3 h-3" /> });
+      items.push({ label: selectedClientName || 'Detalle', view: AppView.CLIENT_DETAIL });
+    } else if (activeView === AppView.INVOICE_DETAIL) {
+      items.push({ label: 'Documentos', view: AppView.INVOICES, icon: <FileText className="w-3 h-3" /> });
+      items.push({ label: selectedInvoice ? `${selectedInvoice.type === 'Quote' ? 'Cotización' : 'Factura'} #${selectedInvoice.id}` : 'Detalle', view: AppView.INVOICE_DETAIL });
+    } else if (labels[activeView]) {
+      items.push({ label: labels[activeView], view: activeView });
+    } else {
+      items.push({ label: activeView.toLowerCase().replace('_', ' '), view: activeView });
+    }
+
+    return items;
+  }, [activeView, selectedClientName, selectedInvoice]);
 
   // SESSION RESTORATION LOGIC
   useEffect(() => {
@@ -681,6 +800,7 @@ const AppContent: React.FC = () => {
       onToggleOffline={() => setIsOffline(!isOffline)}
       pendingInvoicesCount={invoices.filter(i => i.status === 'PendingSync').length}
       onLogout={handleLogout}
+      breadcrumbs={breadcrumbs}
     >
       {activeView === AppView.DASHBOARD && (
         <Dashboard

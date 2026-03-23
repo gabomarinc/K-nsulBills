@@ -18,6 +18,12 @@ export enum AppView {
   TAX_CALENDAR = 'TAX_CALENDAR',
 }
 
+export interface BreadcrumbItem {
+  label: string;
+  view: AppView;
+  icon?: React.ReactNode;
+}
+
 export enum ProfileType {
   FREELANCE = 'Autónomo',
   COMPANY = 'Empresa (SAS/SL)',
