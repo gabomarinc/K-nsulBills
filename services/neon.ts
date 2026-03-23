@@ -659,18 +659,21 @@ export const fetchClientsFromDb = async (userId: string): Promise<DbClient[]> =>
       ALTER TABLE prospects ADD COLUMN IF NOT EXISTS phone TEXT;
       ALTER TABLE prospects ADD COLUMN IF NOT EXISTS tags TEXT;
       ALTER TABLE prospects ADD COLUMN IF NOT EXISTS notes TEXT;
+      ALTER TABLE prospects ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;
       ALTER TABLE prospects ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
       ALTER TABLE prospects ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
+      
+      ALTER TABLE clients ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;
     `);
 
     // 2. Fetch Separately to isolate potential table errors
     const clientsRes = await client.query(
-      `SELECT id, name, tax_id, email, address, phone, tags, notes, 'CLIENT' as status FROM clients WHERE user_id = $1`,
+      `SELECT id, name, tax_id, email, address, phone, tags, notes, stripe_customer_id, 'CLIENT' as status FROM clients WHERE user_id = $1`,
       [userId]
     );
 
     const prospectsRes = await client.query(
-      `SELECT id, name, tax_id, email, address, phone, tags, notes, 'PROSPECT' as status FROM prospects WHERE user_id = $1`,
+      `SELECT id, name, tax_id, email, address, phone, tags, notes, stripe_customer_id, 'PROSPECT' as status FROM prospects WHERE user_id = $1`,
       [userId]
     );
 
@@ -687,6 +690,7 @@ export const fetchClientsFromDb = async (userId: string): Promise<DbClient[]> =>
       phone: row.phone,
       tags: row.tags,
       notes: row.notes,
+      stripeCustomerId: row.stripe_customer_id,
       status: (row.status || 'PROSPECT') as 'CLIENT' | 'PROSPECT'
     }));
 
@@ -820,8 +824,8 @@ export const saveClientToDb = async (clientData: DbClient, userId: string, statu
       // --- CASE 1: IT IS A CLIENT (Invoice Created) ---
       // 1. Insert/Update into CLIENTS table
       const upsertClient = `
-            INSERT INTO clients (id, user_id, name, tax_id, email, address, phone, tags, notes, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+            INSERT INTO clients (id, user_id, name, tax_id, email, address, phone, tags, notes, stripe_customer_id, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
             ON CONFLICT (id) DO UPDATE SET 
               name = EXCLUDED.name,
               tax_id = COALESCE(EXCLUDED.tax_id, clients.tax_id),
@@ -830,10 +834,11 @@ export const saveClientToDb = async (clientData: DbClient, userId: string, statu
               phone = COALESCE(EXCLUDED.phone, clients.phone),
               tags = COALESCE(EXCLUDED.tags, clients.tags),
               notes = COALESCE(EXCLUDED.notes, clients.notes),
+              stripe_customer_id = COALESCE(EXCLUDED.stripe_customer_id, clients.stripe_customer_id),
               updated_at = NOW();
         `;
       await clientDb.query(upsertClient, [
-        id, userId, clientData.name, clientData.taxId, clientData.email, clientData.address, clientData.phone, clientData.tags, clientData.notes
+        id, userId, clientData.name, clientData.taxId, clientData.email, clientData.address, clientData.phone, clientData.tags, clientData.notes, clientData.stripeCustomerId
       ]);
 
       // 2. Remove from PROSPECTS if it existed there (Promotion Logic)
@@ -853,15 +858,16 @@ export const saveClientToDb = async (clientData: DbClient, userId: string, statu
                   email = COALESCE($2, email),
                   address = COALESCE($3, address),
                   phone = COALESCE($4, phone),
+                  stripe_customer_id = COALESCE($5, stripe_customer_id),
                   updated_at = NOW()
-                WHERE id = $5
+                WHERE id = $6
              `;
-        await clientDb.query(updateClient, [clientData.taxId, clientData.email, clientData.address, clientData.phone, id]);
+        await clientDb.query(updateClient, [clientData.taxId, clientData.email, clientData.address, clientData.phone, clientData.stripeCustomerId, id]);
       } else {
         // 2. Not a client, Insert/Update into PROSPECTS table
         const upsertProspect = `
-                INSERT INTO prospects (id, user_id, name, tax_id, email, address, phone, tags, notes, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+                INSERT INTO prospects (id, user_id, name, tax_id, email, address, phone, tags, notes, stripe_customer_id, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
                 ON CONFLICT (id) DO UPDATE SET 
                   name = EXCLUDED.name,
                   tax_id = COALESCE(EXCLUDED.tax_id, prospects.tax_id),
@@ -870,10 +876,11 @@ export const saveClientToDb = async (clientData: DbClient, userId: string, statu
                   phone = COALESCE(EXCLUDED.phone, prospects.phone),
                   tags = COALESCE(EXCLUDED.tags, prospects.tags),
                   notes = COALESCE(EXCLUDED.notes, prospects.notes),
+                  stripe_customer_id = COALESCE(EXCLUDED.stripe_customer_id, prospects.stripe_customer_id),
                   updated_at = NOW();
             `;
         await clientDb.query(upsertProspect, [
-          id, userId, clientData.name, clientData.taxId, clientData.email, clientData.address, clientData.phone, clientData.tags, clientData.notes
+          id, userId, clientData.name, clientData.taxId, clientData.email, clientData.address, clientData.phone, clientData.tags, clientData.notes, clientData.stripeCustomerId
         ]);
       }
     }

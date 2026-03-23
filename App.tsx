@@ -38,6 +38,7 @@ import {
   deleteCatalogItemFromDb
 } from './services/neon';
 import { processInvoicesFollowUp } from './services/followUpService';
+import { performAutomatedStripeSync } from './services/stripeSyncService';
 
 // Wrapper Component to use Hooks
 const AppContent: React.FC = () => {
@@ -227,6 +228,22 @@ const AppContent: React.FC = () => {
             }
             return prev;
           });
+        }
+
+        // --- AUTOMATED STRIPE SYNC (NEW) ---
+        if (!isOffline && currentUser.paymentIntegration?.stripeSecretKey) {
+          const syncResult = await performAutomatedStripeSync(
+            currentUser,
+            docs || [], // current invoices from DB
+            clients || [], // current clients from DB
+            handleSaveInvoice,
+            handleUpdateStatus
+          );
+
+          if (syncResult.createdCount > 0 || syncResult.autoCount > 0) {
+            alert.addToast('success', 'Sincronización Stripe', 
+              `Sincronización automática completa: ${syncResult.autoCount} pagos conciliados y ${syncResult.createdCount} facturas nuevas creadas.`);
+          }
         }
       };
       loadData();
@@ -679,6 +696,8 @@ const AppContent: React.FC = () => {
           onDeleteInvoice={handleDeleteInvoice}
           onEditInvoice={handleEditInvoice}
           onUpdateStatus={handleUpdateStatus}
+          onSaveInvoice={handleSaveInvoice}
+          dbClients={dbClients}
           currencySymbol={currentUser.defaultCurrency === 'EUR' ? '€' : '$'}
           currentUser={currentUser}
         />

@@ -6,7 +6,10 @@ import {
   ShoppingBag, Calculator, ChevronDown, Building2, Eye,
   Coins, Lock, AlertTriangle, Settings, Save, Archive, Percent, DollarSign, BrainCircuit, Scissors, X
 } from 'lucide-react';
-import { Invoice, ParsedInvoiceData, UserProfile, InvoiceItem, InvoiceStatus, CatalogItem } from '../types';
+import { 
+  Invoice, ParsedInvoiceData, UserProfile, InvoiceItem, InvoiceStatus, CatalogItem,
+  RecurrenceFrequency, InvoiceRecurrence 
+} from '../types';
 import { parseInvoiceRequest, getDiscountRecommendation, AI_ERROR_BLOCKED } from '../services/geminiService';
 
 interface InvoiceWizardProps {
@@ -64,6 +67,11 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({
   // Withholding State (New)
   const [withholdingAmount, setWithholdingAmount] = useState(initialData?.withholdingAmount || 0);
   const [showWithholding, setShowWithholding] = useState(false);
+
+  // Recurrence State (New)
+  const [isRecurrent, setIsRecurrent] = useState(initialData?.recurrence?.isRecurrent || false);
+  const [recurrenceFreq, setRecurrenceFreq] = useState<RecurrenceFrequency>(initialData?.recurrence?.frequency || 'MONTHLY');
+  const [totalCycles, setTotalCycles] = useState(initialData?.recurrence?.totalCycles || 12);
 
   const [aiRecommendation, setAiRecommendation] = useState<{ rate: number, text: string } | null>(null);
   const [isGettingRec, setIsGettingRec] = useState(false);
@@ -289,37 +297,68 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({
     return candidateId;
   };
 
+  const addIntervalToDate = (dateStr: string, frequency: RecurrenceFrequency, index: number) => {
+    const date = new Date(dateStr);
+    
+    switch(frequency) {
+        case 'WEEKLY': date.setDate(date.getDate() + (7 * index)); break;
+        case 'BIWEEKLY': date.setDate(date.getDate() + (14 * index)); break;
+        case 'MONTHLY': date.setMonth(date.getMonth() + index); break;
+        case 'BIMONTHLY': date.setMonth(date.getMonth() + (2 * index)); break;
+        case 'QUARTERLY': date.setMonth(date.getMonth() + (3 * index)); break;
+        case 'ANNUAL': date.setFullYear(date.getFullYear() + index); break;
+    }
+    
+    return date.toISOString().split('T')[0];
+  };
+
   const handleSave = async (targetStatus: 'Borrador' | 'Creada') => {
     if (!draft.clientName) return;
     setIsSaving(true);
 
-    let newId = generatedId;
-    if (!newId) {
-      newId = generateUniqueId();
+    const baseDate = initialData?.date || new Date().toISOString();
+    const baseDueDate = draft.validityDate;
+    
+    const count = isRecurrent ? Math.max(1, totalCycles) : 1;
+    
+    for (let i = 0; i < count; i++) {
+        let newId = i === 0 ? (generatedId || generateUniqueId()) : generateUniqueId();
+        
+        // Generate future dates
+        const currentInvoiceDate = i === 0 ? baseDate : new Date(addIntervalToDate(baseDate, recurrenceFreq, i)).toISOString();
+        const currentDueDate = i === 0 ? baseDueDate : addIntervalToDate(baseDueDate, recurrenceFreq, i);
+
+        const finalInvoice: Invoice = {
+          id: newId,
+          clientName: draft.clientName,
+          clientTaxId: draft.clientTaxId,
+          clientEmail: draft.clientEmail,
+          date: currentInvoiceDate,
+          items: draft.items,
+          total: totals.total,
+          discountRate: totals.effectiveRate,
+          withholdingAmount: showWithholding ? totals.finalWithholding : 0,
+          notes: i > 0 ? `${draft.notes}\n(Ciclo ${i + 1} de ${count})` : draft.notes,
+          status: isOffline ? 'PendingSync' : targetStatus,
+          currency: draft.currency,
+          type: docType,
+          dueDate: currentDueDate,
+          timeline: i === 0 ? initialData?.timeline : [],
+          recurrence: isRecurrent ? {
+            isRecurrent: true,
+            frequency: recurrenceFreq,
+            totalCycles: count
+          } : undefined
+        };
+
+        await onSave(finalInvoice);
+
+        if (i === 0) {
+            setGeneratedId(newId);
+            setFinalInvoiceObj(finalInvoice);
+        }
     }
 
-    const finalInvoice: Invoice = {
-      id: newId,
-      clientName: draft.clientName,
-      clientTaxId: draft.clientTaxId,
-      clientEmail: draft.clientEmail,
-      date: initialData?.date || new Date().toISOString(),
-      items: draft.items,
-      total: totals.total,
-      discountRate: totals.effectiveRate,
-      withholdingAmount: showWithholding ? totals.finalWithholding : 0, // Save withholding
-      notes: draft.notes,
-      status: isOffline ? 'PendingSync' : targetStatus,
-      currency: draft.currency,
-      type: docType,
-      dueDate: draft.validityDate,
-      timeline: initialData?.timeline
-    };
-
-    await onSave(finalInvoice);
-
-    setGeneratedId(newId);
-    setFinalInvoiceObj(finalInvoice);
     setSavedStatus(targetStatus);
     setIsSaving(false);
     setStep('SUCCESS');
@@ -606,6 +645,56 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({
               <div>
                 <label className="block text-xs font-bold text-slate-500 mb-1">Notas / Comentarios</label>
                 <textarea value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} placeholder="Notas visibles en la factura..." className="w-full p-3 rounded-xl border border-slate-200 bg-slate-50 outline-none text-sm h-20 resize-none" />
+              </div>
+
+              {/* RECURRENCE (New) */}
+              <div className="mt-6 pt-4 border-t border-slate-100">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-indigo-500" />
+                    <span className="text-sm font-bold text-slate-700 uppercase tracking-tight">Recurrencia</span>
+                  </div>
+                  <button 
+                    onClick={() => setIsRecurrent(!isRecurrent)}
+                    className={`w-10 h-5 rounded-full relative transition-colors ${isRecurrent ? 'bg-indigo-500' : 'bg-slate-200'}`}
+                  >
+                    <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${isRecurrent ? 'left-5.5 translate-x-full' : 'left-0.5'}`} style={{ left: isRecurrent ? '22px' : '2px' }}></div>
+                  </button>
+                </div>
+
+                {isRecurrent && (
+                  <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-top-2">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Frecuencia</label>
+                      <select 
+                        value={recurrenceFreq} 
+                        onChange={(e) => setRecurrenceFreq(e.target.value as RecurrenceFrequency)}
+                        className="w-full p-2 rounded-xl border border-slate-200 bg-white outline-none text-sm"
+                      >
+                        <option value="WEEKLY">Semanal</option>
+                        <option value="BIWEEKLY">Quincenal</option>
+                        <option value="MONTHLY">Mensual</option>
+                        <option value="BIMONTHLY">Bimensual</option>
+                        <option value="QUARTERLY">Trimestral</option>
+                        <option value="ANNUAL">Anual</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Ciclos (Cant.)</label>
+                      <input 
+                        type="number" 
+                        value={totalCycles} 
+                        onChange={(e) => setTotalCycles(parseInt(e.target.value) || 1)}
+                        className="w-full p-2 rounded-xl border border-slate-200 bg-white outline-none text-sm"
+                        min="1"
+                        max="60"
+                      />
+                    </div>
+                    <p className="col-span-2 text-[10px] text-slate-400 italic">
+                      Se crearán {totalCycles} facturas automáticamente con fechas correlativas.
+                    </p>
+                  </div>
+                )}
               </div>
             </section>
           </div>

@@ -26,6 +26,11 @@ export default async function handler(req, res) {
         limit: 100
     });
 
+    // 3. Fetch the last 100 Stripe Invoices (Subscriptions & Recurring)
+    const stripeInvoices = await stripe.invoices.list({
+        limit: 100
+    });
+
     const syncedPayments = new Map();
 
     // Process Sessions first (better metadata)
@@ -44,6 +49,28 @@ export default async function handler(req, res) {
           description: session.metadata?.invoiceDesc || 'Pago Stripe (Checkout)'
         });
       }
+    }
+
+    // Process Invoices (Subscriptions)
+    for (const inv of stripeInvoices.data) {
+        if (inv.status === 'paid' && inv.payment_intent) {
+            const piId = typeof inv.payment_intent === 'string' ? inv.payment_intent : inv.payment_intent.id;
+            if (!syncedPayments.has(piId)) {
+                syncedPayments.set(piId, {
+                    invoiceId: inv.metadata?.invoiceId || null,
+                    amountPaid: inv.amount_paid / 100,
+                    currency: inv.currency?.toUpperCase() || 'USD',
+                    stripeSessionId: null,
+                    stripeInvoiceId: inv.id,
+                    stripePaymentIntentId: piId,
+                    isSubscription: !!inv.subscription,
+                    date: new Date(inv.created * 1000).toISOString(),
+                    customerName: inv.customer_name || inv.customer_email || 'Suscriptor Stripe',
+                    customerEmail: inv.customer_email || '',
+                    description: inv.description || (inv.subscription ? 'Cobro de Suscripción' : 'Factura Stripe')
+                });
+            }
+        }
     }
 
     // Process PIs (for direct ones or historical ones)

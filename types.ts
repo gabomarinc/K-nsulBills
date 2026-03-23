@@ -35,6 +35,7 @@ export interface DbClient {
   tags?: string; // Comma separated string
   notes?: string;
   status?: 'CLIENT' | 'PROSPECT';
+  stripeCustomerId?: string; // NEW: Link to Stripe Customer
 }
 
 // NEW: Database Provider Structure
@@ -228,6 +229,14 @@ export type InvoiceStatus =
   | 'Incobrable'    // Uncollectible (New Invoices)
   | 'PendingSync';  // Internal: Offline
 
+export type RecurrenceFrequency = 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY' | 'BIMONTHLY' | 'QUARTERLY' | 'ANNUAL';
+
+export interface InvoiceRecurrence {
+  frequency: RecurrenceFrequency;
+  totalCycles: number;
+  isRecurrent: boolean;
+}
+
 export interface Invoice {
   id: string;
   userId?: string; // LINK TO USER PROFILE
@@ -259,6 +268,9 @@ export interface Invoice {
 
   // Payment Tracking
   stripeMapping?: string[]; // Array of Stripe Session/Payment IDs linked to this doc
+
+  // Recurrence
+  recurrence?: InvoiceRecurrence;
 }
 
 export interface ParsedInvoiceData {

@@ -4,7 +4,7 @@ import {
   ArrowLeft, Mail, MapPin, Building2, Crown, 
   Clock, CheckCircle2, FileText, FileBadge, 
   TrendingUp, Edit2, Calendar, Save, X, Phone,
-  ExternalLink, Send, Wallet, Trash2, Tag, StickyNote, Plus, Check, Sparkles
+  ExternalLink, Send, Wallet, Trash2, Tag, StickyNote, Plus, Check, Sparkles, CreditCard
 } from 'lucide-react';
 import { Invoice, InvoiceStatus, DbClient } from '../types';
 
@@ -48,6 +48,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
       phone?: string;
       address?: string;
       taxId?: string;
+      stripeCustomerId?: string; // NEW
   }>({});
 
   // Reset optimistic state when dbClientData actually updates from parent
@@ -97,6 +98,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
         phone: optimisticOverrides.phone ?? (dbClientData?.phone || ''),
         tags: optimisticOverrides.tags ?? (dbClientData?.tags || ''),
         notes: optimisticOverrides.notes ?? (dbClientData?.notes || ''),
+        stripeCustomerId: optimisticOverrides.stripeCustomerId ?? (dbClientData?.stripeCustomerId || ''),
       },
       activeDocs: active,
       historyDocs: history,
@@ -137,7 +139,8 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
       taxId: editForm.taxId,
       phone: editForm.phone,
       tags: clientData.tags,
-      notes: clientData.notes
+      notes: clientData.notes,
+      stripeCustomerId: editForm.stripeCustomerId
     };
 
     // Optimistic Update
@@ -146,7 +149,8 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
         email: editForm.email,
         address: editForm.address,
         taxId: editForm.taxId,
-        phone: editForm.phone
+        phone: editForm.phone,
+        stripeCustomerId: editForm.stripeCustomerId
     }));
 
     onUpdateClientContact(clientName, updatedProfile);

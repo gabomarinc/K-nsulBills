@@ -7,9 +7,10 @@ import {
    FileBadge, LayoutList, LayoutGrid, MoreHorizontal,
    Send, AlertCircle, Sparkles, DollarSign, Repeat, Eye,
    Activity, MessageCircle, Archive, Trash2, Lock, Edit2, XCircle,
-   Landmark, Calculator, ShieldCheck, TrendingDown, RefreshCw, Loader2
+   Landmark, Calculator, ShieldCheck, TrendingDown, RefreshCw, Loader2,
+   Zap, CreditCard, ChevronDown
 } from 'lucide-react';
-import { Invoice, InvoiceStatus, UserProfile } from '../types';
+import { Invoice, InvoiceStatus, UserProfile, DbClient } from '../types';
 import { generateRevenueInsight } from '../services/geminiService'; // New import
 
 interface DocumentListProps {
@@ -24,6 +25,8 @@ interface DocumentListProps {
    onConvertQuote?: (id: string) => void;
    currencySymbol: string;
    currentUser?: UserProfile;
+   dbClients?: DbClient[];
+   onSaveInvoice?: (invoice: Invoice) => Promise<void>;
 }
 
 type ViewMode = 'LIST' | 'GALLERY';
@@ -39,16 +42,15 @@ const DocumentList: React.FC<DocumentListProps> = ({
    onConvertQuote,
    onDeleteInvoice,
    onEditInvoice,
+   onSaveInvoice,
+   dbClients = [],
    currencySymbol,
    currentUser
 }) => {
-   const [viewMode, setViewMode] = useState<ViewMode>('GALLERY');
-
-   // NEW: Master Filter for Document Type
-   const [docTypeFilter, setDocTypeFilter] = useState<'INVOICE' | 'QUOTE'>('INVOICE');
-
-   const [currentStage, setCurrentStage] = useState<DocStage>('ALL_ACTIVE');
+   const [viewMode, setViewMode] = useState<ViewMode>('LIST');
    const [searchTerm, setSearchTerm] = useState('');
+   const [currentStage, setCurrentStage] = useState<DocStage>('ALL_ACTIVE');
+   const [docTypeFilter, setDocTypeFilter] = useState<'INVOICE' | 'QUOTE'>('INVOICE');
    const [currentPage, setCurrentPage] = useState(1);
    const ITEMS_PER_PAGE = 12;
 
@@ -61,6 +63,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
    const [isSyncingStripe, setIsSyncingStripe] = useState(false);
    const [unlinkedPayments, setUnlinkedPayments] = useState<any[]>([]);
    const [showManualSync, setShowManualSync] = useState(false);
+   const [isCreatingInvoice, setIsCreatingInvoice] = useState(false);
 
    // Check AI Access
    const hasAiAccess = !!currentUser?.apiKeys?.gemini || !!currentUser?.apiKeys?.openai;
@@ -141,7 +144,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
       return { currentRevenue, prevRevenue, percentageChange };
    }, [invoices]);
 
-   // --- STRIPE SYNC LOGIC ---
+    // --- STRIPE SYNC LOGIC ---
     const handleSyncStripe = async () => {
        if (!currentUser?.paymentIntegration?.stripeSecretKey || !onUpdateStatus) return;
        
@@ -160,25 +163,40 @@ const DocumentList: React.FC<DocumentListProps> = ({
              // Iterate over payments
              for (const payment of data.payments) {
                 // Find matching invoice
-                // 1. Check if we already synced this Stripe session ID to ANY invoice
-                const alreadySynced = invoices.some(i => i.stripeMapping?.includes(payment.stripeSessionId));
+                // 1. Check if we already synced this Stripe transaction to ANY invoice
+                const alreadySynced = invoices.some(i => 
+                    i.stripeMapping?.includes(payment.stripeSessionId) || 
+                    i.stripeMapping?.includes(payment.stripePaymentIntentId) ||
+                    i.stripeMapping?.includes(payment.stripeInvoiceId) ||
+                    i.stripeMapping?.includes(payment.stripeCustomerId)
+                );
                 if (alreadySynced) continue;
 
                 const invoice = invoices.find(i => i.id === payment.invoiceId && i.status !== 'Pagada' && i.status !== 'Rechazada');
                 
                 if (payment.invoiceId && invoice) {
-                   // Automatic Match
+                   // Automatic Match by Invoice ID
                    const currentPaid = invoice.amountPaid || 0;
                    const newTotalPaid = currentPaid + payment.amountPaid;
                    const isTotal = newTotalPaid >= invoice.total;
                    
                    onUpdateStatus(invoice.id, isTotal ? 'Pagada' : 'Abonada', {
                        amountPaid: newTotalPaid,
-                       stripeMapping: [...(invoice.stripeMapping || []), payment.stripeSessionId],
-                       notes: `Sincronización automática Stripe: ${payment.currency} ${payment.amountPaid.toFixed(2)}`
+                       stripeMapping: [...(invoice.stripeMapping || []), payment.stripeSessionId || payment.stripePaymentIntentId, payment.stripeInvoiceId].filter(Boolean) as string[],
+                       notes: `Sincronización Stripe: ${payment.currency} ${payment.amountPaid.toFixed(2)}`
                    } as any);
                    
                    autoCount++;
+                } else if (payment.stripeCustomerId) {
+                   // Check if mapped to a client
+                   const client = dbClients.find(c => c.stripeCustomerId === payment.stripeCustomerId);
+                   if (client) {
+                       // Found a match, but since it's manual, we'll let user confirm or we could auto-match here too
+                       // Let's mark it as matched with this client for the UI
+                       unlinked.push({ ...payment, targetClientId: client.id });
+                   } else {
+                       unlinked.push(payment);
+                   }
                 } else {
                    // Only add to unlinked if it hasn't been synced before
                    unlinked.push(payment);
@@ -204,6 +222,68 @@ const DocumentList: React.FC<DocumentListProps> = ({
           alert('Hubo un error al intentar sincronizar con Stripe.');
        } finally {
           setIsSyncingStripe(false);
+       }
+    };
+
+    const handleAutoCreateInvoice = async (payment: any) => {
+       if (!onSaveInvoice || !payment.targetClientId) return;
+       
+       setIsCreatingInvoice(true);
+       try {
+          const client = dbClients.find(c => c.id === payment.targetClientId);
+          if (!client) throw new Error('Cliente no encontrado localmente.');
+
+          // Generate next ID
+          const sequences = currentUser?.documentSequences || { invoicePrefix: 'FAC', invoiceNextNumber: 1 };
+          let nextNum = sequences.invoiceNextNumber;
+          let newId = `${sequences.invoicePrefix}-${String(nextNum).padStart(4, '0')}`;
+          
+          // Basic collision check (in-memory)
+          while (invoices.some(i => i.id === newId)) {
+             nextNum++;
+             newId = `${sequences.invoicePrefix}-${String(nextNum).padStart(4, '0')}`;
+          }
+
+          const newInvoice: Invoice = {
+             id: newId,
+             userId: currentUser?.id!,
+             clientName: client.name,
+             clientEmail: client.email,
+             clientTaxId: client.taxId,
+             date: payment.date,
+             status: 'Pagada',
+             total: payment.amountPaid,
+             amountPaid: payment.amountPaid,
+             currency: payment.currency,
+             type: 'Invoice',
+             items: [{
+                id: 'item-1',
+                description: payment.description || 'Cobro Suscripción Stripe',
+                quantity: 1,
+                price: payment.amountPaid,
+                tax: 0
+             }],
+             stripeMapping: [payment.stripeSessionId, payment.stripePaymentIntentId, payment.stripeInvoiceId].filter(Boolean) as string[],
+             timeline: [{
+                id: Date.now().toString(),
+                type: 'CREATED',
+                title: 'Factura auto-generada desde Stripe',
+                timestamp: new Date().toISOString()
+             }]
+          };
+
+          await onSaveInvoice(newInvoice);
+          
+          // Remove from sync list
+          setUnlinkedPayments(prev => prev.filter(p => (p.stripePaymentIntentId || p.stripeInvoiceId) !== (payment.stripePaymentIntentId || payment.stripeInvoiceId)));
+          if (unlinkedPayments.length === 1) setShowManualSync(false);
+          
+          alert(`Factura ${newId} creada y pagada exitosamente.`);
+       } catch (err: any) {
+          console.error(err);
+          alert(err.message || 'Error al auto-generar factura.');
+       } finally {
+          setIsCreatingInvoice(false);
        }
     };
 
@@ -924,74 +1004,121 @@ const DocumentList: React.FC<DocumentListProps> = ({
                      <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
                          <div className="space-y-4">
                              {unlinkedPayments.map((payment, idx) => (
-                                 <div key={payment.stripeSessionId} className="bg-slate-50 rounded-3xl p-6 border border-slate-100 flex flex-col md:flex-row justify-between items-center gap-6 group hover:border-[#635BFF]/30 transition-all">
-                                     <div className="flex-1">
-                                         <div className="flex items-center gap-2 mb-1">
-                                             <span className="text-xs font-bold text-[#635BFF] bg-[#635BFF]/10 px-2 py-0.5 rounded-full uppercase tracking-tighter">Stripe Payment</span>
-                                             <span className="text-xs text-slate-400">{new Date(payment.date).toLocaleDateString()}</span>
-                                         </div>
-                                         <p className="font-bold text-slate-900 text-lg uppercase">{payment.customerName}</p>
-                                         <p className="text-sm text-slate-500 font-medium">{payment.description}</p>
-                                         <p className="text-xs text-slate-400 mt-1">{payment.customerEmail}</p>
-                                     </div>
+                                  <div key={payment.stripeSessionId || payment.stripePaymentIntentId || payment.stripeInvoiceId} className="bg-slate-50 rounded-3xl p-6 border border-slate-100 flex flex-col md:flex-row justify-between items-center gap-6 group hover:border-[#635BFF]/30 transition-all">
+                                      <div className="flex-1">
+                                          <div className="flex items-center gap-2 mb-1">
+                                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter ${payment.isSubscription ? 'bg-amber-100 text-amber-700' : 'bg-[#635BFF]/10 text-[#635BFF]'}`}>
+                                                  {payment.isSubscription ? (
+                                                      <span className="flex items-center gap-1"><Zap className="w-3 h-3 text-amber-500" /> Suscripción Stripe</span>
+                                                  ) : 'Pago Stripe'}
+                                              </span>
+                                              <span className="text-xs text-slate-400 font-medium">{new Date(payment.date).toLocaleDateString()}</span>
+                                          </div>
+                                          <p className="font-bold text-slate-900 text-lg uppercase leading-tight">{payment.customerName}</p>
+                                          <p className="text-sm text-slate-500 font-medium">{payment.description || 'Sin descripción'}</p>
+                                          <p className="text-[10px] text-slate-400 mt-1 font-mono uppercase">{payment.customerEmail || 'No email'}</p>
+                                      </div>
 
-                                     <div className="text-right px-6 border-x border-slate-200 hidden md:block">
-                                         <p className="text-xs text-slate-400 font-bold uppercase mb-1">Monto Recibido</p>
-                                         <p className="text-2xl font-black text-slate-900">{payment.currency} {payment.amountPaid.toFixed(2)}</p>
-                                     </div>
+                                      <div className="text-right px-6 border-x border-slate-200 hidden md:flex flex-col justify-center items-end">
+                                          <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Monto Recibido</p>
+                                          <p className="text-2xl font-black text-slate-900 leading-none">{payment.currency} {payment.amountPaid.toFixed(2)}</p>
+                                      </div>
 
-                                     <div className="flex flex-col gap-2 w-full md:w-64">
-                                         <p className="text-[10px] text-slate-400 font-bold uppercase px-1">Asociar a Factura Local:</p>
-                                         <select 
-                                           className="w-full bg-white border border-slate-200 rounded-xl py-2 px-3 text-sm font-bold text-slate-700 outline-none focus:border-[#1c2938] transition-all"
-                                           onChange={(e) => {
-                                               const val = e.target.value;
-                                               const updated = [...unlinkedPayments];
-                                               updated[idx].targetInvoiceId = val;
-                                               setUnlinkedPayments(updated);
-                                           }}
-                                           value={payment.targetInvoiceId || ""}
-                                         >
-                                             <option value="">-- Seleccionar Factura --</option>
-                                             {invoices
-                                               .filter(i => i.type === 'Invoice' && i.status !== 'Pagada' && i.status !== 'Rechazada')
-                                               .sort((a, b) => b.id.localeCompare(a.id))
-                                               .map(inv => (
-                                                 <option key={inv.id} value={inv.id}>
-                                                     #{inv.id} - {inv.clientName} ({inv.currency} {inv.total.toFixed(2)})
-                                                 </option>
-                                             ))}
-                                         </select>
-                                         <button 
-                                           disabled={!payment.targetInvoiceId}
-                                           onClick={() => {
-                                               if (onUpdateStatus) {
-                                                   const targetInv = invoices.find(i => i.id === payment.targetInvoiceId);
-                                                   if (targetInv) {
-                                                       const currentPaid = targetInv.amountPaid || 0;
-                                                       const newTotalPaid = currentPaid + payment.amountPaid;
-                                                       const isTotal = newTotalPaid >= targetInv.total;
+                                      <div className="flex flex-col gap-3 w-full md:w-72">
+                                          {/* Flow 1: Link to existing */}
+                                          <div className="space-y-1">
+                                              <p className="text-[10px] text-slate-400 font-bold uppercase px-1">Ligar a Factura:</p>
+                                              <div className="relative group/sel">
+                                                  <select 
+                                                    className="w-full appearance-none bg-white border border-slate-200 rounded-xl py-2 pl-3 pr-8 text-xs font-bold text-slate-700 outline-none focus:border-[#1c2938] transition-all cursor-pointer"
+                                                    onChange={(e) => {
+                                                        const updated = [...unlinkedPayments];
+                                                        updated[idx].targetInvoiceId = e.target.value;
+                                                        setUnlinkedPayments(updated);
+                                                    }}
+                                                    value={payment.targetInvoiceId || ""}
+                                                  >
+                                                      <option value="">-- Seleccionar --</option>
+                                                      {invoices
+                                                        .filter(i => i.type === 'Invoice' && i.status !== 'Pagada' && i.status !== 'Rechazada')
+                                                        .sort((a, b) => b.id.localeCompare(a.id))
+                                                        .map(inv => (
+                                                          <option key={inv.id} value={inv.id}>
+                                                              #{inv.id} - {inv.clientName}
+                                                          </option>
+                                                      ))}
+                                                  </select>
+                                                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
+                                              </div>
+                                              <button 
+                                                disabled={!payment.targetInvoiceId}
+                                                onClick={() => {
+                                                    if (onUpdateStatus) {
+                                                        const targetInv = invoices.find(i => i.id === payment.targetInvoiceId);
+                                                        if (targetInv) {
+                                                            const currentPaid = targetInv.amountPaid || 0;
+                                                            const newTotalPaid = currentPaid + payment.amountPaid;
+                                                            const isTotal = newTotalPaid >= targetInv.total;
 
-                                                       onUpdateStatus(targetInv.id, isTotal ? 'Pagada' : 'Abonada', {
-                                                           amountPaid: newTotalPaid,
-                                                           stripeMapping: [...(targetInv.stripeMapping || []), payment.stripeSessionId],
-                                                           notes: `Manual Link Stripe: ${payment.currency} ${payment.amountPaid.toFixed(2)}`
-                                                       } as any);
+                                                            onUpdateStatus(targetInv.id, isTotal ? 'Pagada' : 'Abonada', {
+                                                                amountPaid: newTotalPaid,
+                                                                stripeMapping: [...(targetInv.stripeMapping || []), payment.stripeSessionId || payment.stripePaymentIntentId || payment.stripeInvoiceId].filter(Boolean) as string[],
+                                                                notes: `Manual Link Stripe: ${payment.currency} ${payment.amountPaid.toFixed(2)}`
+                                                            } as any);
 
-                                                       // Remove from list
-                                                       const updated = unlinkedPayments.filter(p => p.stripeSessionId !== payment.stripeSessionId);
-                                                       setUnlinkedPayments(updated);
-                                                       if (updated.length === 0) setShowManualSync(false);
-                                                   }
-                                               }
-                                           }}
-                                           className="w-full bg-[#1c2938] text-white py-2 rounded-xl text-xs font-bold hover:bg-[#27bea5] transition-all shadow-sm active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
-                                         >
-                                             Ligar y Aplicar Pago
-                                         </button>
-                                     </div>
-                                 </div>
-                             ))}
+                                                            const updated = unlinkedPayments.filter(p => 
+                                                                (p.stripePaymentIntentId || p.stripeSessionId || p.stripeInvoiceId) !== 
+                                                                (payment.stripePaymentIntentId || payment.stripeSessionId || payment.stripeInvoiceId)
+                                                            );
+                                                            setUnlinkedPayments(updated);
+                                                            if (updated.length === 0) setShowManualSync(false);
+                                                        }
+                                                    }
+                                                }}
+                                                className="w-full bg-[#1c2938] text-white py-2 rounded-xl text-[10px] font-bold hover:bg-[#27bea5] transition-all shadow-sm active:scale-95 disabled:opacity-20"
+                                              >
+                                                  Ligar y Aplicar Pago
+                                              </button>
+                                          </div>
+
+                                          <div className="flex items-center gap-2">
+                                              <div className="h-px bg-slate-200 flex-1"></div>
+                                              <span className="text-[9px] font-bold text-slate-300">O BIEN</span>
+                                              <div className="h-px bg-slate-200 flex-1"></div>
+                                          </div>
+
+                                          {/* Flow 2: Auto-create */}
+                                          <div className="space-y-1">
+                                              <p className="text-[10px] text-indigo-400 font-bold uppercase px-1">Crear Factura Automática:</p>
+                                              <div className="relative group/sel">
+                                                  <select 
+                                                    className="w-full appearance-none bg-indigo-50/30 border border-indigo-100 rounded-xl py-2 pl-3 pr-8 text-xs font-bold text-indigo-700 outline-none focus:border-indigo-400 transition-all cursor-pointer"
+                                                    onChange={(e) => {
+                                                        const updated = [...unlinkedPayments];
+                                                        updated[idx].targetClientId = e.target.value;
+                                                        setUnlinkedPayments(updated);
+                                                    }}
+                                                    value={payment.targetClientId || ""}
+                                                  >
+                                                      <option value="">-- Cliente de Bills --</option>
+                                                      {dbClients.map(c => (
+                                                          <option key={c.id} value={c.id}>{c.name}</option>
+                                                      ))}
+                                                  </select>
+                                                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-indigo-400 pointer-events-none" />
+                                              </div>
+                                              <button 
+                                                disabled={!payment.targetClientId || isCreatingInvoice}
+                                                onClick={() => handleAutoCreateInvoice(payment)}
+                                                className="w-full bg-indigo-600 text-white py-2 rounded-xl text-[10px] font-bold hover:bg-indigo-700 transition-all shadow-md active:scale-95 disabled:opacity-20 flex items-center justify-center gap-1.5"
+                                              >
+                                                  {isCreatingInvoice ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                                                  Crear Factura
+                                              </button>
+                                          </div>
+                                      </div>
+                                  </div>
+                              ))}
                          </div>
                      </div>
 
