@@ -46,21 +46,21 @@ import { performAutomatedStripeSync } from './services/stripeSyncService';
 // --- ROUTING CONFIG ---
 const viewToPath: Record<string, string> = {
   [AppView.DASHBOARD]: '/dashboard',
-  [AppView.WIZARD]: '/wizard',
+  [AppView.WIZARD]: '/new-document',
   [AppView.INVOICES]: '/documents',
   [AppView.CLIENTS]: '/clients',
-  [AppView.CLIENT_DETAIL]: '/clients',
   [AppView.SETTINGS]: '/settings',
-  [AppView.INVOICE_DETAIL]: '/documents',
   [AppView.REPORTS]: '/reports',
   [AppView.CATALOG]: '/catalog',
   [AppView.EXPENSES]: '/expenses',
-  [AppView.EXPENSE_WIZARD]: '/expenses/new',
-  [AppView.CLIENT_WIZARD]: '/clients/new',
-  [AppView.ACCOUNTANT_DASHBOARD]: '/accountant',
   [AppView.AI_TASKS]: '/tasks',
   [AppView.FISCAL_CALCULATORS]: '/calculators',
   [AppView.TAX_CALENDAR]: '/calendar',
+  [AppView.INVOICE_DETAIL]: '/documents', // Base for details
+  [AppView.CLIENT_DETAIL]: '/clients',    // Base for details
+  [AppView.EXPENSE_WIZARD]: '/expenses/new',
+  [AppView.CLIENT_WIZARD]: '/clients/new',
+  [AppView.ACCOUNTANT_DASHBOARD]: '/accountant',
 };
 
 const pathToView = Object.entries(viewToPath).reduce((acc, [view, path]) => {
@@ -74,7 +74,7 @@ const AppContent: React.FC = () => {
   const [activeView, setActiveView] = useState<AppView>(AppView.DASHBOARD);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [dbClients, setDbClients] = useState<DbClient[]>([]);
-  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]); // NEW: Separate state for Catalog
+  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]); 
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [selectedClientName, setSelectedClientName] = useState<string | null>(null);
   const [documentToEdit, setDocumentToEdit] = useState<Invoice | null>(null);
@@ -86,22 +86,17 @@ const AppContent: React.FC = () => {
   const [accountantTasks, setAccountantTasks] = useState<AccountantTask[]>([]);
   const [calcType, setCalcType] = useState<'INTEREST' | 'SANCTION'>('INTEREST');
 
-  const alert = useAlert(); // Hook for alerts
+  const alert = useAlert(); 
 
   const handleLoginSuccess = async (user: UserProfile) => {
-    // Detect role strictly from ProfileType
     const isAccountant = user.type === ProfileType.ACCOUNTANT || user.isAccountant;
-
-    // Ensure sync between type and flag
     const finalUser = { ...user, isAccountant };
-
     setCurrentUser(finalUser);
     const view = isAccountant ? AppView.ACCOUNTANT_DASHBOARD : AppView.DASHBOARD;
     setActiveView(view);
     localStorage.setItem('konsul_session_id', finalUser.id);
     localStorage.setItem('konsul_user_data', JSON.stringify(finalUser));
 
-    // Load accountant dummy data if role is accountant
     if (isAccountant) {
       setManagedCompanies([
         { id: 'c1', name: 'Mi Dulce Hogar S.A.', taxId: '123456-1-123456', fiscalConfig: { entityType: 'JURIDICA' } } as UserProfile,
@@ -119,65 +114,60 @@ const AppContent: React.FC = () => {
   const handleLogout = () => {
     setCurrentUser(null);
     setActiveView(AppView.DASHBOARD);
-    window.location.hash = viewToPath[AppView.DASHBOARD];
+    window.history.pushState({}, '', '/dashboard');
     localStorage.removeItem('konsul_session_id');
     localStorage.removeItem('konsul_user_data');
   };
 
-  // --- ROUTING LOGIC ---
-  
-  // 1. Sync State to URL
-  useEffect(() => {
-    if (!currentUser) return;
+  // --- NAVIGATION HANDLER ---
+  const handleNavigate = (view: AppView) => {
+    setActiveView(view);
+    let path = viewToPath[view] || '/dashboard';
     
-    let path = viewToPath[activeView] || '/dashboard';
-    
-    // Add sub-context to URL if needed
-    if (activeView === AppView.CLIENT_DETAIL && selectedClientName) {
+    // Add sub-context to URL if needed for details
+    if (view === AppView.CLIENT_DETAIL && selectedClientName) {
       path += `/${encodeURIComponent(selectedClientName)}`;
-    } else if (activeView === AppView.INVOICE_DETAIL && selectedInvoice) {
+    } else if (view === AppView.INVOICE_DETAIL && selectedInvoice) {
       path += `/${encodeURIComponent(selectedInvoice.id)}`;
     }
-    
-    if (window.location.hash !== `#${path}`) {
-      window.location.hash = path;
+
+    if (window.location.pathname !== path) {
+      window.history.pushState({ view }, '', path);
     }
-  }, [activeView, selectedClientName, selectedInvoice, currentUser]);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
-  // 2. Sync URL to State (Deep Linking & Back Button)
+  // --- SYNC URL TO STATE (History API) ---
   useEffect(() => {
-    const handleHashChange = () => {
-      const hash = window.location.hash.replace('#', '');
-      if (!hash || hash === '/') return;
+    const syncUrlToState = () => {
+      const path = window.location.pathname;
+      if (!path || path === '/') return;
 
-      const segments = hash.split('/').filter(Boolean);
+      const segments = path.split('/').filter(Boolean);
       const mainPath = `/${segments[0]}`;
       const subParam = segments[1] ? decodeURIComponent(segments[1]) : null;
 
       const targetView = pathToView[mainPath];
       
       if (targetView) {
-        // Special handling for details
         if (mainPath === '/clients' && subParam) {
            setActiveView(AppView.CLIENT_DETAIL);
            setSelectedClientName(subParam);
         } else if (mainPath === '/documents' && subParam) {
            setActiveView(AppView.INVOICE_DETAIL);
-           // We need the full invoice object, so we find it in the current state
            const found = invoices.find(i => i.id === subParam);
            if (found) setSelectedInvoice(found);
-           else setActiveView(AppView.INVOICES); // Fallback if not loaded yet
+           else setActiveView(AppView.INVOICES); 
         } else {
            setActiveView(targetView);
         }
       }
     };
 
-    window.addEventListener('hashchange', handleHashChange);
-    // Initial check
-    if (currentUser) handleHashChange();
+    window.addEventListener('popstate', syncUrlToState);
+    if (currentUser) syncUrlToState();
     
-    return () => window.removeEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('popstate', syncUrlToState);
   }, [currentUser, invoices]);
 
   // --- BREADCRUMBS HELPER ---
@@ -224,6 +214,13 @@ const AppContent: React.FC = () => {
 
       const storedUserStr = localStorage.getItem('konsul_user_data');
       const storedUserId = localStorage.getItem('konsul_session_id');
+
+      // Initialize view from path
+      const path = window.location.pathname;
+      const initialView = Object.keys(viewToPath).find(key => viewToPath[key] === path) as AppView;
+      if (initialView) {
+        setActiveView(initialView);
+      }
 
       if (storedUserStr) {
         try {
@@ -793,7 +790,7 @@ const AppContent: React.FC = () => {
   return (
     <Layout
       activeView={activeView}
-      onNavigate={setActiveView}
+      onNavigate={handleNavigate}
       currentProfile={currentUser}
       onSwitchProfile={() => { }}
       isOffline={isOffline}
