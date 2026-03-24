@@ -5,7 +5,7 @@ import {
   Calendar, StickyNote, Lock, Link as LinkIcon, Smartphone
 } from 'lucide-react';
 import { Invoice, UserProfile, PaymentIntegration } from '../types';
-import { generateYappyPaymentLink } from '../services/yappyService';
+// removed unused broken import
 
 interface DocumentTemplateProps {
   invoice: Invoice;
