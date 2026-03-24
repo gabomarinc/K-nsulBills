@@ -27,6 +27,10 @@ interface DocumentListProps {
    currentUser?: UserProfile;
    dbClients?: DbClient[];
    onSaveInvoice?: (invoice: Invoice) => Promise<void>;
+   currentType?: 'INVOICE' | 'QUOTE';
+   currentStage?: string;
+   onTypeChange?: (type: 'INVOICE' | 'QUOTE') => void;
+   onStageChange?: (stage: string) => void;
 }
 
 type ViewMode = 'LIST' | 'GALLERY';
@@ -45,17 +49,19 @@ const DocumentList: React.FC<DocumentListProps> = ({
    onSaveInvoice,
    dbClients = [],
    currencySymbol,
-   currentUser
+   currentUser,
+   currentType = 'INVOICE',
+   currentStage = 'ALL_ACTIVE',
+   onTypeChange,
+   onStageChange
 }) => {
    const [viewMode, setViewMode] = useState<ViewMode>('LIST');
    const [searchTerm, setSearchTerm] = useState('');
-   const [currentStage, setCurrentStage] = useState<DocStage>('ALL_ACTIVE');
-   const [docTypeFilter, setDocTypeFilter] = useState<'INVOICE' | 'QUOTE'>('INVOICE');
    const [currentPage, setCurrentPage] = useState(1);
    const ITEMS_PER_PAGE = 12;
 
    // Reset page when views/filters change
-   useEffect(() => { setCurrentPage(1); }, [searchTerm, currentStage, docTypeFilter, viewMode]);
+   useEffect(() => { setCurrentPage(1); }, [searchTerm, currentStage, currentType, viewMode]);
 
    // Quick Action Menu State
    const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
@@ -72,14 +78,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
    const [aiInsight, setAiInsight] = useState<string | null>(null);
    const [isLoadingInsight, setIsLoadingInsight] = useState(false);
 
-   // Reset stage when switching doc type to avoid empty states
-   useEffect(() => {
-      if (docTypeFilter === 'INVOICE') {
-         setCurrentStage('ALL_ACTIVE');
-      } else {
-         setCurrentStage('SENT_QUOTES'); // Default for quotes
-      }
-   }, [docTypeFilter]);
+   // Effects for type changes moved to handleNavigate in App.tsx
 
    // --- STATS CALCULATION ---
    const totalPaid = invoices
@@ -400,8 +399,8 @@ const DocumentList: React.FC<DocumentListProps> = ({
       const isInvoice = doc.type === 'Invoice';
       const isQuote = doc.type === 'Quote';
 
-      if (docTypeFilter === 'INVOICE' && !isInvoice) return false;
-      if (docTypeFilter === 'QUOTE' && !isQuote) return false;
+      if (currentType === 'INVOICE' && !isInvoice) return false;
+      if (currentType === 'QUOTE' && !isQuote) return false;
 
       // 3. Search
       const matchesSearch = doc.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -414,14 +413,14 @@ const DocumentList: React.FC<DocumentListProps> = ({
       // 4. Stage Filtering (Tabs) - Only apply if NOT searching
       const isTechnicallyPaid = doc.status === 'Pagada' || doc.status === 'Aceptada' || (doc.type === 'Invoice' && (doc.amountPaid || 0) >= (doc.total - 0.01));
 
-      if (docTypeFilter === 'INVOICE') {
+      if (currentType === 'INVOICE') {
          if (currentStage === 'DRAFT') return doc.status === 'Borrador' || doc.status === 'PendingSync';
          if (currentStage === 'ALL_ACTIVE') return (doc.status === 'Enviada' || doc.status === 'Seguimiento') && !isTechnicallyPaid;
          if (currentStage === 'TO_COLLECT') return (doc.status === 'Enviada' || doc.status === 'Seguimiento' || doc.status === 'Abonada') && !isTechnicallyPaid;
          if (currentStage === 'DONE') return isTechnicallyPaid || doc.status === 'Incobrable' || doc.status === 'Rechazada';
       }
 
-      if (docTypeFilter === 'QUOTE') {
+      if (currentType === 'QUOTE') {
          if (currentStage === 'DRAFT') return doc.status === 'Borrador' || doc.status === 'PendingSync';
          if (currentStage === 'SENT_QUOTES') return (doc.status === 'Enviada' || doc.status === 'Seguimiento');
          if (currentStage === 'NEGOTIATION') return doc.status === 'Negociacion';
@@ -436,7 +435,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
 
    // --- TABS CONFIGURATION ---
    const getTabs = () => {
-      if (docTypeFilter === 'INVOICE') {
+      if (currentType === 'INVOICE') {
          return [
             { id: 'DRAFT', label: 'Borradores' },
             { id: 'ALL_ACTIVE', label: 'En Movimiento' }, // Sent, Viewed
@@ -641,7 +640,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
                      </div>
                      <h3 className="text-lg font-bold text-[#1c2938]">Nada en esta etapa</h3>
                      <p className="text-slate-400 text-sm mt-1">
-                        {docTypeFilter === 'INVOICE' ? 'No hay facturas con este estado.' : 'No hay cotizaciones con este estado.'}
+                        {currentType === 'INVOICE' ? 'No hay facturas con este estado.' : 'No hay cotizaciones con este estado.'}
                      </p>
                   </div>
                )}
@@ -813,8 +812,8 @@ const DocumentList: React.FC<DocumentListProps> = ({
             <div className="flex justify-center p-2 border-b border-slate-50 pb-4 mb-2">
                <div className="bg-slate-100 p-1.5 rounded-full flex gap-2">
                   <button
-                     onClick={() => setDocTypeFilter('INVOICE')}
-                     className={`px-8 py-2.5 rounded-full text-sm font-bold transition-all duration-300 flex items-center gap-2 ${docTypeFilter === 'INVOICE'
+                     onClick={() => onTypeChange?.('INVOICE')}
+                     className={`px-8 py-2.5 rounded-full text-sm font-bold transition-all duration-300 flex items-center gap-2 ${currentType === 'INVOICE'
                         ? 'bg-white text-[#1c2938] shadow-md'
                         : 'text-slate-400 hover:text-slate-600'
                         }`}
@@ -822,8 +821,8 @@ const DocumentList: React.FC<DocumentListProps> = ({
                      <FileText className="w-4 h-4" /> Facturas
                   </button>
                   <button
-                     onClick={() => setDocTypeFilter('QUOTE')}
-                     className={`px-8 py-2.5 rounded-full text-sm font-bold transition-all duration-300 flex items-center gap-2 ${docTypeFilter === 'QUOTE'
+                     onClick={() => onTypeChange?.('QUOTE')}
+                     className={`px-8 py-2.5 rounded-full text-sm font-bold transition-all duration-300 flex items-center gap-2 ${currentType === 'QUOTE'
                         ? 'bg-white text-[#1c2938] shadow-md'
                         : 'text-slate-400 hover:text-slate-600'
                         }`}
@@ -839,7 +838,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
                   {getTabs().map(tab => (
                      <button
                         key={tab.id}
-                        onClick={() => setCurrentStage(tab.id)}
+                        onClick={() => onStageChange?.(tab.id)}
                         className={`flex-1 md:flex-none px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide transition-all whitespace-nowrap ${currentStage === tab.id
                            ? 'bg-white text-[#1c2938] shadow-sm'
                            : 'text-slate-400 hover:text-slate-600'
@@ -855,7 +854,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
                   <Search className="absolute left-4 top-3.5 w-5 h-5 text-slate-400 group-focus-within:text-[#27bea5] transition-colors" />
                   <input
                      type="text"
-                     placeholder={docTypeFilter === 'INVOICE' ? "Buscar facturas..." : "Buscar cotizaciones..."}
+                     placeholder={currentType === 'INVOICE' ? "Buscar facturas..." : "Buscar cotizaciones..."}
                      value={searchTerm}
                      onChange={(e) => setSearchTerm(e.target.value)}
                      className="w-full h-full pl-12 pr-6 py-3 bg-transparent border-none rounded-2xl text-sm font-medium text-[#1c2938] focus:bg-slate-50 focus:ring-0 outline-none"

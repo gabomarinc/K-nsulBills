@@ -16,6 +16,8 @@ interface ClientListProps {
   currencySymbol: string;
   currentUser?: UserProfile;
   onRefresh?: () => void;
+  currentFilter?: string;
+  onFilterChange?: (filter: string) => void;
 }
 
 interface AggregatedClient {
@@ -36,14 +38,13 @@ interface AggregatedClient {
   fullData: any;
 }
 
-const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSelectClient, onCreateDocument, onCreateClient, currencySymbol, currentUser, onRefresh }) => {
+const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSelectClient, onCreateDocument, onCreateClient, currencySymbol, currentUser, onRefresh, currentFilter = 'ALL', onFilterChange }) => {
   const [viewMode, setViewMode] = useState<'LIST' | 'GALLERY'>('GALLERY');
-  const [filter, setFilter] = useState<'ALL' | 'CLIENT' | 'PROSPECT' | 'VIP'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 12;
 
-  React.useEffect(() => { setCurrentPage(1); }, [searchTerm, filter]);
+  React.useEffect(() => { setCurrentPage(1); }, [searchTerm, currentFilter]);
 
   // Auto-refresh on mount to ensure fresh data
   React.useEffect(() => {
@@ -203,9 +204,9 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
     const matchesSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       c.taxId.toLowerCase().includes(searchTerm.toLowerCase());
     let matchesType = true;
-    if (filter === 'CLIENT') matchesType = c.status === 'CLIENT';
-    if (filter === 'PROSPECT') matchesType = c.status === 'PROSPECT';
-    if (filter === 'VIP') matchesType = c.isVip;
+    if (currentFilter === 'CLIENT') matchesType = c.status === 'CLIENT';
+    if (currentFilter === 'PROSPECT') matchesType = c.status === 'PROSPECT';
+    if (currentFilter === 'VIP') matchesType = c.isVip;
     return matchesSearch && matchesType;
   }).sort((a, b) => {
     if (a.isVip && !b.isVip) return -1;
@@ -313,8 +314,9 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
           {(['ALL', 'VIP', 'CLIENT', 'PROSPECT'] as const).map(f => (
             <button
               key={f}
-              onClick={() => setFilter(f)}
-              className={`flex-1 md:flex-none px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide transition-all ${filter === f ? (f === 'VIP' ? 'bg-white text-amber-600 shadow-sm' : 'bg-white text-[#1c2938] shadow-sm') : 'text-slate-400'}`}
+              onClick={() => onFilterChange?.(
+f)}
+              className={`flex-1 md:flex-none px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide transition-all ${currentFilter === f ? (f === 'VIP' ? 'bg-white text-amber-600 shadow-sm' : 'bg-white text-[#1c2938] shadow-sm') : 'text-slate-400'}`}
             >
               {f === 'ALL' ? 'Todos' : f === 'VIP' ? 'VIP' : f === 'CLIENT' ? 'Clientes' : 'Prospectos'}
             </button>

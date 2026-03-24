@@ -72,6 +72,9 @@ const pathToView = Object.entries(viewToPath).reduce((acc, [view, path]) => {
 const AppContent: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [activeView, setActiveView] = useState<AppView>(AppView.DASHBOARD);
+  const [docType, setDocType] = useState<'INVOICE' | 'QUOTE'>('INVOICE');
+  const [docStage, setDocStage] = useState<string>('ALL_ACTIVE');
+  const [clientFilter, setClientFilter] = useState<string>('ALL');
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [dbClients, setDbClients] = useState<DbClient[]>([]);
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]); 
@@ -119,19 +122,53 @@ const AppContent: React.FC = () => {
   };
 
   // --- NAVIGATION HANDLER ---
-  const handleNavigate = (view: AppView) => {
+  interface NavParams {
+    id?: string;
+    type?: 'INVOICE' | 'QUOTE';
+    stage?: string;
+    filter?: string;
+    name?: string;
+  }
+
+  const handleNavigate = (view: AppView, params: NavParams = {}) => {
     setActiveView(view);
+    
+    // Update sub-states or RESET if switching to a main tab without params
+    if (params.type) setDocType(params.type);
+    else if (view === AppView.INVOICES && Object.keys(params).length === 0) setDocType('INVOICE');
+
+    if (params.stage) setDocStage(params.stage);
+    else if (view === AppView.INVOICES && Object.keys(params).length === 0) setDocStage('ALL_ACTIVE');
+
+    if (params.filter) setClientFilter(params.filter);
+    else if (view === AppView.CLIENTS && Object.keys(params).length === 0) setClientFilter('ALL');
+
+    if (params.name) setSelectedClientName(params.name);
+    if (params.id) {
+       const found = invoices.find(i => i.id === params.id);
+       if (found) setSelectedInvoice(found);
+    }
+
     let path = viewToPath[view] || '/dashboard';
     
-    // Add sub-context to URL if needed for details
-    if (view === AppView.CLIENT_DETAIL && selectedClientName) {
-      path += `/${encodeURIComponent(selectedClientName)}`;
-    } else if (view === AppView.INVOICE_DETAIL && selectedInvoice) {
-      path += `/${encodeURIComponent(selectedInvoice.id)}`;
+    // Build Hierarchical Path
+    if (view === AppView.INVOICES) {
+      const typeStr = params.type || docType;
+      const stageStr = params.stage || (typeStr === 'QUOTE' ? 'SENT_QUOTES' : 'ALL_ACTIVE');
+      path = `/documents/${typeStr.toLowerCase()}/${stageStr.toLowerCase()}`;
+    } else if (view === AppView.CLIENTS) {
+      const filterStr = params.filter || clientFilter;
+      path = `/clients/${filterStr.toLowerCase()}`;
+    } else if (view === AppView.CLIENT_DETAIL) {
+      const nameStr = params.name || selectedClientName;
+      path = `/clients/view/${encodeURIComponent(nameStr || '')}`;
+    } else if (view === AppView.INVOICE_DETAIL) {
+      const idStr = params.id || selectedInvoice?.id;
+      path = `/documents/view/${encodeURIComponent(idStr || '')}`;
     }
 
     if (window.location.pathname !== path) {
-      window.history.pushState({ view }, '', path);
+      window.history.pushState({ view, params }, '', path);
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -144,19 +181,29 @@ const AppContent: React.FC = () => {
 
       const segments = path.split('/').filter(Boolean);
       const mainPath = `/${segments[0]}`;
-      const subParam = segments[1] ? decodeURIComponent(segments[1]) : null;
-
+      
       const targetView = pathToView[mainPath];
       
       if (targetView) {
-        if (mainPath === '/clients' && subParam) {
-           setActiveView(AppView.CLIENT_DETAIL);
-           setSelectedClientName(subParam);
-        } else if (mainPath === '/documents' && subParam) {
-           setActiveView(AppView.INVOICE_DETAIL);
-           const found = invoices.find(i => i.id === subParam);
-           if (found) setSelectedInvoice(found);
-           else setActiveView(AppView.INVOICES); 
+        if (mainPath === '/clients') {
+          if (segments[1] === 'view' && segments[2]) {
+            setActiveView(AppView.CLIENT_DETAIL);
+            setSelectedClientName(decodeURIComponent(segments[2]));
+          } else {
+            setActiveView(AppView.CLIENTS);
+            if (segments[1]) setClientFilter(segments[1].toUpperCase());
+          }
+        } else if (mainPath === '/documents') {
+          if (segments[1] === 'view' && segments[2]) {
+            setActiveView(AppView.INVOICE_DETAIL);
+            const id = decodeURIComponent(segments[2]);
+            const found = invoices.find(i => i.id === id);
+            if (found) setSelectedInvoice(found);
+          } else {
+            setActiveView(AppView.INVOICES);
+            if (segments[1]) setDocType(segments[1].toUpperCase() as 'INVOICE' | 'QUOTE');
+            if (segments[2]) setDocStage(segments[2].toUpperCase());
+          }
         } else {
            setActiveView(targetView);
         }
@@ -831,15 +878,17 @@ const AppContent: React.FC = () => {
       {activeView === AppView.INVOICES && (
         <DocumentList
           invoices={invoices}
-          onSelectInvoice={(inv) => { setSelectedInvoice(inv); handleNavigate(AppView.INVOICE_DETAIL); }}
+          onSelectInvoice={(inv) => handleNavigate(AppView.INVOICE_DETAIL, { id: inv.id })}
           onCreateNew={() => { setDocumentToEdit(null); handleNavigate(AppView.WIZARD); }}
-          onDeleteInvoice={handleDeleteInvoice}
-          onEditInvoice={handleEditInvoice}
           onUpdateStatus={handleUpdateStatus}
           onSaveInvoice={handleSaveInvoice}
           dbClients={dbClients}
           currencySymbol={currentUser.defaultCurrency === 'EUR' ? '€' : '$'}
           currentUser={currentUser}
+          currentType={docType}
+          currentStage={docStage}
+          onTypeChange={(type) => handleNavigate(AppView.INVOICES, { type })}
+          onStageChange={(stage) => handleNavigate(AppView.INVOICES, { stage })}
         />
       )}
 
@@ -874,7 +923,9 @@ const AppContent: React.FC = () => {
           onCreateClient={() => handleNavigate(AppView.CLIENT_WIZARD)}
           currencySymbol={currentUser.defaultCurrency === 'EUR' ? '€' : '$'}
           currentUser={currentUser}
-          onSelectClient={(name) => { setSelectedClientName(name); handleNavigate(AppView.CLIENT_DETAIL); }}
+          currentFilter={clientFilter}
+          onFilterChange={(filter) => handleNavigate(AppView.CLIENTS, { filter })}
+          onSelectClient={(name) => handleNavigate(AppView.CLIENT_DETAIL, { name })}
           onRefresh={async () => {
             if (currentUser) {
               const [clients, docs] = await Promise.all([
