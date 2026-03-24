@@ -133,21 +133,16 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
         remainingBalance
       );
       
+      if (checkoutData.directUrl) {
+        window.location.href = checkoutData.directUrl;
+        return;
+      }
+      
       if (checkoutData.diagnostic) {
         console.log("YAPPY V2 DIAGNOSTIC DATA:", checkoutData.diagnostic);
-        // Show the diagnostic data in the UI so the user can send it to us
         alert.addToast('info', 'Diagnóstico Yappy Copiado a Consola', JSON.stringify(checkoutData.diagnostic));
         window.alert("DIAGNÓSTICO YAPPY: " + JSON.stringify(checkoutData.diagnostic));
       }
-
-      // We temporarily disable the Web component's eventPayment to avoid crashes
-      /*
-      btn.eventPayment({
-        transactionId: checkoutData.transactionId,
-        token: checkoutData.token,
-        documentName: checkoutData.documentName
-      });
-      */
     } catch (err: any) {
       alert.addToast('error', err.message || 'Error al conectar con Yappy');
     } finally {
