@@ -1,7 +1,7 @@
 
 /**
- * Stateless Yappy JWT Proxy to bypass CORS
- * Implements the official key derivation logic.
+ * Stateless Yappy JWT Proxy to bypass CORS (V1 Endpoint)
+ * Correctly splits the secretKey into HMAC and API parts.
  */
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -15,29 +15,24 @@ export default async function handler(req, res) {
   }
 
   try {
-    // DERIVE MERCHANT SECRET: Base64 decode and take the second part (index 1)
-    let derivedSecret = secretKey;
+    // DERIVE API KEY: Base64 decode and take the SECOND part (index 1)
+    let derivedApiKey = secretKey;
     try {
       const decoded = Buffer.from(secretKey, 'base64').toString('utf8');
       const parts = decoded.split('.');
       if (parts.length >= 2) {
-        derivedSecret = parts[1];
+        derivedApiKey = parts[1]; // Index 1 is the API Key for the header
       }
     } catch (e) {
-      console.warn('Secret derivation failed, using raw key:', e);
+      console.warn('Secret decoding failed, using raw key for header:', e);
     }
 
     const jwtRes = await fetch('https://pagosbg.bgeneral.com/validateapikeymerchand', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': derivedSecret,
+        'x-api-key': derivedApiKey,
         'version': 'P1.0.0'
-      },
-      body: JSON.stringify({
-        merchantId: apiKey,
-        urlDomain: domain
-      })
+      }
     });
 
     const jwtData = await jwtRes.json();
@@ -45,8 +40,7 @@ export default async function handler(req, res) {
         return res.status(jwtRes.status).json({ 
             error: 'BGeneral Handshake Failed', 
             details: jwtData,
-            usedApiKey: apiKey,
-            usedDomain: domain
+            usedApiKey: derivedApiKey
         });
     }
 
