@@ -2,9 +2,10 @@
 import React from 'react';
 import { 
   Building2, CheckCircle2, FileText, Wallet, 
-  Calendar, StickyNote, Lock, Link as LinkIcon
+  Calendar, StickyNote, Lock, Link as LinkIcon, Smartphone
 } from 'lucide-react';
-import { Invoice, UserProfile } from '../types';
+import { Invoice, UserProfile, PaymentIntegration } from '../types';
+import { generateYappyPaymentLink } from '../services/yappyService';
 
 interface DocumentTemplateProps {
   invoice: Invoice;
@@ -53,7 +54,7 @@ const DocumentTemplate: React.FC<DocumentTemplateProps> = ({
     if (isQuote || !remainingBalance || remainingBalance <= 0 || !showPaymentButtons) return null;
     
     const hasPaguelo = !!issuer.paymentIntegration?.cclw;
-    const hasYappy = !!issuer.paymentIntegration?.yappyMerchantId || !!issuer.paymentIntegration?.yappySecretKey; 
+    const hasYappy = !!issuer.paymentIntegration?.yappyMerchantId; 
     const hasStripe = !!issuer.paymentIntegration?.stripeSecretKey;
 
     if (!hasPaguelo && !hasYappy && !hasStripe) return null;
@@ -75,7 +76,7 @@ const DocumentTemplate: React.FC<DocumentTemplateProps> = ({
                       onClick={() => onPaymentClick?.('Yappy')}
                       className="flex-1 bg-[#ff6b00] text-white py-2.5 px-4 rounded-xl font-bold hover:bg-[#e65c00] transition-colors shadow-sm flex items-center justify-center gap-2"
                     >
-                        <Lock className="w-4 h-4" /> Yappy
+                        <Smartphone className="w-4 h-4" /> Yappy
                     </button>
                 )}
                 {hasStripe && (
@@ -87,6 +88,7 @@ const DocumentTemplate: React.FC<DocumentTemplateProps> = ({
                     </button>
                 )}
             </div>
+            <p className="text-[10px] text-slate-400 mt-2 text-center italic">Al hacer clic serás redirigido a la pasarela de pago segura.</p>
         </div>
     );
   };

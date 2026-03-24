@@ -11,6 +11,7 @@ import DocumentTimeline from './DocumentTimeline';
 import { sendEmail, generateDocumentHtml, getEmailStatus } from '../services/resendService';
 import { useAlert } from './AlertSystem';
 import DocumentTemplate from './DocumentTemplate';
+import { generateYappyPaymentLink } from '../services/yappyService';
 
 interface InvoiceDetailProps {
   invoice: Invoice;
@@ -129,13 +130,28 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
       window.open(`${baseUrl}?${params.toString()}`, '_blank');
   };
 
-  const handleYappy = () => {
-      window.location.href = "yappy://";
-      
-      // Fallback (if on desktop or app not installed) - Redirect to directory or web info
-      setTimeout(() => {
-          window.open("https://www.yappy.com.pa/directorio/", "_blank");
-      }, 1000);
+  const handleYappy = async () => {
+      try {
+          if (!issuer.paymentIntegration?.yappyMerchantId) {
+              window.location.href = "yappy://";
+              setTimeout(() => {
+                  window.open("https://www.yappy.com.pa/directorio/", "_blank");
+              }, 1000);
+              return;
+          }
+
+          const paymentLink = await generateYappyPaymentLink(
+              invoice, 
+              issuer.paymentIntegration, 
+              remainingBalance
+          );
+          
+          window.open(paymentLink, "_blank");
+      } catch (error) {
+          console.error("Yappy link generation failed:", error);
+          // Fallback to basic deep link
+          window.location.href = "yappy://";
+      }
   };
 
   const handleStripe = async (silent = false) => {
