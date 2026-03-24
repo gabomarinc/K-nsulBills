@@ -1,6 +1,6 @@
 
 import { Client } from '@neondatabase/serverless';
-import { Invoice, UserProfile, DbClient, DbProvider, CatalogItem } from '../types';
+import { Invoice, UserProfile, DbClient, DbProvider, CatalogItem, PaymentIntegration } from '../types';
 import bcrypt from 'bcryptjs';
 
 /**
@@ -1030,6 +1030,31 @@ export const getYappySecretByApiKey = async (apiKey: string): Promise<string | n
     return null;
   } catch (error) {
     console.error("Neon Get Yappy Secret Error:", error);
+    return null;
+  }
+};
+
+export const getYappyConfigByApiKey = async (apiKey: string): Promise<PaymentIntegration | null> => {
+  const client = getDbClient();
+  if (!client) return null;
+
+  try {
+    await client.connect();
+    const query = `
+      SELECT profile_data->'paymentIntegration' as config 
+      FROM users 
+      WHERE profile_data->'paymentIntegration'->>'yappyApiKey' = $1
+      LIMIT 1
+    `;
+    const { rows } = await client.query(query, [apiKey]);
+    await client.end();
+
+    if (rows.length > 0) {
+      return rows[0].config || null;
+    }
+    return null;
+  } catch (error) {
+    console.error("Neon Get Yappy Config Error:", error);
     return null;
   }
 };

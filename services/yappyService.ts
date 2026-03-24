@@ -43,6 +43,36 @@ export const generateYappyPaymentLink = async (
 };
 
 /**
+ * Yappy V2: Trigger dynamic handshake via backend
+ */
+export const createYappyV2Checkout = async (
+  invoice: Invoice, 
+  config: PaymentIntegration,
+  remainingBalance: number
+): Promise<{ transactionId: string, token: string, documentName: string }> => {
+  const response = await fetch('/api/yappy/v1/checkout', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      apiKey: config.yappyApiKey,
+      orderId: invoice.id,
+      total: remainingBalance,
+      domain: window.location.origin,
+      successUrl: `${window.location.origin}/#/documents/${invoice.id}?payment=success`,
+      failUrl: `${window.location.origin}/#/documents/${invoice.id}?payment=failed`
+    })
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || 'Error al conectar con Yappy');
+  }
+
+  const data = await response.json();
+  return data.body;
+};
+
+/**
  * Generate a Deep Link for Yappy (Mobile)
  */
 export const getYappyDeepLink = (amount: number, orderId: string): string => {

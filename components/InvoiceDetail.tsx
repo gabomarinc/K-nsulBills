@@ -11,7 +11,15 @@ import DocumentTimeline from './DocumentTimeline';
 import { sendEmail, generateDocumentHtml, getEmailStatus } from '../services/resendService';
 import { useAlert } from './AlertSystem';
 import DocumentTemplate from './DocumentTemplate';
-import { generateYappyPaymentLink } from '../services/yappyService';
+import { generateYappyPaymentLink, createYappyV2Checkout } from '../services/yappyService';
+
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      'btn-yappy': any;
+    }
+  }
+}
 
 interface InvoiceDetailProps {
   invoice: Invoice;
@@ -31,11 +39,25 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
   // Payment Modal State
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
+  const yappyBtnRef = useRef<any>(null);
 
   // Ref for PDF Generation
   const documentRef = useRef<HTMLDivElement>(null);
   
   const alert = useAlert(); // Custom Alert Hook
+
+  // Load Yappy V2 Script
+  useEffect(() => {
+    const scriptId = 'yappy-v2-script';
+    if (!document.getElementById(scriptId)) {
+      const script = document.createElement('script');
+      script.id = scriptId;
+      script.src = "https://bt-cdn.yappy.cloud/v1/cdn/web-component-btn-yappy.js";
+      script.type = "module";
+      script.async = true;
+      document.head.appendChild(script);
+    }
+  }, []);
 
   // Poll for Resend Status Updates
   useEffect(() => {
@@ -111,6 +133,33 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
   
   const isQuote = invoice.type === 'Quote';
 
+  // Handle Yappy V2 Events
+  useEffect(() => {
+    const btn = yappyBtnRef.current;
+    if (!btn) return;
+
+    const handleYappyClick = async () => {
+      try {
+        const checkoutData = await createYappyV2Checkout(
+          invoice,
+          issuer.paymentIntegration!,
+          remainingBalance
+        );
+        
+        btn.eventPayment({
+          transactionId: checkoutData.transactionId,
+          token: checkoutData.token,
+          documentName: checkoutData.documentName
+        });
+      } catch (err: any) {
+        alert.addToast('error', err.message || 'Error al conectar con Yappy');
+      }
+    };
+
+    btn.addEventListener('eventClick', handleYappyClick);
+    return () => btn.removeEventListener('eventClick', handleYappyClick);
+  }, [invoice, issuer, remainingBalance]);
+
   // --- PAYMENT HELPERS ---
   const handlePagueloFacil = () => {
       const cclw = issuer.paymentIntegration?.cclw;
@@ -131,27 +180,8 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
   };
 
   const handleYappy = async () => {
-      try {
-          if (!issuer.paymentIntegration?.yappyApiKey) {
-              window.location.href = "yappy://";
-              setTimeout(() => {
-                  window.open("https://www.yappy.com.pa/directorio/", "_blank");
-              }, 1000);
-              return;
-          }
-
-          const paymentLink = await generateYappyPaymentLink(
-              invoice, 
-              issuer.paymentIntegration, 
-              remainingBalance
-          );
-          
-          window.open(paymentLink, "_blank");
-      } catch (error) {
-          console.error("Yappy link generation failed:", error);
-          // Fallback to basic deep link
-          window.location.href = "yappy://";
-      }
+    // This is now handled by the <btn-yappy> event listener
+    // But we keep this function if we want to add any secondary logic
   };
 
   const handleStripe = async (silent = false) => {
@@ -409,12 +439,12 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                       </button>
                   )}
                   {hasYappy && (
-                      <button 
-                        onClick={handleYappy}
-                        className="flex-1 bg-[#ff6b00] text-white py-2.5 px-4 rounded-xl font-bold hover:bg-[#e65c00] transition-colors shadow-sm flex items-center justify-center gap-2"
-                      >
-                          <Smartphone className="w-4 h-4" /> Yappy
-                      </button>
+                      <div className="flex-1">
+                        <btn-yappy 
+                          ref={yappyBtnRef}
+                          theme="blue"
+                        ></btn-yappy>
+                      </div>
                   )}
                   {hasStripe && (
                       <button 
