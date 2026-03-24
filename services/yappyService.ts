@@ -75,6 +75,7 @@ export const createYappyV2Checkout = async (
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         apiKey: yappyApiKey,
+        secretKey: yappySecretKey,
         domain: clientDomain
       })
     });
