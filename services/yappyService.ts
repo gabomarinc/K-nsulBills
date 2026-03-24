@@ -49,7 +49,7 @@ export const createYappyV2Checkout = async (
   invoice: Invoice, 
   config: PaymentIntegration,
   remainingBalance: number
-): Promise<{ transactionId: string, token: string, documentName: string }> => {
+): Promise<{ transactionId: string, token: string, documentName: string, diagnostic?: any }> => {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', '/api/yappy/v1/checkout');

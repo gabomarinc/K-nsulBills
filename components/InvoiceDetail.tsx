@@ -137,6 +137,13 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
           remainingBalance
         );
         
+        if (checkoutData.diagnostic) {
+          console.log("YAPPY V2 DIAGNOSTIC DATA:", checkoutData.diagnostic);
+          // Show the diagnostic data in the UI so the user can send it to us
+          alert.addToast('info', 'Diagnóstico Yappy Copiado a Consola', JSON.stringify(checkoutData.diagnostic));
+          window.alert("DIAGNÓSTICO YAPPY: " + JSON.stringify(checkoutData.diagnostic));
+        }
+
         btn.eventPayment({
           transactionId: checkoutData.transactionId,
           token: checkoutData.token,

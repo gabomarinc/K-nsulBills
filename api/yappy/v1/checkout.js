@@ -113,6 +113,9 @@ export default async function handler(req, res) {
         wc_endpoint: orderData,
         standard_endpoint: altOrderData
       }, null, 2));
+      
+      // Also attach to the orderData to send it to the frontend
+      orderData.diagnostic = altOrderData;
     } catch(err) {
       console.error("Diagnostic error:", err);
     }
@@ -131,7 +134,8 @@ export default async function handler(req, res) {
       body: {
         transactionId: orderData.body.transactionId,
         token: orderData.body.token,
-        documentName: orderData.body.documentName
+        documentName: orderData.body.documentName,
+        diagnostic: orderData.diagnostic || null
       }
     });
 
