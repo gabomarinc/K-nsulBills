@@ -9,10 +9,10 @@ export const generateYappyPaymentLink = async (
   config: PaymentIntegration,
   remainingBalance: number
 ): Promise<string> => {
-  const { yappyMerchantId, yappyApiKey, yappySecretKey, yappySeed } = config;
+  const { yappyApiKey, yappySecretKey, yappySeed } = config;
 
-  if (!yappyMerchantId || !yappyApiKey) {
-    throw new Error("Yappy Merchant ID or API Key is missing");
+  if (!yappyApiKey) {
+    throw new Error("Yappy API Key is missing");
   }
 
   // STANDARD YAPPY LINK FORMAT (Based on documented "Botón de Pago")
@@ -28,7 +28,7 @@ export const generateYappyPaymentLink = async (
   // However, the "Conector" model uses a dynamic link.
   
   const params = new URLSearchParams({
-    id: yappyMerchantId,
+    id: yappyApiKey, // Using API Key as the Merchant Identifier
     api_key: yappyApiKey,
     orderId: orderId,
     amount: amount,

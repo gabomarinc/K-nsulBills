@@ -99,7 +99,6 @@ export interface PaymentIntegration {
   cclw?: string; // Codigo de Comercio (Merchant ID)
   token?: string; // API Token / Key
   // Yappy
-  yappyMerchantId?: string;
   yappyApiKey?: string;
   yappySecretKey?: string;
   yappySeed?: string;

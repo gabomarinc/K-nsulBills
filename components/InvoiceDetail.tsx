@@ -132,7 +132,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
 
   const handleYappy = async () => {
       try {
-          if (!issuer.paymentIntegration?.yappyMerchantId) {
+          if (!issuer.paymentIntegration?.yappyApiKey) {
               window.location.href = "yappy://";
               setTimeout(() => {
                   window.open("https://www.yappy.com.pa/directorio/", "_blank");
@@ -391,7 +391,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
       if (isQuote || !remainingBalance || remainingBalance <= 0) return null;
       
       const hasPaguelo = !!issuer.paymentIntegration?.cclw;
-      const hasYappy = !!issuer.paymentIntegration?.yappyMerchantId || !!issuer.paymentIntegration?.yappySecretKey; 
+      const hasYappy = !!issuer.paymentIntegration?.yappyApiKey || !!issuer.paymentIntegration?.yappySecretKey; 
       const hasStripe = !!issuer.paymentIntegration?.stripeSecretKey;
 
       if (!hasPaguelo && !hasYappy && !hasStripe) return null;

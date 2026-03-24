@@ -54,7 +54,7 @@ const DocumentTemplate: React.FC<DocumentTemplateProps> = ({
     if (isQuote || !remainingBalance || remainingBalance <= 0 || !showPaymentButtons) return null;
     
     const hasPaguelo = !!issuer.paymentIntegration?.cclw;
-    const hasYappy = !!issuer.paymentIntegration?.yappyMerchantId; 
+    const hasYappy = !!issuer.paymentIntegration?.yappyApiKey; 
     const hasStripe = !!issuer.paymentIntegration?.stripeSecretKey;
 
     if (!hasPaguelo && !hasYappy && !hasStripe) return null;

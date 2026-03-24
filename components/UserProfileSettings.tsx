@@ -112,7 +112,6 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
           enabled: isEnabled,
           cclw: prev.paymentIntegration?.cclw || '',
           token: prev.paymentIntegration?.token || '',
-          yappyMerchantId: prev.paymentIntegration?.yappyMerchantId || '',
           yappyApiKey: prev.paymentIntegration?.yappyApiKey || '',
           yappySecretKey: prev.paymentIntegration?.yappySecretKey || '',
           yappySeed: prev.paymentIntegration?.yappySeed || ''
@@ -126,7 +125,7 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
       const currentInt = prev.paymentIntegration || { provider: 'PAGUELOFACIL', enabled: true };
       const updatedInt = { ...currentInt, [field]: value };
       const hasPaguelo = !!updatedInt.cclw && !!updatedInt.token;
-      const hasYappy = !!updatedInt.yappyMerchantId && !!updatedInt.yappySecretKey;
+      const hasYappy = !!updatedInt.yappyApiKey && !!updatedInt.yappySecretKey;
 
       let newProvider: 'PAGUELOFACIL' | 'YAPPY' | 'STRIPE' | 'MULTIPLE' | 'BOTH' = updatedInt.provider;
       if (hasPaguelo && hasYappy && !!updatedInt.stripeSecretKey) newProvider = 'MULTIPLE';
@@ -296,8 +295,7 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
   }, [profile.fiscalConfig]);
 
   const isPagueloConfigured = !!profile.paymentIntegration?.cclw && !!profile.paymentIntegration?.token;
-  const isYappyConfigured = !!profile.paymentIntegration?.yappyMerchantId && 
-                            !!profile.paymentIntegration?.yappySecretKey && 
+  const isYappyConfigured = !!profile.paymentIntegration?.yappySecretKey && 
                             !!profile.paymentIntegration?.yappyApiKey;
   const isStripeConfigured = !!profile.paymentIntegration?.stripeSecretKey;
 
@@ -755,25 +753,13 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
 
                           <div className="space-y-2">
                             <label className="text-[10px] font-bold text-[#ff6b00] uppercase tracking-widest flex items-center gap-1">
-                              <Lock className="w-3 h-3" /> Merchant ID
-                            </label>
-                            <input
-                              value={profile.paymentIntegration?.yappyMerchantId || ''}
-                              onChange={(e) => handlePaymentConfigChange('yappyMerchantId', e.target.value)}
-                              className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-[#ff6b00] transition-colors font-mono"
-                              placeholder="ID de Comercio"
-                            />
-                          </div>
-
-                          <div className="space-y-2">
-                            <label className="text-[10px] font-bold text-[#ff6b00] uppercase tracking-widest flex items-center gap-1">
-                              <Key className="w-3 h-3" /> API Key
+                              <Key className="w-3 h-3" /> API Key (Identificador)
                             </label>
                             <input
                               value={profile.paymentIntegration?.yappyApiKey || ''}
                               onChange={(e) => handlePaymentConfigChange('yappyApiKey', e.target.value)}
                               className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-[#ff6b00] transition-colors font-mono"
-                              placeholder="Pegar API Key"
+                              placeholder="Pegar API Key de Yappy"
                             />
                           </div>
 
