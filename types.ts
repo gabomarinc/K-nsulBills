@@ -100,7 +100,9 @@ export interface PaymentIntegration {
   token?: string; // API Token / Key
   // Yappy
   yappyMerchantId?: string;
+  yappyApiKey?: string;
   yappySecretKey?: string;
+  yappySeed?: string;
   // Stripe
   stripeSecretKey?: string;
 }

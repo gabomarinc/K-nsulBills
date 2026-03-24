@@ -1,5 +1,5 @@
-
 import crypto from 'crypto';
+import { getYappySecretByApiKey } from '../../../services/neon';
 
 /**
  * Yappy Conector: Login Endpoint
@@ -16,13 +16,16 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Missing apiKey or code' });
   }
 
-  // --- SECURITY NOTE ---
-  // In a real multi-tenant app, we should look up the secretKey for this apiKey in our DB.
-  // For now, we'll assume the environment has a global key or we mock the validation.
-  // Ideally, we fetch it from Neon DB.
+  // Fetch the secret key from DB based on apiKey
+  const secretKey = await getYappySecretByApiKey(apiKey);
   
-  // MOCK: Getting the secret key (Should be fetched from DB based on apiKey)
-  const secretKey = process.env.YAPPY_SECRET_KEY || 'test-secret-key'; 
+  if (!secretKey) {
+    return res.status(401).json({ 
+      error: 'Invalid API Key',
+      details: 'No se encontró una configuración de Yappy válida para este apiKey.' 
+    });
+  }
+
   const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
   
   const expectedHash = crypto

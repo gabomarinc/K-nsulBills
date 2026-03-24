@@ -1004,3 +1004,32 @@ export const deleteClientFromDb = async (id: string, userId: string): Promise<bo
     return false;
   }
 };
+
+/**
+ * YAPPY CONECTOR HELPERS
+ */
+export const getYappySecretByApiKey = async (apiKey: string): Promise<string | null> => {
+  const client = getDbClient();
+  if (!client) return null;
+
+  try {
+    await client.connect();
+    // Search within profile_data JSONB
+    const query = `
+      SELECT profile_data->'paymentIntegration'->>'yappySecretKey' as secret 
+      FROM users 
+      WHERE profile_data->'paymentIntegration'->>'yappyApiKey' = $1
+      LIMIT 1
+    `;
+    const { rows } = await client.query(query, [apiKey]);
+    await client.end();
+
+    if (rows.length > 0) {
+      return rows[0].secret || null;
+    }
+    return null;
+  } catch (error) {
+    console.error("Neon Get Yappy Secret Error:", error);
+    return null;
+  }
+};

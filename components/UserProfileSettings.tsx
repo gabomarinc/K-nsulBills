@@ -6,7 +6,8 @@ import {
   User, Mail, Phone, Globe, Briefcase,
   Key, Save, Loader2, ChevronRight, Zap, Eye, EyeOff,
   CheckCircle2, XCircle, Layout, Palette, Crown, UploadCloud,
-  ExternalLink, ShieldCheck, AlertCircle, Lock, AlertTriangle, Scale, Calculator, Sparkles, Coins,
+  ExternalLink, ShieldCheck, AlertCircle, MessageSquare, Database, Share2, Printer, 
+  Smartphone, Wallet, Lock, AlertTriangle, Scale, Calculator, Sparkles, Coins,
   Bell, Activity, Clock
 } from 'lucide-react';
 import { updateUserProfileInDb, updateUserPassword } from '../services/neon';
@@ -112,7 +113,9 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
           cclw: prev.paymentIntegration?.cclw || '',
           token: prev.paymentIntegration?.token || '',
           yappyMerchantId: prev.paymentIntegration?.yappyMerchantId || '',
-          yappySecretKey: prev.paymentIntegration?.yappySecretKey || ''
+          yappyApiKey: prev.paymentIntegration?.yappyApiKey || '',
+          yappySecretKey: prev.paymentIntegration?.yappySecretKey || '',
+          yappySeed: prev.paymentIntegration?.yappySeed || ''
         }
       };
     });
@@ -293,7 +296,9 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
   }, [profile.fiscalConfig]);
 
   const isPagueloConfigured = !!profile.paymentIntegration?.cclw && !!profile.paymentIntegration?.token;
-  const isYappyConfigured = !!profile.paymentIntegration?.yappyMerchantId || !!profile.paymentIntegration?.yappySecretKey;
+  const isYappyConfigured = !!profile.paymentIntegration?.yappyMerchantId && 
+                            !!profile.paymentIntegration?.yappySecretKey && 
+                            !!profile.paymentIntegration?.yappyApiKey;
   const isStripeConfigured = !!profile.paymentIntegration?.stripeSecretKey;
 
   return (
@@ -750,18 +755,31 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
 
                           <div className="space-y-2">
                             <label className="text-[10px] font-bold text-[#ff6b00] uppercase tracking-widest flex items-center gap-1">
-                              <Lock className="w-3 h-3" /> Merchant ID (Opcional para enlace directo)
+                              <Lock className="w-3 h-3" /> Merchant ID
                             </label>
                             <input
                               value={profile.paymentIntegration?.yappyMerchantId || ''}
                               onChange={(e) => handlePaymentConfigChange('yappyMerchantId', e.target.value)}
                               className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-[#ff6b00] transition-colors font-mono"
-                              placeholder="Ej. ID de Comercio Yappy"
+                              placeholder="ID de Comercio"
                             />
                           </div>
+
                           <div className="space-y-2">
                             <label className="text-[10px] font-bold text-[#ff6b00] uppercase tracking-widest flex items-center gap-1">
-                              <Key className="w-3 h-3" /> Secret Key (Opcional)
+                              <Key className="w-3 h-3" /> API Key
+                            </label>
+                            <input
+                              value={profile.paymentIntegration?.yappyApiKey || ''}
+                              onChange={(e) => handlePaymentConfigChange('yappyApiKey', e.target.value)}
+                              className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-[#ff6b00] transition-colors font-mono"
+                              placeholder="Pegar API Key"
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-[#ff6b00] uppercase tracking-widest flex items-center gap-1">
+                              <ShieldCheck className="w-3 h-3" /> Secret Key
                             </label>
                             <div className="relative">
                               <input
@@ -769,7 +787,7 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                                 value={profile.paymentIntegration?.yappySecretKey || ''}
                                 onChange={(e) => handlePaymentConfigChange('yappySecretKey', e.target.value)}
                                 className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-[#ff6b00] transition-colors font-mono pr-10"
-                                placeholder="Pegar llave secreta de Yappy"
+                                placeholder="Pegar Secret Key"
                               />
                               <button
                                 onClick={() => toggleKeyVisibility('yappy_secret')}
@@ -778,6 +796,18 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                                 {showKeys['yappy_secret'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                               </button>
                             </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-[#ff6b00] uppercase tracking-widest flex items-center gap-1">
+                              <Zap className="w-3 h-3" /> Semilla (Seed)
+                            </label>
+                            <input
+                              value={profile.paymentIntegration?.yappySeed || ''}
+                              onChange={(e) => handlePaymentConfigChange('yappySeed', e.target.value)}
+                              className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-[#ff6b00] transition-colors font-mono"
+                              placeholder="Semilla de integración"
+                            />
                           </div>
                           <div className="flex justify-end">
                             <a

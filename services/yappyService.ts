@@ -9,10 +9,10 @@ export const generateYappyPaymentLink = async (
   config: PaymentIntegration,
   remainingBalance: number
 ): Promise<string> => {
-  const { yappyMerchantId, yappySecretKey } = config;
+  const { yappyMerchantId, yappyApiKey, yappySecretKey, yappySeed } = config;
 
-  if (!yappyMerchantId) {
-    throw new Error("Yappy Merchant ID is missing");
+  if (!yappyMerchantId || !yappyApiKey) {
+    throw new Error("Yappy Merchant ID or API Key is missing");
   }
 
   // STANDARD YAPPY LINK FORMAT (Based on documented "Botón de Pago")
@@ -29,8 +29,10 @@ export const generateYappyPaymentLink = async (
   
   const params = new URLSearchParams({
     id: yappyMerchantId,
+    api_key: yappyApiKey,
     orderId: orderId,
     amount: amount,
+    seed: yappySeed || Date.now().toString(),
     desc: `Factura ${orderId}`
   });
 
