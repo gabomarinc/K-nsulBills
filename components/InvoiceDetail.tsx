@@ -39,25 +39,13 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
   // Payment Modal State
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [isProcessingYappy, setIsProcessingYappy] = useState(false);
   const yappyBtnRef = useRef<any>(null);
 
   // Ref for PDF Generation
   const documentRef = useRef<HTMLDivElement>(null);
   
-  const alert = useAlert(); // Custom Alert Hook
-
-  // Load Yappy V2 Script
-  useEffect(() => {
-    const scriptId = 'yappy-v2-script';
-    if (!document.getElementById(scriptId)) {
-      const script = document.createElement('script');
-      script.id = scriptId;
-      script.src = "https://bt-cdn.yappy.cloud/v1/cdn/web-component-btn-yappy.js";
-      script.type = "module";
-      script.async = true;
-      document.head.appendChild(script);
-    }
-  }, []);
+  const alert = useAlert(); 
 
   // Poll for Resend Status Updates
   useEffect(() => {
@@ -139,7 +127,10 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
     if (!btn) return;
 
     const handleYappyClick = async () => {
+      if (isProcessingYappy) return;
+      
       try {
+        setIsProcessingYappy(true);
         const checkoutData = await createYappyV2Checkout(
           invoice,
           issuer.paymentIntegration!,
@@ -153,6 +144,8 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
         });
       } catch (err: any) {
         alert.addToast('error', err.message || 'Error al conectar con Yappy');
+      } finally {
+        setIsProcessingYappy(false);
       }
     };
 

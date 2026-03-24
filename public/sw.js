@@ -5,6 +5,10 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-    // Simple pass-through for now
+    // Only intercept GET requests and skip Yappy API to avoid body consumption issues
+    if (event.request.method !== 'GET' || event.request.url.includes('/api/yappy')) {
+        return;
+    }
+    
     event.respondWith(fetch(event.request));
 });

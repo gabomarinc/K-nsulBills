@@ -63,12 +63,12 @@ export const createYappyV2Checkout = async (
     })
   });
 
+  const data = await response.json();
+
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || 'Error al conectar con Yappy');
+    throw new Error(data.error || 'Error al conectar con Yappy');
   }
 
-  const data = await response.json();
   return data.body;
 };
 
