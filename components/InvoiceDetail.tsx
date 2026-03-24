@@ -122,43 +122,38 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
   const isQuote = invoice.type === 'Quote';
 
   // Handle Yappy V2 Events
-  useEffect(() => {
-    const btn = yappyBtnRef.current;
-    if (!btn) return;
-
-    const handleYappyClick = async () => {
-      if (isProcessingYappy) return;
+  const handleYappyClick = async () => {
+    if (isProcessingYappy) return;
+    
+    try {
+      setIsProcessingYappy(true);
+      const checkoutData = await createYappyV2Checkout(
+        invoice,
+        issuer.paymentIntegration!,
+        remainingBalance
+      );
       
-      try {
-        setIsProcessingYappy(true);
-        const checkoutData = await createYappyV2Checkout(
-          invoice,
-          issuer.paymentIntegration!,
-          remainingBalance
-        );
-        
-        if (checkoutData.diagnostic) {
-          console.log("YAPPY V2 DIAGNOSTIC DATA:", checkoutData.diagnostic);
-          // Show the diagnostic data in the UI so the user can send it to us
-          alert.addToast('info', 'Diagnóstico Yappy Copiado a Consola', JSON.stringify(checkoutData.diagnostic));
-          window.alert("DIAGNÓSTICO YAPPY: " + JSON.stringify(checkoutData.diagnostic));
-        }
-
-        btn.eventPayment({
-          transactionId: checkoutData.transactionId,
-          token: checkoutData.token,
-          documentName: checkoutData.documentName
-        });
-      } catch (err: any) {
-        alert.addToast('error', err.message || 'Error al conectar con Yappy');
-      } finally {
-        setIsProcessingYappy(false);
+      if (checkoutData.diagnostic) {
+        console.log("YAPPY V2 DIAGNOSTIC DATA:", checkoutData.diagnostic);
+        // Show the diagnostic data in the UI so the user can send it to us
+        alert.addToast('info', 'Diagnóstico Yappy Copiado a Consola', JSON.stringify(checkoutData.diagnostic));
+        window.alert("DIAGNÓSTICO YAPPY: " + JSON.stringify(checkoutData.diagnostic));
       }
-    };
 
-    btn.addEventListener('eventClick', handleYappyClick);
-    return () => btn.removeEventListener('eventClick', handleYappyClick);
-  }, [invoice, issuer, remainingBalance]);
+      // We temporarily disable the Web component's eventPayment to avoid crashes
+      /*
+      btn.eventPayment({
+        transactionId: checkoutData.transactionId,
+        token: checkoutData.token,
+        documentName: checkoutData.documentName
+      });
+      */
+    } catch (err: any) {
+      alert.addToast('error', err.message || 'Error al conectar con Yappy');
+    } finally {
+      setIsProcessingYappy(false);
+    }
+  };
 
   // --- PAYMENT HELPERS ---
   const handlePagueloFacil = () => {
@@ -439,12 +434,14 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                       </button>
                   )}
                   {hasYappy && (
-                      <div className="flex-1">
-                        <btn-yappy 
-                          ref={yappyBtnRef}
-                          theme="blue"
-                        ></btn-yappy>
-                      </div>
+                      <button 
+                        onClick={handleYappyClick}
+                        disabled={isProcessingYappy}
+                        className="flex-1 bg-[#ff6b00] text-white py-2.5 px-4 rounded-xl font-bold hover:bg-[#e65c00] transition-colors shadow-sm flex items-center justify-center gap-2"
+                      >
+                          {isProcessingYappy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Smartphone className="w-4 h-4" />} 
+                          Yappy (Diag)
+                      </button>
                   )}
                   {hasStripe && (
                       <button 
