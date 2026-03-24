@@ -1,7 +1,13 @@
 
 // Basic Service Worker for PWA
 self.addEventListener('install', (event) => {
+    self.skipWaiting();
     console.log('Service Worker installed');
+});
+
+self.addEventListener('activate', (event) => {
+    event.waitUntil(clients.claim());
+    console.log('Service Worker activated');
 });
 
 self.addEventListener('fetch', (event) => {

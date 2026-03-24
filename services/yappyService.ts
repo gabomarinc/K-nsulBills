@@ -50,26 +50,35 @@ export const createYappyV2Checkout = async (
   config: PaymentIntegration,
   remainingBalance: number
 ): Promise<{ transactionId: string, token: string, documentName: string }> => {
-  const response = await fetch('/api/yappy/v1/checkout', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/yappy/v1/checkout');
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    
+    xhr.onload = () => {
+      try {
+        const data = JSON.parse(xhr.responseText);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(data.body);
+        } else {
+          reject(new Error(data.error || 'Error al conectar con Yappy'));
+        }
+      } catch (e) {
+        reject(new Error('Error al procesar la respuesta de Yappy'));
+      }
+    };
+    
+    xhr.onerror = () => reject(new Error('Error de red al conectar con Yappy'));
+    
+    xhr.send(JSON.stringify({
       apiKey: config.yappyApiKey,
       orderId: invoice.id,
       total: remainingBalance,
       domain: window.location.origin,
       successUrl: `${window.location.origin}/#/documents/${invoice.id}?payment=success`,
       failUrl: `${window.location.origin}/#/documents/${invoice.id}?payment=failed`
-    })
+    }));
   });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.error || 'Error al conectar con Yappy');
-  }
-
-  return data.body;
 };
 
 /**
