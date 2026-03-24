@@ -19,7 +19,7 @@ export const generateYappyPaymentLink = async (
   // Note: For advanced security, the signature should be generated on the server if possible.
   // But for simple "Link de Pago" integrations, Yappy uses a specific public URL.
   
-  const baseUrl = "https://pago.yappy.com.pa/pago";
+  const baseUrl = "https://www.yappy.com.pa/pago";
   const amount = remainingBalance.toFixed(2);
   const orderId = invoice.id;
   
