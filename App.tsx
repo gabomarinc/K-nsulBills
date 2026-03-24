@@ -979,6 +979,7 @@ const AppContent: React.FC = () => {
           clientName={selectedClientName}
           invoices={invoices}
           dbClientData={dbClients.find(c => c.name.trim().toLowerCase() === selectedClientName.trim().toLowerCase())}
+          issuer={currentUser}
           onBack={() => {
             setSelectedClientName(null);
             handleNavigate(AppView.CLIENTS);

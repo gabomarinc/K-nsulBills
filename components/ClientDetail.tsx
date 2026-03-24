@@ -6,7 +6,8 @@ import {
   TrendingUp, Edit2, Calendar, Save, X, Phone,
   ExternalLink, Send, Wallet, Trash2, Tag, StickyNote, Plus, Check, Sparkles, CreditCard, Search, User, Building, Loader2
 } from 'lucide-react';
-import { Invoice, InvoiceStatus, DbClient } from '../types';
+import { Invoice, InvoiceStatus, DbClient, UserProfile } from '../types';
+import MultiDocumentEmailModal from './MultiDocumentEmailModal';
 
 interface ClientDetailProps {
   clientName: string;
@@ -18,7 +19,8 @@ interface ClientDetailProps {
   onCreateDocument?: (type: 'Invoice' | 'Quote', clientData: DbClient) => void; // Updated prop signature
   onDeleteClient?: (id: string, name: string) => void;
   currencySymbol: string;
-  stripeSecretKey?: string; // NEW
+  stripeSecretKey?: string;
+  issuer: UserProfile; // NEW
 }
 
 const ClientDetail: React.FC<ClientDetailProps> = ({ 
@@ -31,9 +33,14 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
   onCreateDocument,
   onDeleteClient,
   currencySymbol,
-  stripeSecretKey
+  stripeSecretKey,
+  issuer // NEW
 }) => {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  
+  // Multi-selection state
+  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   
   // Local states for quick edits
   const [isAddingTag, setIsAddingTag] = useState(false);
@@ -741,24 +748,43 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                   <div className="space-y-3">
                      {activeDocs.map(doc => (
                         <div 
-                          key={doc.id}
-                          onClick={() => onSelectInvoice(doc)}
-                          className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 hover:border-[#27bea5] hover:shadow-md transition-all cursor-pointer group flex items-center justify-between"
+                           key={doc.id}
+                           className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 hover:border-[#27bea5] hover:shadow-md transition-all cursor-pointer group flex items-center justify-between"
                         >
                            <div className="flex items-center gap-4">
-                              <div className={`p-3 rounded-xl ${doc.type === 'Quote' ? 'bg-purple-50 text-purple-600' : 'bg-blue-50 text-blue-600'}`}>
-                                 {doc.type === 'Quote' ? <FileBadge className="w-5 h-5" /> : <Wallet className="w-5 h-5" />}
+                              <div 
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    const isSelected = selectedDocIds.includes(doc.id);
+                                    if (isSelected) {
+                                        setSelectedDocIds(prev => prev.filter(id => id !== doc.id));
+                                    } else {
+                                        setSelectedDocIds(prev => [...prev, doc.id]);
+                                    }
+                                }}
+                                className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${selectedDocIds.includes(doc.id) ? 'bg-[#27bea5] border-[#27bea5] shadow-sm' : 'border-slate-200 group-hover:border-[#27bea5]'}`}
+                              >
+                                {selectedDocIds.includes(doc.id) && <Check className="w-4 h-4 text-white" />}
                               </div>
-                              <div>
-                                 <h4 className="font-bold text-[#1c2938] group-hover:text-[#27bea5] transition-colors">
-                                    {doc.type === 'Quote' ? 'Cotización' : 'Factura'} #{doc.id}
-                                 </h4>
-                                 <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
-                                    <Calendar className="w-3 h-3" /> {new Date(doc.date).toLocaleDateString()}
-                                 </p>
+
+                              <div 
+                                onClick={() => onSelectInvoice(doc)}
+                                className="flex items-center gap-4"
+                              >
+                                <div className={`p-3 rounded-xl ${doc.type === 'Quote' ? 'bg-purple-50 text-purple-600' : 'bg-blue-50 text-blue-600'}`}>
+                                   {doc.type === 'Quote' ? <FileBadge className="w-5 h-5" /> : <Wallet className="w-5 h-5" />}
+                                </div>
+                                <div>
+                                   <h4 className="font-bold text-[#1c2938] group-hover:text-[#27bea5] transition-colors">
+                                      {doc.type === 'Quote' ? 'Cotización' : 'Factura'} #{doc.id}
+                                   </h4>
+                                   <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
+                                      <Calendar className="w-3 h-3" /> {new Date(doc.date).toLocaleDateString()}
+                                   </p>
+                                </div>
                               </div>
                            </div>
-                           <div className="text-right">
+                           <div className="text-right" onClick={() => onSelectInvoice(doc)}>
                               <p className="font-bold text-lg text-[#1c2938]">{currencySymbol}{doc.total.toLocaleString()}</p>
                               <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-lg border ${getStatusColor(doc.status)}`}>
                                  {doc.status}
@@ -813,6 +839,65 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
 
          </div>
       </div>
+
+      {/* FLOATING SECTION: MULTI-SELECT ACTIONS */}
+      {selectedDocIds.length > 0 && (
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-8">
+            <div className="bg-[#1c2938] text-white px-8 py-4 rounded-[2rem] shadow-2xl border border-white/10 flex items-center gap-6 backdrop-blur-md bg-opacity-95 text-center">
+                <div className="flex -space-x-2">
+                    {selectedDocIds.slice(0, 3).map((id, i) => (
+                        <div key={id} className={`w-10 h-10 rounded-full border-4 border-[#1c2938] flex items-center justify-center text-[11px] font-black ${i % 2 === 0 ? 'bg-[#27bea5]' : 'bg-blue-500'}`}>
+                           {id.slice(-2)}
+                        </div>
+                    ))}
+                    {selectedDocIds.length > 3 && (
+                        <div className="w-10 h-10 rounded-full border-4 border-[#1c2938] bg-slate-700 flex items-center justify-center text-[11px] font-black">
+                            +{selectedDocIds.length - 3}
+                        </div>
+                    )}
+                </div>
+                
+                <div className="h-10 w-px bg-white/10"></div>
+                
+                <div className="text-left">
+                    <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest leading-none mb-1">Selección</p>
+                    <p className="text-sm font-black leading-none">
+                        <span className="text-[#27bea5]">{selectedDocIds.length}</span> documentos
+                    </p>
+                </div>
+
+                <div className="flex gap-3">
+                    <button 
+                        onClick={() => setSelectedDocIds([])}
+                        className="px-5 py-2.5 hover:bg-white/5 rounded-2xl text-xs font-bold transition-colors border border-white/5"
+                    >
+                        Limpiar
+                    </button>
+                    <button 
+                        onClick={() => setIsEmailModalOpen(true)}
+                        className="bg-[#27bea5] text-white px-8 py-2.5 rounded-2xl font-black text-xs flex items-center gap-2 hover:scale-105 transition-all shadow-[0_10px_20px_-5px_rgba(39,190,165,0.4)] active:scale-95"
+                    >
+                        <Send className="w-4 h-4" /> Enviar por Email
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* EMAIL MODAL */}
+      {isEmailModalOpen && (
+        <MultiDocumentEmailModal 
+          isOpen={isEmailModalOpen}
+          onClose={() => setIsEmailModalOpen(false)}
+          client={{
+              name: clientData.name,
+              email: clientData.email
+          }}
+          selectedInvoices={invoices.filter(i => selectedDocIds.includes(i.id))}
+          issuer={issuer}
+          onSuccess={() => setSelectedDocIds([])}
+        />
+      )}
     </div>
   );
 };
