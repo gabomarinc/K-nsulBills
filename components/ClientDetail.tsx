@@ -739,10 +739,43 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
             
             {/* BITACORA (Active Log) */}
             <div className="space-y-4">
-               <h3 className="font-bold text-[#1c2938] text-lg flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-[#27bea5]" /> Bitácora Activa
-                  <span className="bg-slate-100 text-slate-500 text-xs px-2 py-0.5 rounded-full">{activeDocs.length}</span>
-               </h3>
+                <div className="flex items-center justify-between items-end">
+                   <h3 className="font-bold text-[#1c2938] text-lg flex items-center gap-2">
+                      <TrendingUp className="w-5 h-5 text-[#27bea5]" /> Bitácora Activa
+                      <span className="bg-slate-100 text-slate-500 text-xs px-2 py-0.5 rounded-full">{activeDocs.length}</span>
+                   </h3>
+                   
+                   {activeDocs.length > 0 && (
+                      <div className="flex items-center gap-4">
+                         <button 
+                            onClick={() => {
+                               if (selectedDocIds.length === activeDocs.length) {
+                                  setSelectedDocIds([]);
+                               } else {
+                                  setSelectedDocIds(activeDocs.map(d => d.id));
+                               }
+                            }}
+                            className="text-xs font-bold text-slate-400 hover:text-[#27bea5] transition-colors flex items-center gap-1.5"
+                         >
+                            <CheckCircle2 className={`w-4 h-4 ${selectedDocIds.length === activeDocs.length ? 'text-[#27bea5]' : ''}`} />
+                            {selectedDocIds.length === activeDocs.length ? 'Desmarcar Todo' : 'Seleccionar Todo'}
+                         </button>
+
+                         <button 
+                           onClick={() => setIsEmailModalOpen(true)}
+                           disabled={selectedDocIds.length === 0}
+                           className={`flex items-center gap-2 px-6 py-3 rounded-2xl text-base font-black transition-all ${
+                             selectedDocIds.length > 0 
+                               ? 'bg-[#1c2938] text-white shadow-[0_10px_30px_-10px_rgba(28,41,56,0.5)] hover:bg-[#27bea5] hover:-translate-y-1 hover:shadow-[0_15px_35px_-10px_rgba(39,190,165,0.4)] animate-pulse-subtle' 
+                               : 'bg-slate-100 text-slate-300 cursor-not-allowed border border-slate-200'
+                           }`}
+                         >
+                            <Mail className={`w-5 h-5 ${selectedDocIds.length > 0 ? 'text-[#27bea5]' : ''}`} />
+                            Enviar por Email {selectedDocIds.length > 0 && `(${selectedDocIds.length})`}
+                         </button>
+                      </div>
+                   )}
+                </div>
 
                {activeDocs.length > 0 ? (
                   <div className="space-y-3">
