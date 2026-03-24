@@ -484,7 +484,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                  showPaymentButtons={true}
                  onPaymentClick={(provider) => {
                    if (provider === 'PagueloFacil') handlePagueloFacil();
-                   if (provider === 'Yappy') handleYappy();
+                   if (provider === 'Yappy') handleYappyClick();
                    if (provider === 'Stripe') handleStripe();
                  }}
                />
