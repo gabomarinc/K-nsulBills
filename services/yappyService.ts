@@ -4,47 +4,48 @@ import { Invoice, PaymentIntegration } from '../types';
 /**
  * Yappy Service: Frontend logic for generating payment links
  */
-export const generateYappyPaymentLink = async (
-  invoice: Invoice, 
+/**
+ * Main Yappy Entry Point: Attempts V2 (handshake) and falls back to V1 (Direct Link) if failures occur.
+ * This ensures the user is NEVER blocked by BGeneral API/CORS/Domain errors.
+ */
+export const getSafeYappyCheckoutUrl = async (
+  invoice: Invoice,
   config: PaymentIntegration,
   remainingBalance: number
 ): Promise<string> => {
-  const { yappyApiKey, yappySecretKey, yappySeed } = config;
-
-  if (!yappyApiKey) {
-    throw new Error("Yappy API Key is missing");
+  try {
+    console.log("Attempting Yappy V2 Handshake...");
+    const v2Result = await createYappyV2Checkout(invoice, config, remainingBalance);
+    return v2Result.directUrl;
+  } catch (error) {
+    console.warn("Yappy V2 failed, falling back to V1 Direct Link:", error);
+    return generateYappyV1Link(invoice, config, remainingBalance);
   }
+};
 
-  // STANDARD YAPPY LINK FORMAT (Based on documented "Botón de Pago")
-  // Note: For advanced security, the signature should be generated on the server if possible.
-  // But for simple "Link de Pago" integrations, Yappy uses a specific public URL.
-  
+/**
+ * Yappy V1 (Legacy/Direct Link): Simple, no-handshake redirect.
+ * This is the ultimate fallback that always works.
+ */
+export const generateYappyV1Link = (
+  invoice: Invoice,
+  config: PaymentIntegration,
+  remainingBalance: number
+): string => {
+  const { yappyApiKey, yappySeed } = config;
   const baseUrl = "https://www.yappy.com.pa/pago";
-  const amount = remainingBalance.toFixed(2);
-  const orderId = invoice.id;
-  
-  // Create a signature if required by the specific merchant implementation
-  // Many Yappy "Link de Pago" implementations just use a direct URL with ID and amount
-  // However, the "Conector" model uses a dynamic link.
-  
   const params = new URLSearchParams({
-    id: yappyApiKey, // Using API Key as the Merchant Identifier
-    api_key: yappyApiKey,
-    orderId: orderId,
-    amount: amount,
+    id: yappyApiKey || '',
+    orderId: invoice.id,
+    amount: remainingBalance.toFixed(2),
     seed: yappySeed || Date.now().toString(),
-    desc: `Factura ${orderId}`
+    desc: `Pago Factura ${invoice.id}`
   });
-
-  // If we were doing QR generation, we would use a library here.
-  // For the button, a redirect is sufficient.
-  
   return `${baseUrl}?${params.toString()}`;
 };
 
 /**
  * Yappy V2: Build signed static redirect URL using HMAC-SHA256
- * Based on the official BGeneral/Eprezto approach.
  */
 export const createYappyV2Checkout = async (
   invoice: Invoice, 
@@ -54,7 +55,7 @@ export const createYappyV2Checkout = async (
   const { yappyApiKey, yappySecretKey } = config;
 
   if (!yappyApiKey || !yappySecretKey) {
-    throw new Error('Yappy no está configurado correctamente en el perfil del emisor.');
+    throw new Error('Configuración de Yappy incompleta');
   }
 
   const orderId = invoice.id;
@@ -67,29 +68,28 @@ export const createYappyV2Checkout = async (
   const failUrl = `${clientDomain}/#/documents/${invoice.id}?payment=failed`;
   const checkoutUrl = `${clientDomain}/#/documents/${invoice.id}`;
 
-  // STEP 1: Fetch JWT token via our backend PROXY to bypass CORS
+  // STEP 1: Fetch JWT token via Proxy
   let jwtToken = '';
-  try {
-    const jwtRes = await fetch('/api/yappy/v1/get-token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        apiKey: yappyApiKey,
-        secretKey: yappySecretKey,
-        domain: clientDomain
-      })
-    });
-    if (jwtRes.ok) {
-      const jwtData = await jwtRes.json();
-      jwtToken = jwtData.accessToken || jwtData.token || '';
-    }
-  } catch (e) {
-    console.warn('Yappy JWT proxy failed, proceeding without token:', e);
+  const jwtRes = await fetch('/api/yappy/v1/get-token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      apiKey: yappyApiKey,
+      secretKey: yappySecretKey,
+      domain: clientDomain
+    })
+  });
+  
+  if (jwtRes.ok) {
+    const jwtData = await jwtRes.json();
+    jwtToken = jwtData.accessToken || jwtData.token || '';
+  } else {
+    // If we get 400/500 from proxy/BG, we throw so the fallback takes over
+    const errData = await jwtRes.json().catch(() => ({}));
+    throw new Error(`BGeneral rejected handshake: ${errData.message || jwtRes.statusText}`);
   }
 
   // STEP 2: Build HMAC-SHA256 signature
-  // The ORDER of fields is CRITICAL for BGeneral. 
-  // Standard V2 Signature: total + merchantId + subtotal + taxes + paymentDate + YAP + VEN + orderId + successUrl + failUrl + domainUrl
   const sigData = [
     total.toFixed(2),
     yappyApiKey,
@@ -132,9 +132,9 @@ export const createYappyV2Checkout = async (
     failUrl,
     domain: clientDomain,
     aliasYappy: '',
-    platform: 'desarrollopropiophp'
+    platform: 'desarrollopropiophp',
+    jwtToken
   };
-  if (jwtToken) paramsObj.jwtToken = jwtToken;
 
   const directUrl = `https://pagosbg.bgeneral.com?${new URLSearchParams(paramsObj).toString()}`;
   return { directUrl };

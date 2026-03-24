@@ -11,7 +11,7 @@ import DocumentTimeline from './DocumentTimeline';
 import { sendEmail, generateDocumentHtml, getEmailStatus } from '../services/resendService';
 import { useAlert } from './AlertSystem';
 import DocumentTemplate from './DocumentTemplate';
-import { generateYappyPaymentLink, createYappyV2Checkout } from '../services/yappyService';
+import { getSafeYappyCheckoutUrl, createYappyV2Checkout } from '../services/yappyService';
 
 declare global {
   namespace JSX {
@@ -127,14 +127,14 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
     
     try {
       setIsProcessingYappy(true);
-      const checkoutData = await createYappyV2Checkout(
+      const directUrl = await getSafeYappyCheckoutUrl(
         invoice,
         issuer.paymentIntegration!,
         remainingBalance
       );
       
-      if (checkoutData.directUrl) {
-        window.location.href = checkoutData.directUrl;
+      if (directUrl) {
+        window.location.href = directUrl;
       }
     } catch (err: any) {
       alert.addToast('error', err.message || 'Error al conectar con Yappy');
@@ -290,13 +290,12 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
             paymentUrl = await handleStripe(true);
         }
 
-        // Generate Yappy link if configured
+        // Generate Yappy link if configured (Safe version with V1 fallback)
         let yappyPaymentUrl: string | undefined = undefined;
-        if (!isQuote && issuer.paymentIntegration?.yappyApiKey && issuer.paymentIntegration?.yappySecretKey) {
+        if (!isQuote && issuer.paymentIntegration?.yappyApiKey) {
             try {
-                const yappyCheckout = await createYappyV2Checkout(invoice, issuer.paymentIntegration, remainingBalance);
-                yappyPaymentUrl = yappyCheckout.directUrl;
-            } catch (e) { /* ignore if Yappy not configured properly */ }
+                yappyPaymentUrl = await getSafeYappyCheckoutUrl(invoice, issuer.paymentIntegration, remainingBalance);
+            } catch (e) { /* ignore */ }
         }
 
         const htmlContent = generateDocumentHtml(invoice, issuer, paymentUrl, yappyPaymentUrl);
