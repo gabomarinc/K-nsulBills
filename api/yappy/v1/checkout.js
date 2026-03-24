@@ -55,7 +55,7 @@ export default async function handler(req, res) {
     // 3. STEP 2: Generate Order Hash
     // Hash: SHA256(merchantId + orderId + total + secretKey)
     const amountStr = Number(total).toFixed(2);
-    const hashData = apiKey + orderId + amountStr + yappySecretKey;
+    const hashData = apiKey + orderId + amountStr + config.yappySecretKey;
     const hash = crypto.createHash('sha256').update(hashData).digest('hex');
 
     // 4. STEP 3: Create Payment Order (Web Component Handshake)
