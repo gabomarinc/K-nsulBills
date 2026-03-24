@@ -57,7 +57,6 @@ export const createYappyV2Checkout = async (
     throw new Error('Yappy no está configurado correctamente en el perfil del emisor.');
   }
 
-  // invoice.id is already "FAC-0016" — do NOT add FAC- prefix again
   const orderId = invoice.id;
   const total = remainingBalance;
   const subtotal = remainingBalance;
@@ -68,19 +67,15 @@ export const createYappyV2Checkout = async (
   const failUrl = `${clientDomain}/#/documents/${invoice.id}?payment=failed`;
   const checkoutUrl = `${clientDomain}/#/documents/${invoice.id}`;
 
-  // STEP 1: Fetch JWT token from BGeneral (correct endpoint from eprezto-yappy SDK)
+  // STEP 1: Fetch JWT token via our backend PROXY to bypass CORS
   let jwtToken = '';
   try {
-    const jwtRes = await fetch('https://pagosbg.bgeneral.com/validateapikeymerchand', {
+    const jwtRes = await fetch('/api/yappy/v1/get-token', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': yappySecretKey,
-        'version': 'P1.0.0'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        merchantId: yappyApiKey,
-        urlDomain: clientDomain
+        apiKey: yappyApiKey,
+        domain: clientDomain
       })
     });
     if (jwtRes.ok) {
@@ -88,13 +83,24 @@ export const createYappyV2Checkout = async (
       jwtToken = jwtData.accessToken || jwtData.token || '';
     }
   } catch (e) {
-    console.warn('Yappy JWT fetch failed, proceeding without token:', e);
+    console.warn('Yappy JWT proxy failed, proceeding without token:', e);
   }
 
   // STEP 2: Build HMAC-SHA256 signature
+  // The ORDER of fields is CRITICAL for BGeneral. 
+  // Standard V2 Signature: total + merchantId + subtotal + taxes + paymentDate + YAP + VEN + orderId + successUrl + failUrl + domainUrl
   const sigData = [
-    total.toFixed(2), yappyApiKey, subtotal.toFixed(2), taxes.toFixed(2),
-    paymentDate, 'YAP', 'VEN', orderId, successUrl, failUrl, clientDomain
+    total.toFixed(2),
+    yappyApiKey,
+    subtotal.toFixed(2),
+    taxes.toFixed(2),
+    paymentDate.toString(),
+    'YAP',
+    'VEN',
+    orderId,
+    successUrl,
+    failUrl,
+    clientDomain
   ].join('');
 
   const encoder = new TextEncoder();
@@ -109,18 +115,30 @@ export const createYappyV2Checkout = async (
 
   // STEP 3: Build redirect URL
   const paramsObj: Record<string, string> = {
-    sbx: 'no', donation: 'no', checkoutUrl, signature,
-    merchantId: yappyApiKey, total: total.toFixed(2),
-    subtotal: subtotal.toFixed(2), taxes: taxes.toFixed(2),
-    paymentDate: String(paymentDate), paymentMethod: 'YAP',
-    transactionType: 'VEN', orderId, successUrl, failUrl,
-    domain: clientDomain, aliasYappy: '', platform: 'desarrollopropiophp'
+    sbx: 'no',
+    donation: 'no',
+    checkoutUrl,
+    signature,
+    merchantId: yappyApiKey,
+    total: total.toFixed(2),
+    subtotal: subtotal.toFixed(2),
+    taxes: taxes.toFixed(2),
+    paymentDate: String(paymentDate),
+    paymentMethod: 'YAP',
+    transactionType: 'VEN',
+    orderId,
+    successUrl,
+    failUrl,
+    domain: clientDomain,
+    aliasYappy: '',
+    platform: 'desarrollopropiophp'
   };
   if (jwtToken) paramsObj.jwtToken = jwtToken;
 
   const directUrl = `https://pagosbg.bgeneral.com?${new URLSearchParams(paramsObj).toString()}`;
   return { directUrl };
 };
+
 
 
 /**
