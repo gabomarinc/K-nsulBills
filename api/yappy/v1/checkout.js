@@ -84,8 +84,6 @@ export default async function handler(req, res) {
     
     // START DIAGNOSTIC INJECTION
     try {
-      const fs = require('fs');
-      
       // Also try the non-WC endpoint to see if it gives a direct URL
       const altOrderRes = await fetch('https://apipagosbg.bgeneral.cloud/payments/payment', {
         method: 'POST',
@@ -108,11 +106,6 @@ export default async function handler(req, res) {
         })
       });
       const altOrderData = await altOrderRes.json();
-      
-      fs.writeFileSync('/tmp/yappy_log.json', JSON.stringify({
-        wc_endpoint: orderData,
-        standard_endpoint: altOrderData
-      }, null, 2));
       
       // Also attach to the orderData to send it to the frontend
       orderData.diagnostic = altOrderData;
