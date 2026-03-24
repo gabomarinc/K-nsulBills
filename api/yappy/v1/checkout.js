@@ -81,6 +81,43 @@ export default async function handler(req, res) {
     });
 
     const orderData = await orderRes.json();
+    
+    // START DIAGNOSTIC INJECTION
+    try {
+      const fs = require('fs');
+      
+      // Also try the non-WC endpoint to see if it gives a direct URL
+      const altOrderRes = await fetch('https://apipagosbg.bgeneral.cloud/payments/payment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionToken}`
+        },
+        body: JSON.stringify({
+          merchantId: apiKey,
+          orderId: orderId,
+          domain: clientDomain,
+          paymentDate: Math.floor(Date.now() / 1000),
+          total: amountStr,
+          subtotal: amountStr,
+          taxes: "0.00",
+          hash: hash,
+          successUrl: successUrl || clientDomain,
+          failUrl: failUrl || clientDomain,
+          ipnUrl: `${origin}/api/yappy/v1/movement/history`
+        })
+      });
+      const altOrderData = await altOrderRes.json();
+      
+      fs.writeFileSync('/tmp/yappy_log.json', JSON.stringify({
+        wc_endpoint: orderData,
+        standard_endpoint: altOrderData
+      }, null, 2));
+    } catch(err) {
+      console.error("Diagnostic error:", err);
+    }
+    // END DIAGNOSTIC INJECTION
+
     if (!orderData.status || orderData.status.code !== 200) {
        return res.status(400).json({ 
          error: 'Yappy Order Creation Failed', 
