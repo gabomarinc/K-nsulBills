@@ -200,26 +200,34 @@ export const sendDocumentEmail = async (
 /**
  * Generates the Professional HTML Template for Invoice/Quote.
  */
-export const generateDocumentHtml = (invoice: Invoice, issuer: UserProfile, paymentUrl?: string): string => {
+export const generateDocumentHtml = (invoice: Invoice, issuer: UserProfile, paymentUrl?: string, yappyUrl?: string): string => {
   const isQuote = invoice.type === 'Quote';
   const docTypeLabel = isQuote ? 'Cotización' : 'Factura';
   const color = issuer.branding?.primaryColor || '#1c2938';
 
-  const paymentButton = paymentUrl ? `
-    <!-- BOTON DE PAGO -->
+  const stripeButton = paymentUrl ? `
+    <a href="${paymentUrl}" style="background-color: ${color}; color: #ffffff; padding: 14px 28px; border-radius: 10px; text-decoration: none; font-weight: bold; font-size: 15px; display: inline-block; margin: 8px;">
+        💳 Pagar con Tarjeta (Stripe)
+    </a>` : '';
+
+  const yappyButton = yappyUrl ? `
+    <a href="${yappyUrl}" style="background-color: #f97316; color: #ffffff; padding: 14px 28px; border-radius: 10px; text-decoration: none; font-weight: bold; font-size: 15px; display: inline-block; margin: 8px;">
+        📱 Pagar con Yappy
+    </a>` : '';
+
+  const paymentButtons = (stripeButton || yappyButton) ? `
+    <!-- BOTONES DE PAGO -->
     <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-top: 32px;">
         <tr>
-            <td align="center">
-                <a href="${paymentUrl}" style="background-color: ${color}; color: #ffffff; padding: 16px 32px; border-radius: 12px; text-decoration: none; font-weight: bold; font-size: 16px; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                    Pagar ${docTypeLabel} Online
-                </a>
+            <td align="center" style="padding-bottom: 8px;">
+                ${stripeButton}
+                ${yappyButton}
             </td>
         </tr>
     </table>
-    <p style="color: #94a3b8; font-size: 12px; margin-top: 16px; text-align: center;">
-        Link seguro via Stripe
-    </p>
+    <p style="color: #94a3b8; font-size: 12px; margin-top: 12px; text-align: center;">Links de pago seguros</p>
   ` : '';
+
 
   return `
 <!DOCTYPE html>
@@ -268,7 +276,7 @@ export const generateDocumentHtml = (invoice: Invoice, issuer: UserProfile, paym
                                 </tr>
                             </table>
 
-                            ${paymentButton}
+                            ${paymentButtons}
 
                             <p style="color: #94a3b8; font-size: 14px; margin-top: 32px; text-align: center;">
                                 Si tienes alguna pregunta, no dudes en responder a este correo.

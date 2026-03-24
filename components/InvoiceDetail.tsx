@@ -135,13 +135,6 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
       
       if (checkoutData.directUrl) {
         window.location.href = checkoutData.directUrl;
-        return;
-      }
-      
-      if (checkoutData.diagnostic) {
-        console.log("YAPPY V2 DIAGNOSTIC DATA:", checkoutData.diagnostic);
-        alert.addToast('info', 'Diagnóstico Yappy Copiado a Consola', JSON.stringify(checkoutData.diagnostic));
-        window.alert("DIAGNÓSTICO YAPPY: " + JSON.stringify(checkoutData.diagnostic));
       }
     } catch (err: any) {
       alert.addToast('error', err.message || 'Error al conectar con Yappy');
@@ -297,7 +290,16 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
             paymentUrl = await handleStripe(true);
         }
 
-        const htmlContent = generateDocumentHtml(invoice, issuer, paymentUrl);
+        // Generate Yappy link if configured
+        let yappyPaymentUrl: string | undefined = undefined;
+        if (!isQuote && issuer.paymentIntegration?.yappyApiKey && issuer.paymentIntegration?.yappySecretKey) {
+            try {
+                const yappyCheckout = await createYappyV2Checkout(invoice, issuer.paymentIntegration, remainingBalance);
+                yappyPaymentUrl = yappyCheckout.directUrl;
+            } catch (e) { /* ignore if Yappy not configured properly */ }
+        }
+
+        const htmlContent = generateDocumentHtml(invoice, issuer, paymentUrl, yappyPaymentUrl);
         const docTypeName = isQuote ? 'Cotización' : 'Factura';
         const emailSubject = `${docTypeName} #${invoice.id} - ${issuer.name}`;
 

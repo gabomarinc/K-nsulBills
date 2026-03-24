@@ -43,13 +43,14 @@ export const generateYappyPaymentLink = async (
 };
 
 /**
- * Yappy V2: Direct frontend handshake
+ * Yappy V2: Build signed static redirect URL (no domain validation API needed)
+ * Based on the documented BGeneral/Eprezto approach using HMAC-SHA256.
  */
 export const createYappyV2Checkout = async (
   invoice: Invoice, 
   config: PaymentIntegration,
   remainingBalance: number
-): Promise<{ directUrl?: string, diagnostic?: any }> => {
+): Promise<{ directUrl: string }> => {
   const { yappyApiKey, yappySecretKey } = config;
 
   if (!yappyApiKey || !yappySecretKey) {
@@ -57,73 +58,64 @@ export const createYappyV2Checkout = async (
   }
 
   const orderId = `FAC-${invoice.id}`;
-  const amountStr = remainingBalance.toFixed(2);
+  const total = remainingBalance;
+  const subtotal = remainingBalance;
+  const taxes = 0;
+  const paymentDate = Date.now();
   const clientDomain = window.location.origin;
+  const successUrl = `${clientDomain}/#/documents/${invoice.id}?payment=success`;
+  const failUrl = `${clientDomain}/#/documents/${invoice.id}?payment=failed`;
+  const checkoutUrl = `${clientDomain}/#/documents/${invoice.id}`;
 
-  try {
-    // STEP 1: Validate Merchant Handshake
-    const validateRes = await fetch('https://apipagosbg.bgeneral.cloud/payments/validate/merchant', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        merchantId: yappyApiKey,
-        urlDomain: clientDomain
-      })
-    });
-    
-    if (!validateRes.ok) throw new Error('Network error validating merchant');
-    const validateData = await validateRes.json();
-    
-    if (!validateData.status || validateData.status.code !== 200) {
-      throw new Error(`Yappy Auth Failed: ${JSON.stringify(validateData)}`);
-    }
+  // Build signature string as per Yappy/BGeneral specification:
+  // total + merchantId + subtotal + taxes + paymentDate + YAP + VEN + orderId + successUrl + failUrl + domainUrl
+  const sigData = [
+    total.toFixed(2),
+    yappyApiKey,
+    subtotal.toFixed(2),
+    taxes.toFixed(2),
+    paymentDate,
+    'YAP',
+    'VEN',
+    orderId,
+    successUrl,
+    failUrl,
+    clientDomain
+  ].join('');
 
-    const sessionToken = validateData.status.token;
+  // HMAC-SHA256 using WebCrypto (browser-native, no libraries needed)
+  const encoder = new TextEncoder();
+  const keyBytes = encoder.encode(yappySecretKey);
+  const dataBytes = encoder.encode(sigData);
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  );
+  const sigBuffer = await crypto.subtle.sign('HMAC', cryptoKey, dataBytes);
+  const sigArray = Array.from(new Uint8Array(sigBuffer));
+  const signature = sigArray.map(b => b.toString(16).padStart(2, '0')).join('');
 
-    // STEP 2: Generate Order Hash
-    const hashData = yappyApiKey + orderId + amountStr + yappySecretKey;
-    const msgUint8 = new TextEncoder().encode(hashData);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  const params = new URLSearchParams({
+    sbx: 'no',
+    donation: 'no',
+    checkoutUrl,
+    signature,
+    merchantId: yappyApiKey,
+    total: total.toFixed(2),
+    subtotal: subtotal.toFixed(2),
+    taxes: taxes.toFixed(2),
+    paymentDate: String(paymentDate),
+    paymentMethod: 'YAP',
+    transactionType: 'VEN',
+    orderId,
+    successUrl,
+    failUrl,
+    domain: clientDomain,
+    aliasYappy: '',
+    platform: 'desarrollopropiophp'
+  });
 
-    // STEP 3: Request Direct Payment URL endpoint
-    const urlRes = await fetch('https://apipagosbg.bgeneral.cloud/payments/payment', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${sessionToken}`
-      },
-      body: JSON.stringify({
-        merchantId: yappyApiKey,
-        orderId: orderId,
-        domain: clientDomain,
-        paymentDate: Math.floor(Date.now() / 1000),
-        total: amountStr,
-        subtotal: amountStr,
-        taxes: "0.00",
-        hash: hashHex,
-        successUrl: `${clientDomain}/#/documents/${invoice.id}?payment=success`,
-        failUrl: `${clientDomain}/#/documents/${invoice.id}?payment=failed`,
-        ipnUrl: `${clientDomain}/api/yappy/v1/movement/history`
-      })
-    });
-
-    if (!urlRes.ok) throw new Error('Network error fetching payment URL');
-    const urlData = await urlRes.json();
-
-    if (urlData.url) {
-      return { directUrl: urlData.url, diagnostic: urlData };
-    } else if (urlData.body && urlData.body.url) {
-      return { directUrl: urlData.body.url, diagnostic: urlData };
-    } else {
-      throw new Error(`Invalid response from Yappy URL endpoint: ${JSON.stringify(urlData)}`);
-    }
-
-  } catch (error: any) {
-    console.error("Yappy V2 Frontend Error:", error);
-    throw new Error(error.message || "Error desconocido al procesar pago Yappy desde el cliente");
-  }
+  const directUrl = `https://pagosbg.bgeneral.com?${params.toString()}`;
+  return { directUrl };
 };
 
 /**
