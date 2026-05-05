@@ -31,7 +31,13 @@ const DocumentTemplate: React.FC<DocumentTemplateProps> = ({
   const discountAmount = subtotal * (discountRate / 100);
   
   // ITBMS 7%
-  const taxTotal = (subtotal - discountAmount) * 0.07;
+  const taxTotal = invoice.items.reduce((acc, item) => {
+    const itemTotal = item.price * item.quantity;
+    const itemShare = subtotal > 0 ? itemTotal / subtotal : 0;
+    const itemDiscount = discountAmount * itemShare;
+    const itemBase = itemTotal - itemDiscount;
+    return acc + (itemBase * ((item.tax || 0) / 100));
+  }, 0);
   const amountPaid = invoice.amountPaid || 0;
   const remainingBalance = invoice.total - amountPaid;
 
@@ -230,10 +236,12 @@ const DocumentTemplate: React.FC<DocumentTemplateProps> = ({
                     <span className="text-green-600 font-medium">-${discountAmount.toFixed(2)}</span>
                 </div>
               )}
-              <div className="flex justify-between text-slate-500 text-lg">
-                <span>ITBMS (7%)</span>
-                <span>${taxTotal.toFixed(2)}</span>
-              </div>
+              {taxTotal > 0 && (
+                <div className="flex justify-between text-slate-500 text-lg">
+                  <span>ITBMS (7%)</span>
+                  <span>${taxTotal.toFixed(2)}</span>
+                </div>
+              )}
               <div className="pt-6 border-t-2 border-slate-100 flex justify-between items-end">
                   <span className="font-bold text-[#1c2938] text-xl">Total</span>
                   <span className="font-bold text-[#1c2938] text-4xl" style={{ color: color }}>
@@ -325,11 +333,13 @@ const DocumentTemplate: React.FC<DocumentTemplateProps> = ({
                     <span>-${discountAmount.toFixed(2)}</span>
                 </div>
              )}
-             <div className="flex justify-between text-slate-600 font-serif text-sm border-b border-slate-300 pb-2">
-                <span>Impuesto:</span>
-                <span>${taxTotal.toFixed(2)}</span>
-             </div>
-             <div className="flex justify-between font-serif font-bold text-xl text-slate-900">
+             {taxTotal > 0 && (
+                 <div className="flex justify-between text-slate-600 font-serif text-sm mb-2">
+                    <span>Impuesto:</span>
+                    <span>${taxTotal.toFixed(2)}</span>
+                 </div>
+             )}
+             <div className="flex justify-between font-serif font-bold text-xl text-slate-900 border-t border-slate-300 pt-2">
                 <span>Total:</span>
                 <span>{invoice.currency} ${invoice.total.toFixed(2)}</span>
              </div>
@@ -406,20 +416,22 @@ const DocumentTemplate: React.FC<DocumentTemplateProps> = ({
 
         <div className="flex justify-end mb-8">
           <div className="text-right space-y-1">
-             <div className="flex justify-end gap-8 text-sm text-slate-500">
+             <div className={`flex justify-end gap-8 text-sm text-slate-500 ${discountAmount <= 0 && taxTotal <= 0 ? 'pb-4' : ''}`}>
                 <span>Subtotal</span>
                 <span>${subtotal.toFixed(2)}</span>
              </div>
              {discountAmount > 0 && (
-                <div className="flex justify-end gap-8 text-sm text-slate-500">
+                <div className={`flex justify-end gap-8 text-sm text-slate-500 ${taxTotal <= 0 ? 'pb-4' : ''}`}>
                     <span>Descuento</span>
                     <span>-${discountAmount.toFixed(2)}</span>
                 </div>
              )}
-             <div className="flex justify-end gap-8 text-sm text-slate-500 pb-4">
-                <span>Impuesto</span>
-                <span>${taxTotal.toFixed(2)}</span>
-             </div>
+             {taxTotal > 0 && (
+                 <div className="flex justify-end gap-8 text-sm text-slate-500 pb-4">
+                    <span>Impuesto</span>
+                    <span>${taxTotal.toFixed(2)}</span>
+                 </div>
+             )}
              
              <p className="text-xs text-slate-400 uppercase tracking-widest mb-1 pt-4 border-t border-slate-100">Total a Pagar</p>
              <h2 className="text-5xl font-bold text-slate-900 tracking-tighter" style={{ color: color }}>
