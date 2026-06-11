@@ -99,7 +99,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onRegisterCli
         <div className="relative z-10">
           {/* Official Icon (Desktop Large) */}
           <img
-            src="https://konsul.digital/wp-content/uploads/2025/07/cropped-3.png"
+            src="https://konsul.digital/images/Konsul%20logo%20general.png"
             alt="Kônsul Icon"
             className="w-20 h-20 object-contain mb-8 rounded-2xl bg-white/5 p-2 backdrop-blur-sm"
           />
@@ -138,7 +138,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onRegisterCli
               <div className="text-center lg:text-left">
                 {/* Official Icon (Mobile) */}
                 <img
-                  src="https://konsul.digital/wp-content/uploads/2025/07/cropped-3.png"
+                  src="https://konsul.digital/images/Konsul%20logo%20general.png"
                   alt="Kônsul"
                   className="lg:hidden w-16 h-16 object-contain mx-auto mb-6"
                 />

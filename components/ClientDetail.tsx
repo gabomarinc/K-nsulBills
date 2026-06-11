@@ -92,8 +92,8 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
       .filter(i => i.type === 'Quote' && i.status !== 'Rechazada')
       .reduce((acc, curr) => acc + curr.total, 0);
       
-    const openQuotes = clientDocs.filter(i => i.type === 'Quote' && (i.status === 'Enviada' || i.status === 'Seguimiento' || i.status === 'Negociacion'));
-    const pendingInvoices = clientDocs.filter(i => i.type === 'Invoice' && (i.status === 'Enviada' || i.status === 'Seguimiento'));
+    const openQuotes = clientDocs.filter(i => i.type === 'Quote' && (i.status === 'Enviada' || i.status === 'Seguimiento' || i.status === 'Negociacion' || i.status === 'Creada'));
+    const pendingInvoices = clientDocs.filter(i => i.type === 'Invoice' && (i.status === 'Enviada' || i.status === 'Seguimiento' || i.status === 'Creada'));
     
     const active = [...openQuotes, ...pendingInvoices].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     const history = clientDocs.filter(d => !active.includes(d));

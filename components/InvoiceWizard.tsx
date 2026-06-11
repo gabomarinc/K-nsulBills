@@ -97,6 +97,7 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({
   const [generatedId, setGeneratedId] = useState(initialData?.id || '');
   const [finalInvoiceObj, setFinalInvoiceObj] = useState<Invoice | null>(null);
   const [savedStatus, setSavedStatus] = useState<InvoiceStatus>('Creada');
+  const [docStatus, setDocStatus] = useState<InvoiceStatus>(initialData?.status || 'Creada');
 
   // Check AI Access
   const hasAiAccess = !!currentUser.apiKeys?.gemini || !!currentUser.apiKeys?.openai;
@@ -113,6 +114,9 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({
     }
     if (initialData?.withholdingAmount && initialData.withholdingAmount > 0) {
       setShowWithholding(true);
+    }
+    if (initialData?.status) {
+      setDocStatus(initialData.status);
     }
   }, [initialData]);
 
@@ -339,7 +343,7 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({
           discountRate: totals.effectiveRate,
           withholdingAmount: showWithholding ? totals.finalWithholding : 0,
           notes: i > 0 ? `${draft.notes}\n(Ciclo ${i + 1} de ${count})` : draft.notes,
-          status: isOffline ? 'PendingSync' : targetStatus,
+          status: isOffline ? 'PendingSync' : (isEditMode ? docStatus : targetStatus),
           currency: draft.currency,
           type: docType,
           dueDate: currentDueDate,
@@ -646,6 +650,40 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({
                 <label className="block text-xs font-bold text-slate-500 mb-1">Notas / Comentarios</label>
                 <textarea value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} placeholder="Notas visibles en la factura..." className="w-full p-3 rounded-xl border border-slate-200 bg-slate-50 outline-none text-sm h-20 resize-none" />
               </div>
+
+              {isEditMode && (
+                <div className="mt-4">
+                  <label className="block text-xs font-bold text-slate-500 mb-1">Estado del Documento</label>
+                  <select
+                    value={docStatus}
+                    onChange={(e) => setDocStatus(e.target.value as InvoiceStatus)}
+                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 outline-none text-sm font-bold text-[#1c2938] focus:border-[#27bea5] transition-all"
+                  >
+                    {docType === 'Quote' ? (
+                      <>
+                        <option value="Borrador">Borrador</option>
+                        <option value="Creada">Creada</option>
+                        <option value="Enviada">Enviada</option>
+                        <option value="Seguimiento">Seguimiento</option>
+                        <option value="Negociacion">Negociación</option>
+                        <option value="Aceptada">Aceptada</option>
+                        <option value="Rechazada">Rechazada</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="Borrador">Borrador</option>
+                        <option value="Creada">Creada</option>
+                        <option value="Enviada">Enviada</option>
+                        <option value="Seguimiento">Seguimiento</option>
+                        <option value="Pagada">Pagada</option>
+                        <option value="Abonada">Abonada</option>
+                        <option value="Incobrable">Incobrable</option>
+                        <option value="PendingSync">Pending Sync</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+              )}
 
               {/* RECURRENCE (New) */}
               <div className="mt-6 pt-4 border-t border-slate-100">

@@ -79,13 +79,13 @@ const Layout: React.FC<LayoutProps> = ({
         <div className={`p-6 flex items-center ${isCollapsed ? 'justify-center' : 'justify-start'} h-24 overflow-hidden`}>
           {isCollapsed ? (
             <img
-              src="https://konsul.digital/wp-content/uploads/2025/07/cropped-3.png"
+              src="https://konsul.digital/images/Konsul%20logo%20general.png"
               alt="Kônsul Icon"
               className="w-10 h-10 object-contain transition-all duration-300 animate-in fade-in"
             />
           ) : (
             <img
-              src="https://konsul.digital/wp-content/uploads/2025/11/1-min-e1762361628509.avif"
+              src="https://konsul.digital/images/Konsul%20logo%20general.png"
               alt="Kônsul"
               className="h-8 object-contain transition-all duration-300 animate-in slide-in-from-left-2"
             />

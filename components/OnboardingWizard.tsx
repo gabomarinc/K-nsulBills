@@ -958,14 +958,14 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
         <div className="flex items-center gap-3">
            {/* Official Icon */}
            <img 
-             src="https://konsul.digital/wp-content/uploads/2025/07/cropped-3.png" 
+             src="https://konsul.digital/images/Konsul%20logo%20general.png" 
              alt="Kônsul Icon" 
              className="w-12 h-12 object-contain" 
            />
            <div>
              {/* Official Logo Text */}
              <img 
-               src="https://konsul.digital/wp-content/uploads/2025/11/1-min-e1762361628509.avif" 
+               src="https://konsul.digital/images/Konsul%20logo%20general.png" 
                alt="Kônsul" 
                className="h-6 object-contain block mb-1"
              />
