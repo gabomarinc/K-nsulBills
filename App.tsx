@@ -993,6 +993,7 @@ const AppContent: React.FC = () => {
           onDeleteClient={handleDeleteClient}
           currencySymbol={currentUser.defaultCurrency === 'EUR' ? '€' : '$'}
           stripeSecretKey={currentUser.paymentIntegration?.stripeSecretKey}
+          onUpdateStatus={handleUpdateStatus}
         />
       )}
 

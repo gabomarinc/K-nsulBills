@@ -5,7 +5,7 @@ import {
   ChevronRight, Mail, User, Info, AlertCircle
 } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
-import { Invoice, UserProfile } from '../types';
+import { Invoice, UserProfile, InvoiceStatus, TimelineEvent } from '../types';
 import { sendEmail } from '../services/resendService';
 import DocumentTemplate from './DocumentTemplate';
 import { useAlert } from './AlertSystem';
@@ -20,6 +20,7 @@ interface MultiDocumentEmailModalProps {
   selectedInvoices: Invoice[];
   issuer: UserProfile;
   onSuccess?: () => void;
+  onUpdateStatus?: (id: string, status: InvoiceStatus, extras?: Partial<Invoice>) => void;
 }
 
 const MultiDocumentEmailModal: React.FC<MultiDocumentEmailModalProps> = ({
@@ -28,7 +29,8 @@ const MultiDocumentEmailModal: React.FC<MultiDocumentEmailModalProps> = ({
   client,
   selectedInvoices,
   issuer,
-  onSuccess
+  onSuccess,
+  onUpdateStatus
 }) => {
   const [subject, setSubject] = useState(`${selectedInvoices.length > 1 ? 'Documentos' : 'Documento'} de ${issuer.name}`);
   const [body, setBody] = useState(`Hola ${client.name},\n\nAdjunto enviamos los documentos solicitados.\n\nQuedamos a su disposición para cualquier duda.\n\nSaludos,\n${issuer.name}`);
@@ -96,6 +98,20 @@ const MultiDocumentEmailModal: React.FC<MultiDocumentEmailModalProps> = ({
       });
 
       if (result.success) {
+        if (onUpdateStatus) {
+          selectedInvoices.forEach(invoice => {
+            const sentEvent: TimelineEvent = {
+              id: (Date.now() + Math.random()).toString(),
+              type: 'SENT',
+              title: 'Enviado por Correo Masivo',
+              description: `Destinatario: ${client.email}`,
+              timestamp: new Date().toISOString()
+            };
+            onUpdateStatus(invoice.id, 'Enviada', {
+              timeline: [...(invoice.timeline || []), sentEvent]
+            });
+          });
+        }
         alert.addToast('success', 'Correo Enviado', `Se enviaron ${selectedInvoices.length} documentos a ${client.email}`);
         if (onSuccess) onSuccess();
         onClose();

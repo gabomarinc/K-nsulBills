@@ -21,6 +21,7 @@ interface ClientDetailProps {
   currencySymbol: string;
   stripeSecretKey?: string;
   issuer: UserProfile; // NEW
+  onUpdateStatus?: (id: string, status: InvoiceStatus, extras?: Partial<Invoice>) => void;
 }
 
 const ClientDetail: React.FC<ClientDetailProps> = ({ 
@@ -34,7 +35,8 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
   onDeleteClient,
   currencySymbol,
   stripeSecretKey,
-  issuer // NEW
+  issuer, // NEW
+  onUpdateStatus
 }) => {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   
@@ -929,6 +931,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
           selectedInvoices={invoices.filter(i => selectedDocIds.includes(i.id))}
           issuer={issuer}
           onSuccess={() => setSelectedDocIds([])}
+          onUpdateStatus={onUpdateStatus}
         />
       )}
     </div>
