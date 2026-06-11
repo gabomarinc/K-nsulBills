@@ -38,7 +38,7 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
   const hasAiAccess = !!apiKey?.gemini || !!apiKey?.openai;
 
   // Form State
-  const [formData, setFormData] = useState<Partial<CatalogItem>>({ name: '', price: 0, description: '', isRecurring: false });
+  const [formData, setFormData] = useState<Partial<CatalogItem>>({ name: '', price: 0, cost: 0, description: '', isRecurring: false });
   const [descFormat, setDescFormat] = useState<'paragraph' | 'bullets'>('paragraph');
   
   // AI Analysis State
@@ -62,7 +62,7 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
 
   const handleAddNew = () => {
     setEditingItem(null);
-    setFormData({ name: '', price: 0, description: '', isRecurring: false });
+    setFormData({ name: '', price: 0, cost: 0, description: '', isRecurring: false });
     setAnalysis(null);
     setIsModalOpen(true);
   };
@@ -94,6 +94,7 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
             id: `cat_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
             name: formData.name,
             price: formData.price,
+            cost: formData.cost,
             description: formData.description || '',
             isRecurring: formData.isRecurring
           };
@@ -202,14 +203,32 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
                     </button>
                  </div>
               </div>
-              
-              {/* Content */}
+                     {/* Content */}
               <div className="flex-1">
                 <h3 className="text-xl font-bold text-[#1c2938] mb-2 leading-tight">{item.name}</h3>
                 <p className="text-sm text-slate-500 line-clamp-3 leading-relaxed font-light min-h-[60px]">
                   {item.description || 'Sin descripción detallada. Agrega una para potenciar tus ventas.'}
                 </p>
               </div>
+
+              {/* Cost & Profit Info */}
+              {item.cost !== undefined && item.cost > 0 && (
+                <div className="mt-4 pt-4 border-t border-slate-50 flex justify-between items-center text-xs">
+                   <div className="text-slate-400 font-medium">
+                      <span>Costo: </span>
+                      <span className="font-bold text-slate-600">${item.cost.toLocaleString()}</span>
+                   </div>
+                   <div className="text-right">
+                      <span className="text-[#27bea5] font-bold" title="Ganancia">
+                         +${(item.price - item.cost).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                      </span>
+                      <span className="text-slate-300 mx-1">|</span>
+                      <span className="text-indigo-600 font-bold" title="Margen">
+                         {item.price > 0 ? `${(((item.price - item.cost) / item.price) * 100).toFixed(0)}%` : '0%'}
+                      </span>
+                   </div>
+                </div>
+              )}
               
               {/* Footer Price */}
               <div className="mt-6 pt-6 border-t border-slate-50 flex items-center justify-between">
@@ -219,7 +238,7 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
                  <span className="text-2xl font-bold text-[#1c2938] tracking-tight">
                     ${item.price.toLocaleString()}
                     {item.isRecurring && <span className="text-sm text-slate-400 font-medium">/mes</span>}
-                 </span>
+                  </span>
               </div>
            </div>
         ))}
@@ -296,81 +315,107 @@ const CatalogDashboard: React.FC<CatalogDashboardProps> = ({ items, userCountry,
                     />
                  </div>
 
-                 {/* PRICE SECTION */}
-                 <div className="space-y-3">
-                    <div className="flex justify-between items-center ml-1">
-                       <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Estrategia de Precio</label>
-                       {referenceHourlyRate && referenceHourlyRate > 0 && (
-                          <span className="text-[10px] font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full flex items-center gap-1">
-                             <Calculator className="w-3 h-3" /> Costo Base: ${referenceHourlyRate.toFixed(0)}/hr
-                          </span>
-                       )}
-                    </div>
-                    
-                    <div className="flex flex-col gap-4">
-                       <div className="flex gap-4 items-stretch">
-                         <div className="relative flex-1 group">
-                            <span className="absolute left-4 top-4 text-slate-400 font-medium">$</span>
-                            <input 
-                              type="number"
-                              value={formData.price}
-                              onChange={(e) => setFormData({...formData, price: parseFloat(e.target.value)})}
-                              className={`w-full pl-8 p-4 bg-slate-50 border rounded-2xl focus:ring-2 focus:bg-white outline-none text-xl font-bold text-[#1c2938] h-full ${
-                                 referenceHourlyRate && (formData.price || 0) < referenceHourlyRate 
-                                 ? 'border-amber-200 focus:ring-amber-400 bg-amber-50/50' 
-                                 : 'border-slate-100 focus:ring-[#27bea5]'
-                              }`}
-                            />
-                         </div>
-                         
-                         {/* AI PRICE BUTTON (Integrated & Friendly) */}
-                         <button 
-                           onClick={handleAnalyzePrice}
-                           disabled={!formData.name || isAnalyzing}
-                           className={`px-5 py-3 rounded-2xl transition-all flex flex-col items-center justify-center gap-1 group shadow-lg min-w-[120px] ${
-                               hasAiAccess 
-                               ? 'bg-[#1c2938] text-white hover:bg-slate-800 disabled:opacity-50' 
-                               : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                           }`}
-                           title={hasAiAccess ? "Consultar al mercado" : "Función Bloqueada (Falta API Key)"}
-                         >
-                           {isAnalyzing ? <Loader2 className="w-5 h-5 animate-spin" /> : (hasAiAccess ? <TrendingUp className="w-5 h-5 text-[#27bea5]" /> : <Lock className="w-4 h-4" />)}
-                           <span className="text-xs font-bold opacity-80">Analizar Precio</span>
-                         </button>
-                       </div>
+                  {/* PRICE & COST SECTION */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                     {/* SALE PRICE */}
+                     <div className="space-y-3">
+                        <div className="flex justify-between items-center ml-1">
+                           <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Precio de Venta</label>
+                        </div>
+                        <div className="flex gap-2 items-stretch">
+                           <div className="relative flex-1 group">
+                              <span className="absolute left-4 top-4 text-slate-400 font-medium">$</span>
+                              <input 
+                                type="number"
+                                value={formData.price || ''}
+                                onChange={(e) => setFormData({...formData, price: parseFloat(e.target.value) || 0})}
+                                className="w-full pl-8 p-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:bg-white focus:ring-[#27bea5] outline-none text-xl font-bold text-[#1c2938]"
+                              />
+                           </div>
+                           
+                           {/* AI PRICE BUTTON */}
+                           <button 
+                             onClick={handleAnalyzePrice}
+                             disabled={!formData.name || isAnalyzing}
+                             className={`px-3 py-3 rounded-2xl transition-all flex flex-col items-center justify-center gap-1 group shadow-lg min-w-[90px] ${
+                                 hasAiAccess 
+                                 ? 'bg-[#1c2938] text-white hover:bg-slate-800 disabled:opacity-50' 
+                                 : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                             }`}
+                             title={hasAiAccess ? "Consultar al mercado" : "Función Bloqueada (Falta API Key)"}
+                           >
+                             {isAnalyzing ? <Loader2 className="w-5 h-5 animate-spin" /> : (hasAiAccess ? <TrendingUp className="w-5 h-5 text-[#27bea5]" /> : <Lock className="w-4 h-4" />)}
+                             <span className="text-[10px] font-bold opacity-80">Mercado</span>
+                           </button>
+                        </div>
+                     </div>
 
-                       {/* PROFITABILITY WARNING */}
-                       {referenceHourlyRate && (formData.price || 0) > 0 && (formData.price || 0) < referenceHourlyRate && (
-                          <div className="flex items-start gap-3 p-3 bg-amber-50 text-amber-700 rounded-xl border border-amber-100 animate-in slide-in-from-top-2">
-                             <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                             <div className="text-sm">
-                                <p className="font-bold">¡Atención! Este precio es bajo.</p>
-                                <p className="opacity-90">Estás cobrando menos de tu costo hora calculado (${referenceHourlyRate.toFixed(0)}).</p>
-                             </div>
-                          </div>
-                       )}
+                     {/* PRODUCT COST */}
+                     <div className="space-y-3">
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Costo Unitario</label>
+                        <div className="relative group">
+                           <span className="absolute left-4 top-4 text-slate-400 font-medium">$</span>
+                           <input 
+                             type="number"
+                             value={formData.cost !== undefined ? formData.cost : ''}
+                             onChange={(e) => setFormData({...formData, cost: parseFloat(e.target.value) || 0})}
+                             placeholder="0.00"
+                             className="w-full pl-8 p-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:bg-white focus:ring-[#27bea5] outline-none text-xl font-bold text-[#1c2938]"
+                           />
+                        </div>
+                     </div>
+                  </div>
 
-                       {/* RECURRING TOGGLE */}
-                       <label className={`flex items-center gap-4 p-4 border rounded-2xl cursor-pointer transition-all ${formData.isRecurring ? 'border-[#27bea5] bg-[#27bea5]/5' : 'border-slate-100 hover:border-slate-200'}`}>
-                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${formData.isRecurring ? 'bg-[#27bea5] text-white' : 'bg-slate-100 text-slate-400'}`}>
-                             <CalendarClock className="w-5 h-5" />
-                          </div>
-                          <div className="flex-1">
-                             <p className={`font-bold ${formData.isRecurring ? 'text-[#1c2938]' : 'text-slate-600'}`}>Venta Recurrente</p>
-                             <p className="text-xs text-slate-400">Cobro mensual (Suscripción/Iguala)</p>
-                          </div>
-                          <div className="relative">
-                             <input 
-                               type="checkbox"
-                               checked={formData.isRecurring || false}
-                               onChange={(e) => setFormData({...formData, isRecurring: e.target.checked})}
-                               className="peer sr-only"
-                             />
-                             <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#27bea5]"></div>
-                          </div>
-                       </label>
-                    </div>
-                 </div>
+                  {/* PROFIT & MARGIN CALCULATION PREVIEW */}
+                  {((formData.price || 0) > 0 || (formData.cost || 0) > 0) && (
+                     <div className="p-4 rounded-2xl bg-[#27bea5]/5 border border-[#27bea5]/20 grid grid-cols-2 gap-4 animate-in slide-in-from-top-2 text-[#1c2938]">
+                        <div>
+                           <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ganancia Estimada</span>
+                           <span className="text-xl font-black text-[#27bea5]">
+                              ${((formData.price || 0) - (formData.cost || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                           </span>
+                        </div>
+                        <div>
+                           <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Margen de Ganancia</span>
+                           <span className="text-xl font-black text-indigo-600">
+                              {formData.price && formData.price > 0
+                                ? `${(((formData.price - (formData.cost || 0)) / formData.price) * 100).toFixed(1)}%`
+                                : '0.0%'}
+                           </span>
+                        </div>
+                     </div>
+                  )}
+
+                  {/* PROFITABILITY WARNING */}
+                  {referenceHourlyRate && (formData.price || 0) > 0 && (formData.price || 0) < referenceHourlyRate && (
+                     <div className="flex items-start gap-3 p-3 bg-amber-50 text-amber-700 rounded-xl border border-amber-100 animate-in slide-in-from-top-2">
+                        <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                        <div className="text-sm">
+                           <p className="font-bold">¡Atención! Este precio es bajo.</p>
+                           <p className="opacity-90">Estás cobrando menos de tu costo hora calculado (${referenceHourlyRate.toFixed(0)}).</p>
+                        </div>
+                     </div>
+                  )}
+
+                  {/* RECURRING TOGGLE */}
+                  <label className={`flex items-center gap-4 p-4 border rounded-2xl cursor-pointer transition-all ${formData.isRecurring ? 'border-[#27bea5] bg-[#27bea5]/5' : 'border-slate-100 hover:border-slate-200'}`}>
+                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${formData.isRecurring ? 'bg-[#27bea5] text-white' : 'bg-slate-100 text-slate-400'}`}>
+                        <CalendarClock className="w-5 h-5" />
+                     </div>
+                     <div className="flex-1">
+                        <p className={`font-bold ${formData.isRecurring ? 'text-[#1c2938]' : 'text-slate-600'}`}>Venta Recurrente</p>
+                        <p className="text-xs text-slate-400">Cobro mensual (Suscripción/Iguala)</p>
+                     </div>
+                     <div className="relative">
+                        <input 
+                          type="checkbox"
+                          checked={formData.isRecurring || false}
+                          onChange={(e) => setFormData({...formData, isRecurring: e.target.checked})}
+                          className="peer sr-only"
+                        />
+                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#27bea5]"></div>
+                     </div>
+                  </label>
 
                  {/* AI ANALYSIS RESULT (Card Style) */}
                  {analysis && (

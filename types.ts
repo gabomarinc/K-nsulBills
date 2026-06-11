@@ -60,6 +60,7 @@ export interface CatalogItem {
   id: string;
   name: string;
   price: number;
+  cost?: number; // Cost of the product/service
   description?: string; // Added optional description
   sku?: string; // Added optional SKU
   isRecurring?: boolean; // New: Monthly/Recurring flag
