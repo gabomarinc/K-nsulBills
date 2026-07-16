@@ -25,7 +25,6 @@ import FiscalCalculators from './components/FiscalCalculators';
 import TaxCalendar from './components/TaxCalendar';
 import { AlertProvider, useAlert } from './components/AlertSystem';
 import {
-  authenticateUser,
   createUserInDb,
   updateUserProfileInDb,
   fetchInvoicesFromDb,
@@ -34,6 +33,7 @@ import {
   saveClientToDb,
   saveProviderToDb,
   getUserById,
+  getUserByEmail,
   fetchClientsFromDb,
   deleteClientFromDb,
   fetchCatalogItemsFromDb,
@@ -42,6 +42,7 @@ import {
 } from './services/neon';
 import { processInvoicesFollowUp } from './services/followUpService';
 import { performAutomatedStripeSync } from './services/stripeSyncService';
+import { useKindeAuth } from '@kinde-oss/kinde-auth-react';
 
 // --- ROUTING CONFIG ---
 const viewToPath: Record<string, string> = {
@@ -70,6 +71,7 @@ const pathToView = Object.entries(viewToPath).reduce((acc, [view, path]) => {
 
 // Wrapper Component to use Hooks
 const AppContent: React.FC = () => {
+  const { user: kindeUser, isAuthenticated, isLoading: kindeIsLoading, logout: kindeLogout } = useKindeAuth();
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [activeView, setActiveView] = useState<AppView>(AppView.DASHBOARD);
   const [docType, setDocType] = useState<'INVOICE' | 'QUOTE'>('INVOICE');
@@ -116,9 +118,9 @@ const AppContent: React.FC = () => {
 
   const handleLogout = () => {
     setCurrentUser(null);
-    handleNavigate(AppView.DASHBOARD);
     localStorage.removeItem('konsul_session_id');
     localStorage.removeItem('konsul_user_data');
+    kindeLogout();
   };
 
   // --- NAVIGATION HANDLER ---
@@ -252,14 +254,11 @@ const AppContent: React.FC = () => {
 
   // SESSION RESTORATION LOGIC
   useEffect(() => {
-    const initSession = async () => {
+    const handleAuth = async () => {
       // Check URL for Stripe return logic
       const params = new URLSearchParams(window.location.search);
       const paymentSuccess = params.get('payment_success');
       const sessionId = params.get('session_id');
-
-      const storedUserStr = localStorage.getItem('konsul_user_data');
-      const storedUserId = localStorage.getItem('konsul_session_id');
 
       // Initialize view from path
       const path = window.location.pathname;
@@ -268,80 +267,72 @@ const AppContent: React.FC = () => {
         handleNavigate(initialView);
       }
 
-      if (storedUserStr) {
-        try {
-          let cachedUser = JSON.parse(storedUserStr);
+      if (kindeIsLoading) return;
+      
+      if (!isAuthenticated || !kindeUser?.email) {
+        setCurrentUser(null);
+        setIsSessionLoading(false);
+        return;
+      }
+
+      try {
+        const dbUser = await getUserByEmail(kindeUser.email);
+        
+        if (dbUser) {
+          let finalUser = { ...dbUser, isAccountant: dbUser.type === ProfileType.ACCOUNTANT || dbUser.isAccountant };
 
           // HANDLE STRIPE SUCCESS RETURN & SYNC
           if (paymentSuccess === 'true' && sessionId) {
             try {
-              // Fetch real customer ID and renewal date from our backend bridge
               const stripeRes = await fetch(`/api/get-stripe-session?sessionId=${sessionId}`);
               const stripeData = await stripeRes.json();
 
               if (stripeData.customerId) {
-                console.log("Stripe Sync Successful:", stripeData);
-
-                // Merge new data
                 const updatedUserWithStripe = {
-                  ...cachedUser,
+                  ...finalUser,
                   stripeCustomerId: stripeData.customerId,
-                  renewalDate: stripeData.renewalDate ? new Date(stripeData.renewalDate).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' }) : cachedUser.renewalDate,
+                  renewalDate: stripeData.renewalDate ? new Date(stripeData.renewalDate).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' }) : finalUser.renewalDate,
                   plan: stripeData.plan || 'Emprendedor Pro'
                 };
 
-                // 1. Update Local State
-                cachedUser = updatedUserWithStripe;
-                localStorage.setItem('konsul_user_data', JSON.stringify(updatedUserWithStripe));
-
-                // 2. Sync to Neon DB immediately
+                finalUser = updatedUserWithStripe;
                 await updateUserProfileInDb(updatedUserWithStripe);
 
-                // 3. Notify user
                 setTimeout(() => {
                   alert.addToast('success', 'Suscripción Activada', 'Tu cuenta Pro está lista y sincronizada.');
                 }, 1000);
               }
             } catch (err) {
               console.error("Error syncing Stripe data:", err);
-              // Continue with cached user even if sync fails temporarily
             }
-
-            // Clean URL
             window.history.replaceState({}, document.title, window.location.pathname);
           }
 
-          setCurrentUser(cachedUser);
-          setIsSessionLoading(false);
-        } catch (e) {
-          console.error("Cache parse error", e);
+          setCurrentUser(finalUser);
+          localStorage.setItem('konsul_session_id', finalUser.id);
+          localStorage.setItem('konsul_user_data', JSON.stringify(finalUser));
+        } else {
+          // New User via Kinde SSO -> Show Onboarding
+          const kUser = kindeUser as any;
+          setCurrentUser({
+            id: `kinde_${kUser.id}`,
+            name: kUser.given_name ? `${kUser.given_name} ${kUser.family_name || ''}`.trim() : '',
+            email: kUser.email,
+            type: ProfileType.FREELANCE,
+            taxId: '',
+            avatar: kUser.picture || '',
+            isOnboardingComplete: false
+          } as UserProfile);
         }
+      } catch (e) {
+        console.error("Session verification failed", e);
+        setIsOffline(true);
+      } finally {
+        setIsSessionLoading(false);
       }
-
-      if (storedUserId) {
-        try {
-          const user = await getUserById(storedUserId);
-          if (user) {
-            setCurrentUser(prev => {
-              if (prev?.stripeCustomerId && !user.stripeCustomerId) {
-                return prev;
-              }
-              return user;
-            });
-            localStorage.setItem('konsul_user_data', JSON.stringify(user));
-          } else {
-            console.warn("User ID invalid or not found in DB. Logging out.");
-            handleLogout();
-          }
-        } catch (error) {
-          console.error("Session verification failed. Keeping cached session.", error);
-          setIsOffline(true);
-        }
-      }
-      setIsSessionLoading(false);
     };
-    initSession();
-  }, [alert]);
+    handleAuth();
+  }, [kindeIsLoading, isAuthenticated, kindeUser, alert]);
 
   // Load data when user is set
   useEffect(() => {
@@ -414,21 +405,27 @@ const AppContent: React.FC = () => {
 
 
   const handleOnboardingComplete = async (data: Partial<UserProfile> & { password?: string, email?: string }) => {
-    if (data.password && data.email) {
-      const success = await createUserInDb(data, data.password, data.email);
-      if (success) {
-        const user = await authenticateUser(data.email, data.password);
-        if (user) {
-          handleLoginSuccess(user);
+    if (currentUser) {
+      const isNewKindeUser = currentUser.id.startsWith('kinde_');
+      let updated = { ...currentUser, ...data, isOnboardingComplete: true };
+
+      if (isNewKindeUser) {
+        // They just finished onboarding via Kinde SSO
+        updated.id = `user_${Date.now()}_${Math.floor(Math.random() * 1000)}`; // Neon needs a standard ID
+        const success = await createUserInDb(updated, 'KINDE_SSO_PLACEHOLDER', updated.email!);
+        if (success) {
+          setCurrentUser(updated as UserProfile);
+          localStorage.setItem('konsul_session_id', updated.id);
+          localStorage.setItem('konsul_user_data', JSON.stringify(updated));
+        } else {
+          alert.addToast('error', 'Error', 'No se pudo guardar el perfil.');
         }
       } else {
-        alert.addToast('error', 'Error de Registro', 'El correo podría ya estar registrado.');
+        // Normal update
+        await updateUserProfileInDb(updated as UserProfile);
+        setCurrentUser(updated as UserProfile);
+        localStorage.setItem('konsul_user_data', JSON.stringify(updated));
       }
-    } else if (currentUser) {
-      const updated = { ...currentUser, ...data, isOnboardingComplete: true };
-      await updateUserProfileInDb(updated);
-      setCurrentUser(updated);
-      localStorage.setItem('konsul_user_data', JSON.stringify(updated));
     }
   };
 
@@ -812,21 +809,7 @@ const AppContent: React.FC = () => {
   }
 
   if (!currentUser) {
-    return (
-      <LoginScreen
-        onLoginSuccess={handleLoginSuccess}
-        onRegisterClick={() => {
-          setCurrentUser({
-            id: 'temp_reg',
-            name: '',
-            type: 'Autónomo' as any,
-            taxId: '',
-            avatar: '',
-            isOnboardingComplete: false
-          } as UserProfile);
-        }}
-      />
-    );
+    return <LoginScreen />;
   }
 
   if (!currentUser.isOnboardingComplete) {
