@@ -15,8 +15,8 @@ root.render(
     <KindeProvider
       clientId={(import.meta as any).env.VITE_KINDE_CLIENT_ID}
       domain={(import.meta as any).env.VITE_KINDE_DOMAIN}
-      redirectUri={(import.meta as any).env.VITE_KINDE_REDIRECT_URL}
-      logoutUri={(import.meta as any).env.VITE_KINDE_LOGOUT_REDIRECT_URL}
+      redirectUri={window.location.origin}
+      logoutUri={window.location.origin}
     >
       <App />
     </KindeProvider>
