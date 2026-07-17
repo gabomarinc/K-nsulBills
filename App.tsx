@@ -188,7 +188,9 @@ const AppContent: React.FC = () => {
       
       if (targetView) {
         if (mainPath === '/clients') {
-          if (segments[1] === 'view' && segments[2]) {
+          if (segments[1] === 'new') {
+            setActiveView(AppView.CLIENT_WIZARD);
+          } else if (segments[1] === 'view' && segments[2]) {
             setActiveView(AppView.CLIENT_DETAIL);
             setSelectedClientName(decodeURIComponent(segments[2]));
           } else {
@@ -205,6 +207,12 @@ const AppContent: React.FC = () => {
             setActiveView(AppView.INVOICES);
             if (segments[1]) setDocType(segments[1].toUpperCase() as 'INVOICE' | 'QUOTE');
             if (segments[2]) setDocStage(segments[2].toUpperCase());
+          }
+        } else if (mainPath === '/expenses') {
+          if (segments[1] === 'new') {
+            setActiveView(AppView.EXPENSE_WIZARD);
+          } else {
+            setActiveView(AppView.EXPENSES);
           }
         } else {
            setActiveView(targetView);
