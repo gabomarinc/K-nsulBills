@@ -86,12 +86,12 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
       const getSum = (arr: Invoice[]) => arr.reduce((acc, curr) => acc + curr.total, 0);
 
       return [
-         { id: 'valido', label: 'Cobro Válido', invoices: buckets.valido, amount: getSum(buckets.valido), color: 'bg-green-50 text-green-700 border-green-100 hover:bg-green-100/50' },
-         { id: 'vencida1_15', label: 'Vencida 1-15 días', invoices: buckets.vencida1_15, amount: getSum(buckets.vencida1_15), color: 'bg-amber-50 text-amber-700 border-amber-100 hover:bg-amber-100/50' },
-         { id: 'vencida16_30', label: 'Vencida > 15 días', invoices: buckets.vencida16_30, amount: getSum(buckets.vencida16_30), color: 'bg-orange-50 text-orange-700 border-orange-100 hover:bg-orange-100/50' },
-         { id: 'vencida31_60', label: 'Vencida > 30 días', invoices: buckets.vencida31_60, amount: getSum(buckets.vencida31_60), color: 'bg-red-50 text-red-700 border-red-100 hover:bg-red-100/50' },
-         { id: 'vencida61_90', label: 'Vencida > 60 días', invoices: buckets.vencida61_90, amount: getSum(buckets.vencida61_90), color: 'bg-rose-50 text-rose-700 border-rose-100 hover:bg-rose-100/50' },
-         { id: 'vencidaOver90', label: 'Vencida > 90 días', invoices: buckets.vencidaOver90, amount: getSum(buckets.vencidaOver90), color: 'bg-red-100 text-red-850 border-red-200 hover:bg-red-200/50' }
+         { id: 'valido', label: 'Cobro Válido', invoices: buckets.valido, amount: getSum(buckets.valido), color: 'bg-green-50 text-green-900 border-green-200 hover:bg-green-100/50' },
+         { id: 'vencida1_15', label: 'Vencida 1-15 días', invoices: buckets.vencida1_15, amount: getSum(buckets.vencida1_15), color: 'bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100/50' },
+         { id: 'vencida16_30', label: 'Vencida > 15 días', invoices: buckets.vencida16_30, amount: getSum(buckets.vencida16_30), color: 'bg-orange-50 text-orange-900 border-orange-200 hover:bg-orange-100/50' },
+         { id: 'vencida31_60', label: 'Vencida > 30 días', invoices: buckets.vencida31_60, amount: getSum(buckets.vencida31_60), color: 'bg-red-50 text-red-900 border-red-200 hover:bg-red-100/50' },
+         { id: 'vencida61_90', label: 'Vencida > 60 días', invoices: buckets.vencida61_90, amount: getSum(buckets.vencida61_90), color: 'bg-rose-50 text-rose-900 border-rose-200 hover:bg-rose-100/50' },
+         { id: 'vencidaOver90', label: 'Vencida > 90 días', invoices: buckets.vencidaOver90, amount: getSum(buckets.vencidaOver90), color: 'bg-red-100 text-red-950 border-red-300 hover:bg-red-200/50' }
       ];
    }, [recentInvoices]);
 
@@ -498,7 +498,7 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
                                  key={bucket.id}
                                  onClick={() => bucket.invoices.length > 0 && setActiveBucketId(bucket.id)}
                                  disabled={bucket.invoices.length === 0}
-                                 className={`w-full flex items-center justify-between p-3 rounded-xl border text-left transition-all ${bucket.color} ${bucket.invoices.length === 0 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:scale-[1.02] active:scale-95'}`}
+                                 className={`w-full flex items-center justify-between p-3 rounded-xl border text-left transition-all ${bucket.color} ${bucket.invoices.length === 0 ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:scale-[1.02] active:scale-95'}`}
                               >
                                  <div className="flex flex-col">
                                     <span className="text-xs font-bold">{bucket.label}</span>
