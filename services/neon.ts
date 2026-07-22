@@ -153,7 +153,7 @@ export const getUserById = async (userId: string): Promise<UserProfile | null> =
       country: 'Panamá',
       bankAccountType: 'Ahorro', // Default demo
       branding: { primaryColor: '#27bea5', templateStyle: 'Modern' },
-      apiKeys: { gemini: '', openai: '' },
+      apiKeys: { gemini: '', openai: '', konsul: '' },
       fiscalConfig: {
         entityType: 'NATURAL',
         specialRegime: 'NONE',
@@ -273,7 +273,7 @@ export const authenticateUser = async (email: string, password: string): Promise
       country: 'Panamá',
       bankAccountType: 'Ahorro',
       branding: { primaryColor: '#27bea5', templateStyle: 'Modern' },
-      apiKeys: { gemini: '', openai: '' },
+      apiKeys: { gemini: '', openai: '', konsul: '' },
       fiscalConfig: {
         entityType: 'NATURAL',
         specialRegime: 'NONE',

@@ -183,6 +183,7 @@ export interface UserProfile {
   apiKeys?: {
     gemini?: string;
     openai?: string;
+    konsul?: string;
   };
 
   avatar: string;

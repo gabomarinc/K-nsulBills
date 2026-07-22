@@ -36,7 +36,7 @@ export async function validateApiKey(req, res) {
         const client = new Client(dbUrl);
         await client.connect();
         const { rows } = await client.query(
-          `SELECT id FROM users WHERE id = $1 OR email = $1 OR profile_data->'apiKeys'->>'gemini' = $2 LIMIT 1`,
+          `SELECT id FROM users WHERE id = $1 OR email = $1 OR profile_data->'apiKeys'->>'konsul' = $2 OR profile_data->'apiKeys'->>'gemini' = $2 LIMIT 1`,
           [apiKey, apiKey]
         );
         await client.end();

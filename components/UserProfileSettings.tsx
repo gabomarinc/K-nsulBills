@@ -8,7 +8,7 @@ import {
   CheckCircle2, XCircle, Layout, Palette, Crown, UploadCloud,
   ExternalLink, ShieldCheck, AlertCircle, MessageSquare, Database, Share2, Printer, 
   Smartphone, Wallet, Lock, AlertTriangle, Scale, Calculator, Sparkles, Coins,
-  Bell, Activity, Clock, Copy
+  Bell, Activity, Clock, Copy, RefreshCw
 } from 'lucide-react';
 import { updateUserProfileInDb, updateUserPassword } from '../services/neon';
 import { UserProfile, BrandingConfig, FiscalConfig, PaymentIntegration } from '../types';
@@ -48,23 +48,60 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  // Initialize fiscal config if missing
+  // Initialize fiscal config and Konsul API key if missing
   useEffect(() => {
-    if (!profile.fiscalConfig) {
+    let updated = false;
+    const newProfile = { ...profile };
+
+    if (!newProfile.fiscalConfig) {
+      newProfile.fiscalConfig = {
+        entityType: newProfile.type === 'Empresa (SAS/SL)' ? 'JURIDICA' : 'NATURAL',
+        specialRegime: 'NONE',
+        annualRevenue: 0,
+        declaredCapital: 0,
+        hasEmployees: false,
+        itbmsRegistered: false,
+        companyForm: 'SA'
+      };
+      updated = true;
+    }
+
+    if (!newProfile.apiKeys) {
+      newProfile.apiKeys = {};
+      updated = true;
+    }
+
+    if (!newProfile.apiKeys.konsul) {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+      let key = 'kb_live_';
+      for (let i = 0; i < 32; i++) {
+        key += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      newProfile.apiKeys.konsul = key;
+      updated = true;
+    }
+
+    if (updated) {
+      setProfile(newProfile);
+    }
+  }, []);
+
+  const handleRegenerateApiKey = () => {
+    if (window.confirm("¿Estás seguro de que deseas regenerar tu API Key? Las herramientas conectadas actualmente usando esta clave perderán el acceso hasta que las actualices.")) {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+      let key = 'kb_live_';
+      for (let i = 0; i < 32; i++) {
+        key += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
       setProfile(prev => ({
         ...prev,
-        fiscalConfig: {
-          entityType: prev.type === 'Empresa (SAS/SL)' ? 'JURIDICA' : 'NATURAL',
-          specialRegime: 'NONE',
-          annualRevenue: 0,
-          declaredCapital: 0,
-          hasEmployees: false,
-          itbmsRegistered: false,
-          companyForm: 'SA'
+        apiKeys: {
+          ...prev.apiKeys,
+          konsul: key
         }
       }));
     }
-  }, []);
+  };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -332,22 +369,20 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
           <h1 className="text-3xl font-bold text-[#1c2938] tracking-tight">Tu Espacio de Trabajo</h1>
           <p className="text-slate-500 mt-1 text-lg font-light">Personaliza cómo te verán tus clientes y cómo trabaja tu IA.</p>
         </div>
-        {activeTab === 'profile' && (
-          <button
-            onClick={saveChanges}
-            disabled={isSaving}
-            className={`px-8 py-3 rounded-2xl font-bold transition-all duration-300 flex items-center gap-3 shadow-lg hover:shadow-xl hover:-translate-y-1 active:translate-y-0 active:scale-95 disabled:opacity-70 disabled:transform-none ${saveStatus === 'SUCCESS' ? 'bg-green-500 text-white' : 'bg-[#1c2938] text-white hover:bg-[#27bea5]'
-              } `}
-          >
-            {isSaving ? (
-              <><Loader2 className="w-5 h-5 animate-spin" /> Guardando...</>
-            ) : saveStatus === 'SUCCESS' ? (
-              <><Check className="w-5 h-5" /> Guardado</>
-            ) : (
-              <>Guardar Cambios <Save className="w-5 h-5" /></>
-            )}
-          </button>
-        )}
+        <button
+          onClick={saveChanges}
+          disabled={isSaving}
+          className={`px-8 py-3 rounded-2xl font-bold transition-all duration-300 flex items-center gap-3 shadow-lg hover:shadow-xl hover:-translate-y-1 active:translate-y-0 active:scale-95 disabled:opacity-70 disabled:transform-none ${saveStatus === 'SUCCESS' ? 'bg-green-500 text-white' : 'bg-[#1c2938] text-white hover:bg-[#27bea5]'
+            } `}
+        >
+          {isSaving ? (
+            <><Loader2 className="w-5 h-5 animate-spin" /> Guardando...</>
+          ) : saveStatus === 'SUCCESS' ? (
+            <><Check className="w-5 h-5" /> Guardado</>
+          ) : (
+            <>Guardar Cambios <Save className="w-5 h-5" /></>
+          )}
+        </button>
       </div>
 
       {/* MODERN TAB SWITCHER */}
@@ -1347,7 +1382,7 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                       <div className="relative flex-1">
                         <input
                           type={showKeys['api_key'] ? "text" : "password"}
-                          value={profile.apiKeys?.gemini || profile.id}
+                          value={profile.apiKeys?.konsul || ''}
                           readOnly
                           className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm font-mono text-[#1c2938] pr-12 outline-none select-all"
                         />
@@ -1360,11 +1395,20 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                         </button>
                       </div>
                       <button
-                        onClick={() => handleCopy(profile.apiKeys?.gemini || profile.id, 'api_key')}
+                        onClick={() => handleCopy(profile.apiKeys?.konsul || '', 'api_key')}
                         className="px-5 py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl font-bold transition-all flex items-center gap-2 border border-slate-200"
                       >
                         {copiedField === 'api_key' ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
                         {copiedField === 'api_key' ? 'Copiado' : 'Copiar'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleRegenerateApiKey}
+                        className="px-5 py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl font-bold transition-all flex items-center gap-2 border border-slate-200"
+                        title="Regenerar API Key"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                        Regenerar
                       </button>
                     </div>
                   </div>
