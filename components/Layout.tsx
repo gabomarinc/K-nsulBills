@@ -85,7 +85,7 @@ const Layout: React.FC<LayoutProps> = ({
             />
           ) : (
             <img
-              src="https://konsul.digital/images/Konsul%20logo%20general.png"
+              src="https://konsul.digital/images/Konsul-logo-general.png"
               alt="Kônsul"
               className="h-8 object-contain transition-all duration-300 animate-in slide-in-from-left-2"
             />

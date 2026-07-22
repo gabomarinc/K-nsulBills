@@ -24,7 +24,8 @@ import {
    XCircle,
    Ban,
    Archive,
-   Lightbulb
+   Lightbulb,
+   X
 } from 'lucide-react';
 import { Invoice, AppView, UserProfile } from '../types';
 
@@ -40,6 +41,63 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendingCount, onNewAction, onSelectInvoice, onNavigate, currentUser }) => {
    const [activeTab, setActiveTab] = useState<'INVOICES' | 'QUOTES'>('INVOICES');
+   const [isCobranzaMode, setIsCobranzaMode] = useState<boolean>(false);
+   const [activeBucketId, setActiveBucketId] = useState<string | null>(null);
+
+   const cobranzaStats = useMemo(() => {
+      const pendingInvoices = recentInvoices.filter(inv =>
+         inv.type === 'Invoice' &&
+         (inv.status === 'Enviada' || inv.status === 'Seguimiento' || inv.status === 'Abonada' || inv.status === 'Creada')
+      );
+
+      const today = new Date();
+      today.setHours(0,0,0,0);
+
+      const buckets = {
+         valido: [] as Invoice[],
+         vencida1_15: [] as Invoice[],
+         vencida16_30: [] as Invoice[],
+         vencida31_60: [] as Invoice[],
+         vencida61_90: [] as Invoice[],
+         vencidaOver90: [] as Invoice[]
+      };
+
+      pendingInvoices.forEach(inv => {
+         const due = inv.dueDate ? new Date(inv.dueDate) : new Date(new Date(inv.date).getTime() + 15 * 24 * 60 * 60 * 1000);
+         due.setHours(0,0,0,0);
+         const diffTime = today.getTime() - due.getTime();
+         const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+         if (diffDays <= 0) {
+            buckets.valido.push(inv);
+         } else if (diffDays <= 15) {
+            buckets.vencida1_15.push(inv);
+         } else if (diffDays <= 30) {
+            buckets.vencida16_30.push(inv);
+         } else if (diffDays <= 60) {
+            buckets.vencida31_60.push(inv);
+         } else if (diffDays <= 90) {
+            buckets.vencida61_90.push(inv);
+         } else {
+            buckets.vencidaOver90.push(inv);
+         }
+      });
+
+      const getSum = (arr: Invoice[]) => arr.reduce((acc, curr) => acc + curr.total, 0);
+
+      return [
+         { id: 'valido', label: 'Cobro Válido', invoices: buckets.valido, amount: getSum(buckets.valido), color: 'bg-green-50 text-green-700 border-green-100 hover:bg-green-100/50' },
+         { id: 'vencida1_15', label: 'Vencida 1-15 días', invoices: buckets.vencida1_15, amount: getSum(buckets.vencida1_15), color: 'bg-amber-50 text-amber-700 border-amber-100 hover:bg-amber-100/50' },
+         { id: 'vencida16_30', label: 'Vencida > 15 días', invoices: buckets.vencida16_30, amount: getSum(buckets.vencida16_30), color: 'bg-orange-50 text-orange-700 border-orange-100 hover:bg-orange-100/50' },
+         { id: 'vencida31_60', label: 'Vencida > 30 días', invoices: buckets.vencida31_60, amount: getSum(buckets.vencida31_60), color: 'bg-red-50 text-red-700 border-red-100 hover:bg-red-100/50' },
+         { id: 'vencida61_90', label: 'Vencida > 60 días', invoices: buckets.vencida61_90, amount: getSum(buckets.vencida61_90), color: 'bg-rose-50 text-rose-700 border-rose-100 hover:bg-rose-100/50' },
+         { id: 'vencidaOver90', label: 'Vencida > 90 días', invoices: buckets.vencidaOver90, amount: getSum(buckets.vencidaOver90), color: 'bg-red-100 text-red-850 border-red-200 hover:bg-red-200/50' }
+      ];
+   }, [recentInvoices]);
+
+   const activeBucket = useMemo(() => {
+      return cobranzaStats.find(b => b.id === activeBucketId) || null;
+   }, [cobranzaStats, activeBucketId]);
 
    // --- REAL TIME STATS CALCULATION ---
    const stats = useMemo(() => {
@@ -392,181 +450,220 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
                {/* CARD 3: TABBED STATUS (Clean & Emotional) */}
                <div className="col-span-1 md:col-span-1 lg:col-span-1 bg-white rounded-[2.5rem] p-6 border border-slate-50 shadow-sm flex flex-col relative overflow-hidden h-full">
 
-                  {/* Tab Switcher */}
-                  <div className="flex flex-col gap-4 mb-6">
+                  {/* Card Header with Title and Toggle */}
+                  <div className="flex items-center justify-between mb-4">
                      <h3 className="text-sm font-bold text-[#1c2938] uppercase tracking-wider flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-slate-400" /> Estado
+                        <Clock className="w-4 h-4 text-slate-400" />
+                        {isCobranzaMode ? 'Cobranza' : 'Estado'}
                      </h3>
-
-                     <div className="bg-slate-100 p-1 rounded-xl flex items-center relative w-full">
+                     
+                     <div className="flex items-center gap-2">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Modo Cobranza</span>
                         <button
-                           onClick={() => setActiveTab('INVOICES')}
-                           className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 relative z-10 ${activeTab === 'INVOICES' ? 'text-[#1c2938] bg-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                           onClick={() => setIsCobranzaMode(!isCobranzaMode)}
+                           className={`w-9 h-5 rounded-full relative transition-colors duration-200 focus:outline-none ${isCobranzaMode ? 'bg-[#27bea5]' : 'bg-slate-200'}`}
                         >
-                           Facturas
-                        </button>
-                        <button
-                           onClick={() => setActiveTab('QUOTES')}
-                           className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 relative z-10 ${activeTab === 'QUOTES' ? 'text-[#1c2938] bg-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                        >
-                           Cotizaciones
+                           <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-transform duration-200 ${isCobranzaMode ? 'translate-x-4' : ''}`} />
                         </button>
                      </div>
                   </div>
 
+                  {/* Tab Switcher (Only visible when NOT in cobranza mode) */}
+                  {!isCobranzaMode && (
+                     <div className="mb-6">
+                        <div className="bg-slate-100 p-1 rounded-xl flex items-center relative w-full">
+                           <button
+                              onClick={() => setActiveTab('INVOICES')}
+                              className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 relative z-10 ${activeTab === 'INVOICES' ? 'text-[#1c2938] bg-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                           >
+                              Facturas
+                           </button>
+                           <button
+                              onClick={() => setActiveTab('QUOTES')}
+                              className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 relative z-10 ${activeTab === 'QUOTES' ? 'text-[#1c2938] bg-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                           >
+                              Cotizaciones
+                           </button>
+                        </div>
+                     </div>
+                  )}
+
                   {/* Content Area - Scrollable */}
                   <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 -mr-2">
 
-                     {activeTab === 'INVOICES' && (
-                        <div className="space-y-2 animate-in fade-in slide-in-from-right-8">
-                           {/* Borradores */}
-                           <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100">
-                              <div className="flex items-center gap-3">
-                                 <div className="p-1.5 bg-slate-200 text-slate-500 rounded-lg">
-                                    <FileText className="w-4 h-4" />
+                     {isCobranzaMode ? (
+                        <div className="space-y-2 animate-in fade-in slide-in-from-bottom-4">
+                           {cobranzaStats.map((bucket) => (
+                              <button
+                                 key={bucket.id}
+                                 onClick={() => bucket.invoices.length > 0 && setActiveBucketId(bucket.id)}
+                                 disabled={bucket.invoices.length === 0}
+                                 className={`w-full flex items-center justify-between p-3 rounded-xl border text-left transition-all ${bucket.color} ${bucket.invoices.length === 0 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:scale-[1.02] active:scale-95'}`}
+                              >
+                                 <div className="flex flex-col">
+                                    <span className="text-xs font-bold">{bucket.label}</span>
+                                    <span className="text-[10px] opacity-80 mt-0.5">
+                                       {bucket.invoices.length} {bucket.invoices.length === 1 ? 'factura' : 'facturas'}
+                                    </span>
                                  </div>
-                                 <span className="text-sm font-bold text-slate-600">Borradores</span>
-                              </div>
-                              <span className="text-sm font-bold text-slate-600">{stats.invoiceStats.drafts}</span>
-                           </div>
-
-                           {/* Enviadas */}
-                           <div className="flex items-center justify-between p-2 rounded-xl bg-blue-50 border border-blue-100">
-                              <div className="flex items-center gap-3">
-                                 <div className="p-1.5 bg-blue-100 text-blue-600 rounded-lg">
-                                    <ArrowRight className="w-4 h-4" />
-                                 </div>
-                                 <span className="text-sm font-bold text-[#1c2938]">Enviadas</span>
-                              </div>
-                              <span className="text-sm font-bold text-blue-600">{stats.invoiceStats.sent}</span>
-                           </div>
-
-                           {/* Vistas */}
-                           <div className="flex items-center justify-between p-2 rounded-xl bg-sky-50 border border-sky-100">
-                              <div className="flex items-center gap-3">
-                                 <div className="p-1.5 bg-sky-100 text-sky-600 rounded-lg">
-                                    <Eye className="w-4 h-4" />
-                                 </div>
-                                 <span className="text-sm font-bold text-[#1c2938]">Vistas</span>
-                              </div>
-                              <span className="text-sm font-bold text-sky-600">{stats.invoiceStats.viewed}</span>
-                           </div>
-
-                           {/* Parciales */}
-                           <div className="flex items-center justify-between p-2 rounded-xl bg-indigo-50 border border-indigo-100">
-                              <div className="flex items-center gap-3">
-                                 <div className="p-1.5 bg-indigo-100 text-indigo-600 rounded-lg">
-                                    <Wallet className="w-4 h-4" />
-                                 </div>
-                                 <span className="text-sm font-bold text-[#1c2938]">Parciales</span>
-                              </div>
-                              <span className="text-sm font-bold text-indigo-600">{stats.invoiceStats.partial}</span>
-                           </div>
-
-                           {/* Pagadas */}
-                           <div className="flex items-center justify-between p-2 rounded-xl bg-green-50 border border-green-100">
-                              <div className="flex items-center gap-3">
-                                 <div className="p-1.5 bg-green-100 text-green-600 rounded-lg">
-                                    <CheckCircle2 className="w-4 h-4" />
-                                 </div>
-                                 <span className="text-sm font-bold text-[#1c2938]">Pagadas</span>
-                              </div>
-                              <span className="text-sm font-bold text-green-600">{stats.invoiceStats.paid}</span>
-                           </div>
-
-                           {/* Incobrables */}
-                           {stats.invoiceStats.uncollectible > 0 && (
-                              <div className="flex items-center justify-between p-2 rounded-xl bg-red-50 border border-red-100">
-                                 <div className="flex items-center gap-3">
-                                    <div className="p-1.5 bg-red-100 text-red-600 rounded-lg">
-                                       <Ban className="w-4 h-4" />
+                                 <span className="text-sm font-black">${bucket.amount.toLocaleString()}</span>
+                              </button>
+                           ))}
+                        </div>
+                     ) : (
+                        <>
+                           {activeTab === 'INVOICES' && (
+                              <div className="space-y-2 animate-in fade-in slide-in-from-right-8">
+                                 {/* Borradores */}
+                                 <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100">
+                                    <div className="flex items-center gap-3">
+                                       <div className="p-1.5 bg-slate-200 text-slate-500 rounded-lg">
+                                          <FileText className="w-4 h-4" />
+                                       </div>
+                                       <span className="text-sm font-bold text-slate-600">Borradores</span>
                                     </div>
-                                    <span className="text-sm font-bold text-[#1c2938]">Incobrables</span>
+                                    <span className="text-sm font-bold text-slate-600">{stats.invoiceStats.drafts}</span>
                                  </div>
-                                 <span className="text-sm font-bold text-red-600">{stats.invoiceStats.uncollectible}</span>
+
+                                 {/* Enviadas */}
+                                 <div className="flex items-center justify-between p-2 rounded-xl bg-blue-50 border border-blue-100">
+                                    <div className="flex items-center gap-3">
+                                       <div className="p-1.5 bg-blue-100 text-blue-600 rounded-lg">
+                                          <ArrowRight className="w-4 h-4" />
+                                       </div>
+                                       <span className="text-sm font-bold text-[#1c2938]">Enviadas</span>
+                                    </div>
+                                    <span className="text-sm font-bold text-blue-600">{stats.invoiceStats.sent}</span>
+                                 </div>
+
+                                 {/* Vistas */}
+                                 <div className="flex items-center justify-between p-2 rounded-xl bg-sky-50 border border-sky-100">
+                                    <div className="flex items-center gap-3">
+                                       <div className="p-1.5 bg-sky-100 text-sky-600 rounded-lg">
+                                          <Eye className="w-4 h-4" />
+                                       </div>
+                                       <span className="text-sm font-bold text-[#1c2938]">Vistas</span>
+                                    </div>
+                                    <span className="text-sm font-bold text-sky-600">{stats.invoiceStats.viewed}</span>
+                                 </div>
+
+                                 {/* Parciales */}
+                                 <div className="flex items-center justify-between p-2 rounded-xl bg-indigo-50 border border-indigo-100">
+                                    <div className="flex items-center gap-3">
+                                       <div className="p-1.5 bg-indigo-100 text-indigo-600 rounded-lg">
+                                          <Wallet className="w-4 h-4" />
+                                       </div>
+                                       <span className="text-sm font-bold text-[#1c2938]">Parciales</span>
+                                    </div>
+                                    <span className="text-sm font-bold text-indigo-600">{stats.invoiceStats.partial}</span>
+                                 </div>
+
+                                 {/* Pagadas */}
+                                 <div className="flex items-center justify-between p-2 rounded-xl bg-green-50 border border-green-100">
+                                    <div className="flex items-center gap-3">
+                                       <div className="p-1.5 bg-green-100 text-green-600 rounded-lg">
+                                          <CheckCircle2 className="w-4 h-4" />
+                                       </div>
+                                       <span className="text-sm font-bold text-[#1c2938]">Pagadas</span>
+                                    </div>
+                                    <span className="text-sm font-bold text-green-600">{stats.invoiceStats.paid}</span>
+                                 </div>
+
+                                 {/* Incobrables */}
+                                 {stats.invoiceStats.uncollectible > 0 && (
+                                    <div className="flex items-center justify-between p-2 rounded-xl bg-red-50 border border-red-100">
+                                       <div className="flex items-center gap-3">
+                                          <div className="p-1.5 bg-red-100 text-red-600 rounded-lg">
+                                             <Ban className="w-4 h-4" />
+                                          </div>
+                                          <span className="text-sm font-bold text-[#1c2938]">Incobrables</span>
+                                       </div>
+                                       <span className="text-sm font-bold text-red-600">{stats.invoiceStats.uncollectible}</span>
+                                    </div>
+                                 )}
                               </div>
                            )}
-                        </div>
-                     )}
 
-                     {activeTab === 'QUOTES' && (
-                        <div className="space-y-2 animate-in fade-in slide-in-from-right-8">
-                           {/* NEW: Pipeline Value Header inside the list */}
-                           <div className="mb-3 p-3 bg-purple-50 rounded-xl border border-purple-100 flex items-center justify-between">
-                              <span className="text-xs font-bold text-purple-800 uppercase flex items-center gap-1">
-                                 <Lightbulb className="w-3 h-3" /> Pipeline
-                              </span>
-                              <span className="font-bold text-purple-700">${stats.pipelineAmount.toLocaleString()}</span>
-                           </div>
-
-                           {/* Borradores */}
-                           <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100">
-                              <div className="flex items-center gap-3">
-                                 <div className="p-1.5 bg-slate-200 text-slate-500 rounded-lg">
-                                    <Archive className="w-4 h-4" />
+                           {activeTab === 'QUOTES' && (
+                              <div className="space-y-2 animate-in fade-in slide-in-from-right-8">
+                                 {/* Pipeline Value Header inside the list */}
+                                 <div className="mb-3 p-3 bg-purple-50 rounded-xl border border-purple-100 flex items-center justify-between">
+                                    <span className="text-xs font-bold text-purple-800 uppercase flex items-center gap-1">
+                                       <Lightbulb className="w-3 h-3" /> Pipeline
+                                    </span>
+                                    <span className="font-bold text-purple-700">${stats.pipelineAmount.toLocaleString()}</span>
                                  </div>
-                                 <span className="text-sm font-bold text-slate-600">Borradores</span>
-                              </div>
-                              <span className="text-sm font-bold text-slate-600">{stats.quoteStats.drafts}</span>
-                           </div>
 
-                           {/* Enviadas */}
-                           <div className="flex items-center justify-between p-2 rounded-xl bg-fuchsia-50 border border-fuchsia-100">
-                              <div className="flex items-center gap-3">
-                                 <div className="p-1.5 bg-fuchsia-100 text-fuchsia-600 rounded-lg">
-                                    <ArrowRight className="w-4 h-4" />
-                                 </div>
-                                 <span className="text-sm font-bold text-[#1c2938]">Enviadas</span>
-                              </div>
-                              <span className="text-sm font-bold text-fuchsia-600">{stats.quoteStats.sent}</span>
-                           </div>
-
-                           {/* Vistas */}
-                           <div className="flex items-center justify-between p-2 rounded-xl bg-sky-50 border border-sky-100">
-                              <div className="flex items-center gap-3">
-                                 <div className="p-1.5 bg-sky-100 text-sky-600 rounded-lg">
-                                    <Eye className="w-4 h-4" />
-                                 </div>
-                                 <span className="text-sm font-bold text-[#1c2938]">Vistas</span>
-                              </div>
-                              <span className="text-sm font-bold text-sky-600">{stats.quoteStats.viewed}</span>
-                           </div>
-
-                           {/* Negociacion */}
-                           <div className="flex items-center justify-between p-2 rounded-xl bg-purple-50 border border-purple-100">
-                              <div className="flex items-center gap-3">
-                                 <div className="p-1.5 bg-purple-100 text-purple-600 rounded-lg">
-                                    <MoreHorizontal className="w-4 h-4" />
-                                 </div>
-                                 <span className="text-sm font-bold text-[#1c2938]">Negociación</span>
-                              </div>
-                              <span className="text-sm font-bold text-purple-600">{stats.quoteStats.negotiation}</span>
-                           </div>
-
-                           {/* Aceptadas */}
-                           <div className="flex items-center justify-between p-2 rounded-xl bg-green-50 border border-green-100">
-                              <div className="flex items-center gap-3">
-                                 <div className="p-1.5 bg-green-100 text-green-600 rounded-lg">
-                                    <CheckCircle2 className="w-4 h-4" />
-                                 </div>
-                                 <span className="text-sm font-bold text-[#1c2938]">Aceptadas</span>
-                              </div>
-                              <span className="text-sm font-bold text-green-600">{stats.quoteStats.accepted}</span>
-                           </div>
-
-                           {/* Rechazadas */}
-                           {stats.quoteStats.rejected > 0 && (
-                              <div className="flex items-center justify-between p-2 rounded-xl bg-red-50 border border-red-100">
-                                 <div className="flex items-center gap-3">
-                                    <div className="p-1.5 bg-red-100 text-red-600 rounded-lg">
-                                       <XCircle className="w-4 h-4" />
+                                 {/* Borradores */}
+                                 <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100">
+                                    <div className="flex items-center gap-3">
+                                       <div className="p-1.5 bg-slate-200 text-slate-500 rounded-lg">
+                                          <Archive className="w-4 h-4" />
+                                       </div>
+                                       <span className="text-sm font-bold text-slate-600">Borradores</span>
                                     </div>
-                                    <span className="text-sm font-bold text-[#1c2938]">Rechazadas</span>
+                                    <span className="text-sm font-bold text-slate-600">{stats.quoteStats.drafts}</span>
                                  </div>
-                                 <span className="text-sm font-bold text-red-600">{stats.quoteStats.rejected}</span>
+
+                                 {/* Enviadas */}
+                                 <div className="flex items-center justify-between p-2 rounded-xl bg-fuchsia-50 border border-fuchsia-100">
+                                    <div className="flex items-center gap-3">
+                                       <div className="p-1.5 bg-fuchsia-100 text-fuchsia-600 rounded-lg">
+                                          <ArrowRight className="w-4 h-4" />
+                                       </div>
+                                       <span className="text-sm font-bold text-[#1c2938]">Enviadas</span>
+                                    </div>
+                                    <span className="text-sm font-bold text-fuchsia-600">{stats.quoteStats.sent}</span>
+                                 </div>
+
+                                 {/* Vistas */}
+                                 <div className="flex items-center justify-between p-2 rounded-xl bg-sky-50 border border-sky-100">
+                                    <div className="flex items-center gap-3">
+                                       <div className="p-1.5 bg-sky-100 text-sky-600 rounded-lg">
+                                          <Eye className="w-4 h-4" />
+                                       </div>
+                                       <span className="text-sm font-bold text-[#1c2938]">Vistas</span>
+                                    </div>
+                                    <span className="text-sm font-bold text-sky-600">{stats.quoteStats.viewed}</span>
+                                 </div>
+
+                                 {/* Negociacion */}
+                                 <div className="flex items-center justify-between p-2 rounded-xl bg-purple-50 border border-purple-100">
+                                    <div className="flex items-center gap-3">
+                                       <div className="p-1.5 bg-purple-100 text-purple-600 rounded-lg">
+                                          <MoreHorizontal className="w-4 h-4" />
+                                       </div>
+                                       <span className="text-sm font-bold text-[#1c2938]">Negociación</span>
+                                    </div>
+                                    <span className="text-sm font-bold text-purple-600">{stats.quoteStats.negotiation}</span>
+                                 </div>
+
+                                 {/* Aceptadas */}
+                                 <div className="flex items-center justify-between p-2 rounded-xl bg-green-50 border border-green-100">
+                                    <div className="flex items-center gap-3">
+                                       <div className="p-1.5 bg-green-100 text-green-600 rounded-lg">
+                                          <CheckCircle2 className="w-4 h-4" />
+                                       </div>
+                                       <span className="text-sm font-bold text-[#1c2938]">Aceptadas</span>
+                                    </div>
+                                    <span className="text-sm font-bold text-green-600">{stats.quoteStats.accepted}</span>
+                                 </div>
+
+                                 {/* Rechazadas */}
+                                 {stats.quoteStats.rejected > 0 && (
+                                    <div className="flex items-center justify-between p-2 rounded-xl bg-red-50 border border-red-100">
+                                       <div className="flex items-center gap-3">
+                                          <div className="p-1.5 bg-red-100 text-red-600 rounded-lg">
+                                             <XCircle className="w-4 h-4" />
+                                          </div>
+                                          <span className="text-sm font-bold text-[#1c2938]">Rechazadas</span>
+                                       </div>
+                                       <span className="text-sm font-bold text-red-600">{stats.quoteStats.rejected}</span>
+                                    </div>
+                                 )}
                               </div>
                            )}
-                        </div>
+                        </>
                      )}
                   </div>
                </div>
@@ -641,6 +738,80 @@ const Dashboard: React.FC<DashboardProps> = ({ recentInvoices, isOffline, pendin
                </div>
             </div>
          </div>
+
+         {/* MODAL COBRANZA - DETALLE DE BUCKET */}
+         {activeBucket && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#1c2938]/60 backdrop-blur-sm animate-in fade-in">
+               <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95">
+                  {/* Modal Header */}
+                  <div className="p-6 md:p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                     <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-[#1c2938] text-[#27bea5] rounded-2xl flex items-center justify-center shadow-lg">
+                           <Clock className="w-6 h-6" />
+                        </div>
+                        <div>
+                           <h2 className="text-xl font-black text-[#1c2938]">{activeBucket.label}</h2>
+                           <p className="text-xs md:text-sm text-slate-500 font-medium mt-0.5">
+                              {activeBucket.invoices.length} {activeBucket.invoices.length === 1 ? 'factura pendiente' : 'facturas pendientes'} • Total: <span className="font-bold text-[#27bea5]">${activeBucket.amount.toLocaleString()}</span>
+                           </p>
+                        </div>
+                     </div>
+                     <button
+                        onClick={() => setActiveBucketId(null)}
+                        className="p-2 rounded-full hover:bg-slate-100 text-slate-400 hover:text-[#1c2938] transition-colors"
+                     >
+                        <X className="w-5 h-5" />
+                     </button>
+                  </div>
+
+                  {/* Modal Content - List of Invoices */}
+                  <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-4 custom-scrollbar bg-slate-50/30">
+                     {activeBucket.invoices.map((inv) => (
+                        <div
+                           key={inv.id}
+                           onClick={() => {
+                              onSelectInvoice(inv);
+                              setActiveBucketId(null);
+                           }}
+                           className="w-full bg-white hover:bg-slate-50 border border-slate-100 hover:border-[#27bea5]/30 rounded-[1.5rem] p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all duration-200 hover:shadow-md cursor-pointer text-left group"
+                        >
+                           <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                 <span className="font-bold text-[#1c2938] text-base group-hover:text-[#27bea5] transition-colors">{inv.clientName}</span>
+                                 <span className="font-mono text-xs text-slate-400">({inv.id})</span>
+                              </div>
+                              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 font-medium">
+                                 <span>Emisión: {new Date(inv.date).toLocaleDateString()}</span>
+                                 <span>Vencimiento: {inv.dueDate ? new Date(inv.dueDate).toLocaleDateString() : 'N/A'}</span>
+                              </div>
+                           </div>
+                           <div className="flex items-center justify-between sm:justify-end gap-4">
+                              <div className="text-right">
+                                 <p className="font-bold text-[#1c2938] text-base">${inv.total.toLocaleString()}</p>
+                                 <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold tracking-wide ${getStatusColor(inv.status)}`}>
+                                    {inv.status}
+                                 </span>
+                              </div>
+                              <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-white group-hover:text-[#27bea5] transition-colors">
+                                 <ChevronRight className="w-5 h-5" />
+                              </div>
+                           </div>
+                        </div>
+                     ))}
+                  </div>
+
+                  {/* Modal Footer */}
+                  <div className="p-6 md:p-8 border-t border-slate-100 bg-slate-50/50 flex justify-end">
+                     <button
+                        onClick={() => setActiveBucketId(null)}
+                        className="px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-50 transition-colors"
+                     >
+                        Cerrar
+                     </button>
+                  </div>
+               </div>
+            </div>
+         )}
       </>
    );
 };
