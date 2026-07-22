@@ -824,6 +824,7 @@ export const saveClientToDb = async (clientData: DbClient, userId: string, statu
 
   try {
     await clientDb.connect();
+    const parsedTags = clientData.tags ? clientData.tags : null;
 
     if (status === 'CLIENT') {
       // --- CASE 1: IT IS A CLIENT (Invoice Created) ---
@@ -843,7 +844,7 @@ export const saveClientToDb = async (clientData: DbClient, userId: string, statu
               updated_at = NOW();
         `;
       await clientDb.query(upsertClient, [
-        id, userId, clientData.name, clientData.taxId || null, clientData.email || null, clientData.address || null, clientData.phone || null, clientData.tags || null, clientData.notes || null, clientData.stripeCustomerId || null
+        id, userId, clientData.name, clientData.taxId || null, clientData.email || null, clientData.address || null, clientData.phone || null, parsedTags, clientData.notes || null, clientData.stripeCustomerId || null
       ]);
 
       // 2. Remove from PROSPECTS if it existed there (Promotion Logic)
@@ -885,7 +886,7 @@ export const saveClientToDb = async (clientData: DbClient, userId: string, statu
                   updated_at = NOW();
             `;
         await clientDb.query(upsertProspect, [
-          id, userId, clientData.name, clientData.taxId || null, clientData.email || null, clientData.address || null, clientData.phone || null, clientData.tags || null, clientData.notes || null, clientData.stripeCustomerId || null
+          id, userId, clientData.name, clientData.taxId || null, clientData.email || null, clientData.address || null, clientData.phone || null, parsedTags, clientData.notes || null, clientData.stripeCustomerId || null
         ]);
       }
     }
@@ -919,9 +920,108 @@ export const saveClientToDb = async (clientData: DbClient, userId: string, statu
           await retryDb.query(`ALTER TABLE clients ALTER COLUMN tags TYPE TEXT USING array_to_string(tags::text[], ',');`);
           await retryDb.query(`ALTER TABLE prospects ALTER COLUMN tags TYPE TEXT USING array_to_string(tags::text[], ',');`);
           await retryDb.end();
-          return { success: false, error: "Schema repaired (Formato de Etiquetas). Por favor, intenta guardar nuevamente." };
+          
+          // Re-attempt saving now that the column is converted to TEXT!
+          const secondRetryDb = getDbClient();
+          if (secondRetryDb) {
+            await secondRetryDb.connect();
+            const parsedTags = clientData.tags ? clientData.tags : null;
+            if (status === 'CLIENT') {
+              const upsertClient = `
+                INSERT INTO clients (id, user_id, name, tax_id, email, address, phone, tags, notes, stripe_customer_id, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+                ON CONFLICT (id) DO UPDATE SET 
+                  name = EXCLUDED.name,
+                  tax_id = COALESCE(EXCLUDED.tax_id, clients.tax_id),
+                  email = COALESCE(EXCLUDED.email, clients.email),
+                  address = COALESCE(EXCLUDED.address, clients.address),
+                  phone = COALESCE(EXCLUDED.phone, clients.phone),
+                  tags = COALESCE(EXCLUDED.tags, clients.tags),
+                  notes = COALESCE(EXCLUDED.notes, clients.notes),
+                  stripe_customer_id = COALESCE(EXCLUDED.stripe_customer_id, clients.stripe_customer_id),
+                  updated_at = NOW();
+              `;
+              await secondRetryDb.query(upsertClient, [
+                id, userId, clientData.name, clientData.taxId || null, clientData.email || null, clientData.address || null, clientData.phone || null, parsedTags, clientData.notes || null, clientData.stripeCustomerId || null
+              ]);
+              await secondRetryDb.query('DELETE FROM prospects WHERE id = $1', [id]);
+            } else {
+              const upsertProspect = `
+                INSERT INTO prospects (id, user_id, name, tax_id, email, address, phone, tags, notes, stripe_customer_id, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+                ON CONFLICT (id) DO UPDATE SET 
+                  name = EXCLUDED.name,
+                  tax_id = COALESCE(EXCLUDED.tax_id, prospects.tax_id),
+                  email = COALESCE(EXCLUDED.email, prospects.email),
+                  address = COALESCE(EXCLUDED.address, prospects.address),
+                  phone = COALESCE(EXCLUDED.phone, prospects.phone),
+                  tags = COALESCE(EXCLUDED.tags, prospects.tags),
+                  notes = COALESCE(EXCLUDED.notes, prospects.notes),
+                  stripe_customer_id = COALESCE(EXCLUDED.stripe_customer_id, prospects.stripe_customer_id),
+                  updated_at = NOW();
+              `;
+              await secondRetryDb.query(upsertProspect, [
+                id, userId, clientData.name, clientData.taxId || null, clientData.email || null, clientData.address || null, clientData.phone || null, parsedTags, clientData.notes || null, clientData.stripeCustomerId || null
+              ]);
+            }
+            await secondRetryDb.end();
+            return { success: true };
+          }
         }
-      } catch (e) { console.error("Repair failed", e); }
+      } catch (e: any) { 
+        console.error("Repair and retry failed:", e); 
+        // If conversion failed (perhaps it's already TEXT or has incompatible data), try saving formatting it as a PG array literal
+        try {
+          const fallbackDb = getDbClient();
+          if (fallbackDb) {
+            await fallbackDb.connect();
+            // Format "VIP" to "{VIP}"
+            const arrayFormattedTag = clientData.tags ? `{${clientData.tags.split(',').map(t => `"${t.trim()}"`).join(',')}}` : null;
+            if (status === 'CLIENT') {
+              const upsertClient = `
+                INSERT INTO clients (id, user_id, name, tax_id, email, address, phone, tags, notes, stripe_customer_id, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+                ON CONFLICT (id) DO UPDATE SET 
+                  name = EXCLUDED.name,
+                  tax_id = COALESCE(EXCLUDED.tax_id, clients.tax_id),
+                  email = COALESCE(EXCLUDED.email, clients.email),
+                  address = COALESCE(EXCLUDED.address, clients.address),
+                  phone = COALESCE(EXCLUDED.phone, clients.phone),
+                  tags = COALESCE(EXCLUDED.tags, clients.tags),
+                  notes = COALESCE(EXCLUDED.notes, clients.notes),
+                  stripe_customer_id = COALESCE(EXCLUDED.stripe_customer_id, clients.stripe_customer_id),
+                  updated_at = NOW();
+              `;
+              await fallbackDb.query(upsertClient, [
+                id, userId, clientData.name, clientData.taxId || null, clientData.email || null, clientData.address || null, clientData.phone || null, arrayFormattedTag, clientData.notes || null, clientData.stripeCustomerId || null
+              ]);
+              await fallbackDb.query('DELETE FROM prospects WHERE id = $1', [id]);
+            } else {
+              const upsertProspect = `
+                INSERT INTO prospects (id, user_id, name, tax_id, email, address, phone, tags, notes, stripe_customer_id, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+                ON CONFLICT (id) DO UPDATE SET 
+                  name = EXCLUDED.name,
+                  tax_id = COALESCE(EXCLUDED.tax_id, prospects.tax_id),
+                  email = COALESCE(EXCLUDED.email, prospects.email),
+                  address = COALESCE(EXCLUDED.address, prospects.address),
+                  phone = COALESCE(EXCLUDED.phone, prospects.phone),
+                  tags = COALESCE(EXCLUDED.tags, prospects.tags),
+                  notes = COALESCE(EXCLUDED.notes, prospects.notes),
+                  stripe_customer_id = COALESCE(EXCLUDED.stripe_customer_id, prospects.stripe_customer_id),
+                  updated_at = NOW();
+              `;
+              await fallbackDb.query(upsertProspect, [
+                id, userId, clientData.name, clientData.taxId || null, clientData.email || null, clientData.address || null, clientData.phone || null, arrayFormattedTag, clientData.notes || null, clientData.stripeCustomerId || null
+              ]);
+            }
+            await fallbackDb.end();
+            return { success: true };
+          }
+        } catch (e2) {
+          console.error("Fallback PG Array save failed:", e2);
+        }
+      }
     }
 
     return { success: false, error: error.message };

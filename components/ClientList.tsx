@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import {
   Search, Users, Wallet, Activity, LayoutList, LayoutGrid,
   Plus, Crown, Sparkles, TrendingUp, Target,
-  Trophy, Percent, ArrowUpRight, BarChart3, Star, Lock, UserPlus
+  Trophy, Percent, ArrowUpRight, BarChart3, Star, Lock, UserPlus, Clock
 } from 'lucide-react';
 import { Invoice, UserProfile, DbClient } from '../types';
 
@@ -36,6 +36,8 @@ interface AggregatedClient {
   isVip: boolean;
   winRate: number;
   fullData: any;
+  hasRecurrence?: boolean;
+  nextRecurringDate?: string;
 }
 
 const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSelectClient, onCreateDocument, onCreateClient, currencySymbol, currentUser, onRefresh, currentFilter = 'ALL', onFilterChange }) => {
@@ -176,7 +178,25 @@ const ClientList: React.FC<ClientListProps> = ({ invoices, dbClients = [], onSel
       const winRate = c.quoteCount > 0 ? (c.quotesWon / c.quoteCount) * 100 : 0;
       const isVip = c.status === 'CLIENT' && c.totalInvoiced > 0 && c.totalInvoiced >= vipThreshold;
 
-      return { ...c, avgTicket, displayValue, winRate, isVip };
+      // Find recurrence info for this client from invoices
+      const clientDocs = invoices.filter(i => i.clientName.trim().toLowerCase() === c.name.trim().toLowerCase());
+      const recurringDocs = clientDocs.filter(d => d.type === 'Invoice' && d.recurrence?.isRecurrent);
+      
+      let hasRecurrence = false;
+      let nextRecurringDate = undefined;
+
+      if (recurringDocs.length > 0) {
+        const pendingRecurring = recurringDocs
+          .filter(d => ['Borrador', 'Creada', 'Enviada', 'Seguimiento'].includes(d.status))
+          .sort((a, b) => new Date(a.dueDate || a.date || 0).getTime() - new Date(b.dueDate || b.date || 0).getTime());
+
+        if (pendingRecurring.length > 0) {
+          hasRecurrence = true;
+          nextRecurringDate = pendingRecurring[0].dueDate || pendingRecurring[0].date;
+        }
+      }
+
+      return { ...c, avgTicket, displayValue, winRate, isVip, hasRecurrence, nextRecurringDate };
     });
 
     // Global Stats
@@ -347,9 +367,14 @@ f)}
                     <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">{client.status === 'CLIENT' ? 'Cliente' : 'Prospecto'}</p>
                   </div>
                 </div>
-                <div className="text-right">
+                <div className="text-right flex flex-col items-end gap-1">
                   <p className="font-bold text-[#1c2938] text-sm">{currencySymbol} {client.displayValue.toLocaleString()}</p>
                   {client.isVip && <span className="text-[9px] font-bold text-amber-600 uppercase tracking-widest">VIP</span>}
+                  {client.hasRecurrence && client.nextRecurringDate && (
+                    <span className="text-[8px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-tight">
+                      Recurrente: {new Date(client.nextRecurringDate).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
+                    </span>
+                  )}
                 </div>
               </div>
             ))}
@@ -380,6 +405,16 @@ f)}
                       <span className="text-slate-400 font-medium">{client.status === 'PROSPECT' ? 'Valor Potencial' : 'Facturado Total'}</span>
                       <span className="font-bold text-[#1c2938]">{currencySymbol} {client.displayValue.toLocaleString()}</span>
                     </div>
+                    {client.hasRecurrence && client.nextRecurringDate && (
+                      <div className="flex justify-between items-center text-[11px] bg-emerald-50 text-emerald-800 px-3 py-1.5 rounded-xl border border-emerald-100/50 mt-1">
+                        <span className="font-medium flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-emerald-600 animate-pulse" /> Recurrente:
+                        </span>
+                        <span className="font-bold">
+                          {new Date(client.nextRecurringDate).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="pt-4 border-t border-slate-100/50 flex justify-between items-center mt-4">

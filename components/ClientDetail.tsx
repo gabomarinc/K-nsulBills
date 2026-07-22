@@ -52,6 +52,13 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
   const [isEditingStripeId, setIsEditingStripeId] = useState(false);
   const [tempNote, setTempNote] = useState('');
 
+  // Editing Recurrence Plan States
+  const [isEditingRecurrence, setIsEditingRecurrence] = useState(false);
+  const [editRecFreq, setEditRecFreq] = useState<'WEEKLY' | 'BIWEEKLY' | 'MONTHLY' | 'BIMONTHLY' | 'QUARTERLY' | 'ANNUAL'>('MONTHLY');
+  const [editRecType, setEditRecType] = useState<'Invoice' | 'Quote'>('Invoice');
+  const [editRecAmount, setEditRecAmount] = useState(0);
+  const [isSavingRecurrence, setIsSavingRecurrence] = useState(false);
+
   // Stripe Selector States
   const [showStripeSelector, setShowStripeSelector] = useState(false);
   const [stripeCustomers, setStripeCustomers] = useState<any[]>([]);
@@ -155,6 +162,14 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
   // Edit State for Profile
   const [editForm, setEditForm] = useState(clientData);
 
+  useEffect(() => {
+    if (recurringPlan && !isEditingRecurrence) {
+      setEditRecFreq(recurringPlan.frequency);
+      setEditRecType(recurringPlan.nextInvoice.type as 'Invoice' | 'Quote');
+      setEditRecAmount(recurringPlan.nextInvoice.total);
+    }
+  }, [recurringPlan, isEditingRecurrence]);
+
   // Sync form when client changes (only if not editing)
   useEffect(() => {
     if (!isEditingProfile) {
@@ -225,6 +240,41 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
 
     onUpdateClientContact(clientName, updatedProfile);
     setIsEditingProfile(false);
+  };
+
+  // Recurrence Save
+  const handleSaveRecurrencePlan = async () => {
+    if (!recurringPlan) return;
+    setIsSavingRecurrence(true);
+    try {
+      // Find all invoices that belong to this client and have recurrence active.
+      const recurringDocs = invoices.filter(d => 
+        (d.clientId === dbClientData?.id || d.clientName.trim().toLowerCase() === clientName.trim().toLowerCase()) && 
+        d.recurrence?.isRecurrent
+      );
+
+      // We update the frequency, type (Quote/Invoice), and total amount of these recurring documents
+      for (const doc of recurringDocs) {
+        const updatedDoc: Invoice = {
+          ...doc,
+          type: editRecType,
+          total: editRecAmount,
+          recurrence: {
+            ...doc.recurrence!,
+            frequency: editRecFreq
+          }
+        };
+        // Update database
+        if (onUpdateStatus) {
+          await onUpdateStatus(doc.id, doc.status, updatedDoc);
+        }
+      }
+      setIsEditingRecurrence(false);
+    } catch (err) {
+      console.error("Error updating recurring plan:", err);
+    } finally {
+      setIsSavingRecurrence(false);
+    }
   };
 
   // 2. Tag Logic
@@ -578,41 +628,123 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                         <h3 className="font-bold text-emerald-800 flex items-center gap-2 text-sm uppercase tracking-wider">
                             <Clock className="w-4 h-4" /> Facturación Recurrente
                         </h3>
-                        <span className="text-xs font-bold text-emerald-600 bg-emerald-100 px-2 py-1 rounded-lg">
-                            Activa
-                        </span>
+                        {!isEditingRecurrence ? (
+                          <button 
+                            onClick={() => {
+                              setEditRecFreq(recurringPlan.frequency);
+                              setEditRecType(recurringPlan.nextInvoice.type as 'Invoice' | 'Quote');
+                              setEditRecAmount(recurringPlan.nextInvoice.total);
+                              setIsEditingRecurrence(true);
+                            }} 
+                            className="text-emerald-700 hover:text-emerald-950 hover:bg-emerald-100/80 p-1.5 rounded-lg transition-colors text-xs font-bold flex items-center gap-1"
+                          >
+                            <Edit2 className="w-3 h-3" /> Editar Plan
+                          </button>
+                        ) : (
+                          <span className="text-xs font-bold text-emerald-600 bg-emerald-100 px-2 py-1 rounded-lg">
+                            Editando
+                          </span>
+                        )}
                     </div>
-                    <div className="space-y-3">
-                        <div className="flex justify-between items-center text-sm">
-                            <span className="text-emerald-700/70">Frecuencia:</span>
-                            <span className="font-bold text-emerald-900 capitalize">
-                                {recurringPlan.frequency === 'WEEKLY' ? 'Semanal' :
-                                 recurringPlan.frequency === 'BIWEEKLY' ? 'Quincenal' :
-                                 recurringPlan.frequency === 'MONTHLY' ? 'Mensual' :
-                                 recurringPlan.frequency === 'BIMONTHLY' ? 'Bimensual' :
-                                 recurringPlan.frequency === 'QUARTERLY' ? 'Trimestral' :
-                                 recurringPlan.frequency === 'ANNUAL' ? 'Anual' : recurringPlan.frequency}
-                            </span>
+                    
+                    {isEditingRecurrence ? (
+                      <div className="space-y-3.5 animate-in fade-in">
+                        <div>
+                          <label className="block text-[10px] font-bold text-emerald-700 uppercase mb-1">Frecuencia</label>
+                          <select 
+                            value={editRecFreq}
+                            onChange={(e) => setEditRecFreq(e.target.value as any)}
+                            className="w-full p-2 rounded-xl border border-emerald-200 bg-white outline-none text-xs text-emerald-900 font-medium"
+                          >
+                            <option value="WEEKLY">Semanal</option>
+                            <option value="BIWEEKLY">Quincenal</option>
+                            <option value="MONTHLY">Mensual</option>
+                            <option value="BIMONTHLY">Bimensual</option>
+                            <option value="QUARTERLY">Trimestral</option>
+                            <option value="ANNUAL">Anual</option>
+                          </select>
                         </div>
-                        <div className="flex justify-between items-center text-sm">
-                            <span className="text-emerald-700/70">Próxima Factura:</span>
-                            <span className="font-bold text-emerald-900">
-                                {new Date(recurringPlan.nextInvoice.dueDate || recurringPlan.nextInvoice.date || '').toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}
-                            </span>
+                        <div>
+                          <label className="block text-[10px] font-bold text-emerald-700 uppercase mb-1">Tipo de Documento</label>
+                          <select 
+                            value={editRecType}
+                            onChange={(e) => setEditRecType(e.target.value as any)}
+                            className="w-full p-2 rounded-xl border border-emerald-200 bg-white outline-none text-xs text-emerald-900 font-medium"
+                          >
+                            <option value="Invoice">Factura</option>
+                            <option value="Quote">Cotización</option>
+                          </select>
                         </div>
-                        <div className="flex justify-between items-center text-sm">
-                            <span className="text-emerald-700/70">Monto:</span>
-                            <span className="font-bold text-emerald-900">
-                                {recurringPlan.nextInvoice.currency} ${recurringPlan.nextInvoice.total.toFixed(2)}
-                            </span>
+                        <div>
+                          <label className="block text-[10px] font-bold text-emerald-700 uppercase mb-1">Monto ({recurringPlan.nextInvoice.currency})</label>
+                          <input 
+                            type="number"
+                            value={editRecAmount}
+                            onChange={(e) => setEditRecAmount(parseFloat(e.target.value) || 0)}
+                            className="w-full p-2 rounded-xl border border-emerald-200 bg-white outline-none text-xs text-emerald-900 font-medium"
+                          />
                         </div>
-                        <div className="flex justify-between items-center text-sm">
-                            <span className="text-emerald-700/70">Ciclos Restantes:</span>
-                            <span className="font-bold text-emerald-900">
-                                {recurringPlan.remainingCycles}
-                            </span>
+                        
+                        <div className="flex justify-end gap-2 pt-1">
+                          <button 
+                            onClick={() => setIsEditingRecurrence(false)} 
+                            disabled={isSavingRecurrence}
+                            className="text-xs font-bold text-emerald-800 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-colors"
+                          >
+                            Cancelar
+                          </button>
+                          <button 
+                            onClick={handleSaveRecurrencePlan} 
+                            disabled={isSavingRecurrence}
+                            className="text-xs font-bold bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 transition-colors shadow-sm flex items-center gap-1"
+                          >
+                            {isSavingRecurrence ? (
+                              <>
+                                <Loader2 className="w-3 h-3 animate-spin" /> Guardando...
+                              </>
+                            ) : 'Guardar'}
+                          </button>
                         </div>
-                    </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                          <div className="flex justify-between items-center text-sm">
+                              <span className="text-emerald-700/70">Frecuencia:</span>
+                              <span className="font-bold text-emerald-900 capitalize">
+                                  {recurringPlan.frequency === 'WEEKLY' ? 'Semanal' :
+                                   recurringPlan.frequency === 'BIWEEKLY' ? 'Quincenal' :
+                                   recurringPlan.frequency === 'MONTHLY' ? 'Mensual' :
+                                   recurringPlan.frequency === 'BIMONTHLY' ? 'Bimensual' :
+                                   recurringPlan.frequency === 'QUARTERLY' ? 'Trimestral' :
+                                   recurringPlan.frequency === 'ANNUAL' ? 'Anual' : recurringPlan.frequency}
+                              </span>
+                          </div>
+                          <div className="flex justify-between items-center text-sm">
+                              <span className="text-emerald-700/70">Tipo:</span>
+                              <span className="font-bold text-emerald-900">
+                                  {recurringPlan.nextInvoice.type === 'Invoice' ? 'Factura' : 'Cotización'}
+                              </span>
+                          </div>
+                          <div className="flex justify-between items-center text-sm">
+                              <span className="text-emerald-700/70">Próxima Emisión:</span>
+                              <span className="font-bold text-emerald-900">
+                                  {new Date(recurringPlan.nextInvoice.dueDate || recurringPlan.nextInvoice.date || '').toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}
+                              </span>
+                          </div>
+                          <div className="flex justify-between items-center text-sm">
+                              <span className="text-emerald-700/70">Monto:</span>
+                              <span className="font-bold text-emerald-900">
+                                  {recurringPlan.nextInvoice.currency} ${recurringPlan.nextInvoice.total.toFixed(2)}
+                              </span>
+                          </div>
+                          <div className="flex justify-between items-center text-sm">
+                              <span className="text-emerald-700/70">Ciclos Restantes:</span>
+                              <span className="font-bold text-[#1c2938] bg-emerald-100/50 px-2 py-0.5 rounded-md text-xs">
+                                  {recurringPlan.remainingCycles}
+                              </span>
+                          </div>
+                      </div>
+                    )}
                 </div>
             )}
 
