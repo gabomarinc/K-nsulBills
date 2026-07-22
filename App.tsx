@@ -543,6 +543,111 @@ const AppContent: React.FC = () => {
     alert.addToast('success', 'Documento Guardado', `El documento ${invoice.id} se ha guardado exitosamente.`);
   };
 
+  const handleSaveInvoiceBatch = async (invoicesToSave: Invoice[]) => {
+    if (!currentUser || invoicesToSave.length === 0) return;
+
+    let newInvoices = [...invoices];
+    let profileUpdated = false;
+    let updatedSequences = { ...(currentUser.documentSequences || {
+        invoicePrefix: 'FAC', invoiceNextNumber: 1,
+        quotePrefix: 'COT', quoteNextNumber: 1
+    }) };
+
+    for (const invoice of invoicesToSave) {
+        const exists = newInvoices.find(i => i.id === invoice.id);
+        if (exists) {
+            newInvoices = newInvoices.map(i => i.id === invoice.id ? invoice : i);
+        } else {
+            newInvoices = [invoice, ...newInvoices];
+            const idParts = invoice.id.split('-');
+            const idNum = parseInt(idParts[idParts.length - 1] || '0', 10);
+            if (!isNaN(idNum)) {
+                if (invoice.type === 'Invoice') {
+                    if (idNum >= updatedSequences.invoiceNextNumber) {
+                        updatedSequences.invoiceNextNumber = idNum + 1;
+                        profileUpdated = true;
+                    }
+                } else if (invoice.type === 'Quote') {
+                    if (idNum >= updatedSequences.quoteNextNumber) {
+                        updatedSequences.quoteNextNumber = idNum + 1;
+                        profileUpdated = true;
+                    }
+                }
+            } else {
+                if (invoice.type === 'Invoice') { updatedSequences.invoiceNextNumber += 1; profileUpdated = true; }
+                if (invoice.type === 'Quote') { updatedSequences.quoteNextNumber += 1; profileUpdated = true; }
+            }
+        }
+    }
+
+    if (profileUpdated) {
+        const updatedUser = { ...currentUser, documentSequences: updatedSequences };
+        setCurrentUser(updatedUser);
+        localStorage.setItem('konsul_user_data', JSON.stringify(updatedUser));
+        await updateUserProfileInDb(updatedUser);
+    }
+
+    setInvoices(newInvoices);
+
+    // Save to DB in parallel
+    await Promise.all(invoicesToSave.map(inv => saveInvoiceToDb({ ...inv, userId: currentUser.id })));
+
+    // Client saving logic: Just take the first invoice (they all share the client)
+    const firstInvoice = invoicesToSave[0];
+    if (firstInvoice && firstInvoice.clientName) {
+      const cleanName = firstInvoice.clientName.trim();
+
+      if (firstInvoice.type === 'Expense') {
+        await saveProviderToDb({
+          name: cleanName,
+          category: firstInvoice.items[0]?.description || 'General'
+        }, currentUser.id);
+      } else {
+        const existingClient = firstInvoice.clientId 
+          ? dbClients.find(c => c.id === firstInvoice.clientId)
+          : dbClients.find(c => c.name.trim().toLowerCase() === cleanName.toLowerCase());
+          
+        let clientStatus: 'CLIENT' | 'PROSPECT' = 'PROSPECT';
+
+        if (firstInvoice.type === 'Invoice') {
+          clientStatus = 'CLIENT';
+        } else if (existingClient && existingClient.status === 'CLIENT') {
+          clientStatus = 'CLIENT';
+        }
+
+        const isPromotion = existingClient?.status === 'PROSPECT' && clientStatus === 'CLIENT';
+        const shouldSaveClient = firstInvoice.clientId ? isPromotion : (!existingClient || isPromotion);
+
+        if (shouldSaveClient) {
+          const saveResult = await saveClientToDb({
+            id: existingClient?.id,
+            name: cleanName,
+            taxId: firstInvoice.clientTaxId,
+            email: firstInvoice.clientEmail,
+            address: firstInvoice.clientAddress,
+            tags: existingClient?.tags,
+            notes: existingClient?.notes,
+            phone: existingClient?.phone
+          }, currentUser.id, clientStatus);
+
+          if (!saveResult.success) {
+            alert.addToast('error', 'Error Base de Datos', saveResult.error || 'No se pudo guardar el cliente.');
+          } else {
+            const updatedClients = await fetchClientsFromDb(currentUser.id);
+            setDbClients(updatedClients);
+          }
+        }
+      }
+    }
+
+    setDocumentToEdit(null);
+    if (invoicesToSave.length > 1) {
+        alert.addToast('success', 'Documentos Guardados', `Se han guardado ${invoicesToSave.length} documentos recurrentes exitosamente.`);
+    } else {
+        alert.addToast('success', 'Documento Guardado', `El documento ${invoicesToSave[0].id} se ha guardado exitosamente.`);
+    }
+  };
+
   const handleUpdateStatus = async (id: string, newStatus: InvoiceStatus, extras?: Partial<Invoice>) => {
     if (!currentUser) return;
 
@@ -859,6 +964,7 @@ const AppContent: React.FC = () => {
           currentUser={currentUser}
           isOffline={isOffline}
           onSave={handleSaveInvoice}
+          onSaveBatch={handleSaveInvoiceBatch}
           onCancel={() => { setDocumentToEdit(null); handleNavigate(AppView.DASHBOARD); }}
           onViewDetail={() => handleNavigate(AppView.INVOICES)}
           onSelectInvoiceForDetail={(inv) => {
@@ -991,6 +1097,7 @@ const AppContent: React.FC = () => {
           currencySymbol={currentUser.defaultCurrency === 'EUR' ? '€' : '$'}
           stripeSecretKey={currentUser.paymentIntegration?.stripeSecretKey}
           onUpdateStatus={handleUpdateStatus}
+          onSaveBatch={handleSaveInvoiceBatch}
         />
       )}
 

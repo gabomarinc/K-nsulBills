@@ -22,6 +22,7 @@ interface ClientDetailProps {
   stripeSecretKey?: string;
   issuer: UserProfile; // NEW
   onUpdateStatus?: (id: string, status: InvoiceStatus, extras?: Partial<Invoice>) => void;
+  onSaveBatch?: (invoices: Invoice[]) => Promise<void>;
 }
 
 const ClientDetail: React.FC<ClientDetailProps> = ({ 
@@ -36,7 +37,8 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
   currencySymbol,
   stripeSecretKey,
   issuer, // NEW
-  onUpdateStatus
+  onUpdateStatus,
+  onSaveBatch
 }) => {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   
@@ -118,19 +120,13 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
     const isVip = totalRevenue > 5000 || clientDocs.length > 10;
 
     let nextRecurringInvoice: Invoice | null = null;
-    let recurrenceCount = 0;
+    let configuredCycles = 1;
     
     const recurringDocs = clientDocs.filter(d => d.type === 'Invoice' && d.recurrence?.isRecurrent);
     if (recurringDocs.length > 0) {
-      // Find the earliest pending recurring invoice
-      const pendingRecurring = recurringDocs
-        .filter(d => ['Borrador', 'Creada', 'Enviada', 'Seguimiento'].includes(d.status))
-        .sort((a, b) => new Date(a.dueDate || a.date || 0).getTime() - new Date(b.dueDate || b.date || 0).getTime());
-      
-      if (pendingRecurring.length > 0) {
-        nextRecurringInvoice = pendingRecurring[0];
-        recurrenceCount = pendingRecurring.length;
-      }
+      const sortedRecurring = recurringDocs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      nextRecurringInvoice = sortedRecurring[0];
+      configuredCycles = nextRecurringInvoice.recurrence?.totalCycles || 1;
     }
 
     // MERGE: Optimistic > DB > Invoices > Default
@@ -149,7 +145,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
       historyDocs: history,
       recurringPlan: nextRecurringInvoice ? {
         nextInvoice: nextRecurringInvoice,
-        remainingCycles: recurrenceCount,
+        remainingCycles: configuredCycles,
         frequency: nextRecurringInvoice.recurrence!.frequency
       } : null,
       stats: {
@@ -247,34 +243,26 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
     setIsEditingProfile(false);
   };
 
-  // Recurrence Save
   const handleSaveRecurrencePlan = async () => {
     if (!recurringPlan) return;
     setIsSavingRecurrence(true);
     try {
-      // Find all invoices that belong to this client and have recurrence active.
-      const recurringDocs = invoices.filter(d => 
-        (d.clientId === dbClientData?.id || d.clientName.trim().toLowerCase() === clientName.trim().toLowerCase()) && 
-        d.recurrence?.isRecurrent
-      );
-
-      // We update the frequency, type (Quote/Invoice), totalCycles, and total amount of these recurring documents
-      for (const doc of recurringDocs) {
-        const updatedDoc: Invoice = {
-          ...doc,
-          type: editRecType,
-          total: editRecAmount,
-          recurrence: {
-            ...doc.recurrence!,
-            frequency: editRecFreq,
-            totalCycles: editRecCycles
-          }
-        };
-        // Update database
-        if (onUpdateStatus) {
-          await onUpdateStatus(doc.id, doc.status, updatedDoc);
+      const doc = recurringPlan.nextInvoice;
+      const updatedDoc: Invoice = {
+        ...doc,
+        type: editRecType,
+        total: editRecAmount,
+        recurrence: {
+          ...doc.recurrence!,
+          frequency: editRecFreq,
+          totalCycles: editRecCycles
         }
+      };
+      
+      if (onUpdateStatus) {
+        await onUpdateStatus(doc.id, doc.status, updatedDoc);
       }
+
       setIsEditingRecurrence(false);
     } catch (err) {
       console.error("Error updating recurring plan:", err);
@@ -744,7 +732,19 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                           <div className="flex justify-between items-center text-sm">
                               <span className="text-emerald-700/70">Próxima Emisión:</span>
                               <span className="font-bold text-emerald-900">
-                                  {new Date(recurringPlan.nextInvoice.dueDate || recurringPlan.nextInvoice.date || '').toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                  {(() => {
+                                      const base = recurringPlan.nextInvoice.date || new Date().toISOString();
+                                      const d = new Date(base);
+                                      switch(recurringPlan.frequency) {
+                                          case 'WEEKLY': d.setDate(d.getDate() + 7); break;
+                                          case 'BIWEEKLY': d.setDate(d.getDate() + 14); break;
+                                          case 'MONTHLY': d.setMonth(d.getMonth() + 1); break;
+                                          case 'BIMONTHLY': d.setMonth(d.getMonth() + 2); break;
+                                          case 'QUARTERLY': d.setMonth(d.getMonth() + 3); break;
+                                          case 'ANNUAL': d.setFullYear(d.getFullYear() + 1); break;
+                                      }
+                                      return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
+                                  })()}
                               </span>
                           </div>
                           <div className="flex justify-between items-center text-sm">

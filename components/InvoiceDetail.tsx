@@ -532,6 +532,61 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                       <Edit2 className="w-4 h-4" /> Editar
                   </button>
                )}
+
+               {/* QUICK STATUS EDIT AS A BUTTON IN THE GRID */}
+               <div className="col-span-2 relative">
+                   <div className="w-full bg-slate-100 text-slate-600 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-slate-200 transition-colors cursor-pointer">
+                      <CheckCircle2 className="w-4 h-4" /> 
+                      Cambiar Estado: <span className="text-[#1c2938] font-extrabold">{invoice.status}</span>
+                      <ChevronDown className="w-4 h-4 ml-1" />
+                   </div>
+                   <select 
+                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                     value={invoice.status}
+                     onChange={(e) => {
+                       const newStatus = e.target.value as InvoiceStatus;
+                       if (newStatus !== invoice.status) {
+                         const event: TimelineEvent = {
+                           id: Date.now().toString(),
+                           type: 'STATUS_CHANGE',
+                           title: `Estado cambiado a ${newStatus}`,
+                           description: 'Actualizado manualmente',
+                           timestamp: new Date().toISOString()
+                         };
+                         if (onUpdateInvoice) {
+                           onUpdateInvoice({
+                             ...invoice,
+                             status: newStatus,
+                             timeline: [...(invoice.timeline || []), event]
+                           });
+                         }
+                       }
+                     }}
+                   >
+                     <option disabled>Cambiar Estado</option>
+                     {invoice.type === 'Quote' ? (
+                       <>
+                         <option value="Borrador">Borrador</option>
+                         <option value="Creada">Creada</option>
+                         <option value="Enviada">Enviada</option>
+                         <option value="Seguimiento">Seguimiento</option>
+                         <option value="Negociacion">Negociación</option>
+                         <option value="Aceptada">Aceptada</option>
+                         <option value="Rechazada">Rechazada</option>
+                       </>
+                     ) : (
+                       <>
+                         <option value="Borrador">Borrador</option>
+                         <option value="Creada">Creada</option>
+                         <option value="Enviada">Enviada</option>
+                         <option value="Seguimiento">Seguimiento</option>
+                         <option value="Pagada">Pagada</option>
+                         <option value="Abonada">Abonada</option>
+                         <option value="Incobrable">Incobrable</option>
+                       </>
+                     )}
+                   </select>
+               </div>
             </div>
 
             {/* ACTION FOR INVOICES: REGISTER PAYMENT */}
@@ -543,63 +598,6 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                     <CreditCard className="w-4 h-4" /> Registrar Cobro
                 </button>
             )}
-
-            {/* QUICK STATUS EDIT */}
-            <div className="relative mt-3">
-               <div className="w-full bg-slate-50 border border-slate-200 text-slate-700 py-3 rounded-2xl font-bold flex items-center justify-between px-4 transition-colors hover:bg-slate-100 cursor-pointer">
-                 <div className="flex items-center gap-2">
-                   <CheckCircle2 className="w-4 h-4 text-slate-400" />
-                   <span>Estado: <span className="text-[#1c2938]">{invoice.status}</span></span>
-                 </div>
-                 <ChevronDown className="w-4 h-4 text-slate-400" />
-               </div>
-               <select 
-                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                 value={invoice.status}
-                 onChange={(e) => {
-                   const newStatus = e.target.value as InvoiceStatus;
-                   if (newStatus !== invoice.status) {
-                     const event: TimelineEvent = {
-                       id: Date.now().toString(),
-                       type: 'STATUS_CHANGE',
-                       title: `Estado cambiado a ${newStatus}`,
-                       description: 'Actualizado manualmente',
-                       timestamp: new Date().toISOString()
-                     };
-                     if (onUpdateInvoice) {
-                       onUpdateInvoice({
-                         ...invoice,
-                         status: newStatus,
-                         timeline: [...(invoice.timeline || []), event]
-                       });
-                     }
-                   }
-                 }}
-               >
-                 <option disabled>Cambiar Estado</option>
-                 {invoice.type === 'Quote' ? (
-                   <>
-                     <option value="Borrador">Borrador</option>
-                     <option value="Creada">Creada</option>
-                     <option value="Enviada">Enviada</option>
-                     <option value="Seguimiento">Seguimiento</option>
-                     <option value="Negociacion">Negociación</option>
-                     <option value="Aceptada">Aceptada</option>
-                     <option value="Rechazada">Rechazada</option>
-                   </>
-                 ) : (
-                   <>
-                     <option value="Borrador">Borrador</option>
-                     <option value="Creada">Creada</option>
-                     <option value="Enviada">Enviada</option>
-                     <option value="Seguimiento">Seguimiento</option>
-                     <option value="Pagada">Pagada</option>
-                     <option value="Abonada">Abonada</option>
-                     <option value="Incobrable">Incobrable</option>
-                   </>
-                 )}
-               </select>
-            </div>
 
             {/* DELETE BUTTON */}
             {onDelete && (

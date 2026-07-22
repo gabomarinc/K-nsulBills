@@ -16,13 +16,14 @@ interface InvoiceWizardProps {
   currentUser: UserProfile;
   isOffline: boolean;
   onSave: (invoice: Invoice) => Promise<void>;
+  onSaveBatch?: (invoices: Invoice[]) => Promise<void>;
   onCancel: () => void;
   onViewDetail?: () => void;
   onSelectInvoiceForDetail?: (invoice: Invoice) => void;
   initialData?: Invoice | null;
   dbClients?: any[];
   invoices: Invoice[];
-  catalogItems?: CatalogItem[]; // NEW Prop
+  catalogItems?: CatalogItem[];
 }
 
 type Step = 'TYPE_SELECT' | 'AI_INPUT' | 'SMART_EDITOR' | 'SUCCESS';
@@ -31,13 +32,14 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({
   currentUser,
   isOffline,
   onSave,
+  onSaveBatch,
   onCancel,
   onViewDetail,
   onSelectInvoiceForDetail,
   initialData,
   dbClients = [],
   invoices = [],
-  catalogItems // New Prop usage
+  catalogItems
 }) => {
   const isTemplateMode = initialData && !initialData.id;
   const isEditMode = initialData && !!initialData.id;
@@ -323,45 +325,35 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({
     const baseDate = initialData?.date || new Date().toISOString();
     const baseDueDate = draft.validityDate;
     
-    const count = isRecurrent ? Math.max(1, totalCycles) : 1;
-    
-    for (let i = 0; i < count; i++) {
-        let newId = i === 0 ? (generatedId || generateUniqueId()) : generateUniqueId();
-        
-        // Generate future dates
-        const currentInvoiceDate = i === 0 ? baseDate : new Date(addIntervalToDate(baseDate, recurrenceFreq, i)).toISOString();
-        const currentDueDate = i === 0 ? baseDueDate : addIntervalToDate(baseDueDate, recurrenceFreq, i);
+    let newId = generatedId || generateUniqueId();
 
-        const finalInvoice: Invoice = {
-          id: newId,
-          clientName: draft.clientName,
-          clientTaxId: draft.clientTaxId,
-          clientEmail: draft.clientEmail,
-          date: currentInvoiceDate,
-          items: draft.items,
-          total: totals.total,
-          discountRate: totals.effectiveRate,
-          withholdingAmount: showWithholding ? totals.finalWithholding : 0,
-          notes: i > 0 ? `${draft.notes}\n(Ciclo ${i + 1} de ${count})` : draft.notes,
-          status: isOffline ? 'PendingSync' : (isEditMode ? docStatus : targetStatus),
-          currency: draft.currency,
-          type: docType,
-          dueDate: currentDueDate,
-          timeline: i === 0 ? initialData?.timeline : [],
-          recurrence: isRecurrent ? {
-            isRecurrent: true,
-            frequency: recurrenceFreq,
-            totalCycles: count
-          } : undefined
-        };
+    const finalInvoice: Invoice = {
+      id: newId,
+      clientName: draft.clientName,
+      clientTaxId: draft.clientTaxId,
+      clientEmail: draft.clientEmail,
+      date: baseDate,
+      items: draft.items,
+      total: totals.total,
+      discountRate: totals.effectiveRate,
+      withholdingAmount: showWithholding ? totals.finalWithholding : 0,
+      notes: draft.notes,
+      status: isOffline ? 'PendingSync' : (isEditMode ? docStatus : targetStatus),
+      currency: draft.currency,
+      type: docType,
+      dueDate: baseDueDate,
+      timeline: initialData?.timeline || [],
+      recurrence: isRecurrent ? {
+        isRecurrent: true,
+        frequency: recurrenceFreq,
+        totalCycles: Math.max(1, totalCycles)
+      } : undefined
+    };
 
-        await onSave(finalInvoice);
+    setGeneratedId(newId);
+    setFinalInvoiceObj(finalInvoice);
 
-        if (i === 0) {
-            setGeneratedId(newId);
-            setFinalInvoiceObj(finalInvoice);
-        }
-    }
+    await onSave(finalInvoice);
 
     setSavedStatus(targetStatus);
     setIsSaving(false);
