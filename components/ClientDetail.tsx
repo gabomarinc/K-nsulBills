@@ -75,7 +75,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
   }, [dbClientData]);
 
   // Aggregate Client Data
-  const { clientData, activeDocs, historyDocs, stats } = useMemo(() => {
+  const { clientData, activeDocs, historyDocs, stats, recurringPlan } = useMemo(() => {
     const clientDocs = invoices.filter(i => i.clientName === clientName);
     
     // Sort: Newest first
@@ -106,6 +106,22 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
     // VIP Logic
     const isVip = totalRevenue > 5000 || clientDocs.length > 10;
 
+    let nextRecurringInvoice: Invoice | null = null;
+    let recurrenceCount = 0;
+    
+    const recurringDocs = clientDocs.filter(d => d.type === 'Invoice' && d.recurrence?.isRecurrent);
+    if (recurringDocs.length > 0) {
+      // Find the earliest pending recurring invoice
+      const pendingRecurring = recurringDocs
+        .filter(d => ['Borrador', 'Creada', 'Enviada', 'Seguimiento'].includes(d.status))
+        .sort((a, b) => new Date(a.dueDate || a.date || 0).getTime() - new Date(b.dueDate || b.date || 0).getTime());
+      
+      if (pendingRecurring.length > 0) {
+        nextRecurringInvoice = pendingRecurring[0];
+        recurrenceCount = pendingRecurring.length;
+      }
+    }
+
     // MERGE: Optimistic > DB > Invoices > Default
     return {
       clientData: {
@@ -120,6 +136,11 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
       },
       activeDocs: active,
       historyDocs: history,
+      recurringPlan: nextRecurringInvoice ? {
+        nextInvoice: nextRecurringInvoice,
+        remainingCycles: recurrenceCount,
+        frequency: nextRecurringInvoice.recurrence!.frequency
+      } : null,
       stats: {
         totalRevenue,
         totalQuoted,
@@ -549,6 +570,51 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                     </p>
                 )}
             </div>
+
+            {/* RECURRING PLAN CARD */}
+            {recurringPlan && (
+                <div className="bg-emerald-50 p-6 rounded-[2rem] border border-emerald-100 shadow-sm relative overflow-hidden group">
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="font-bold text-emerald-800 flex items-center gap-2 text-sm uppercase tracking-wider">
+                            <Clock className="w-4 h-4" /> Facturación Recurrente
+                        </h3>
+                        <span className="text-xs font-bold text-emerald-600 bg-emerald-100 px-2 py-1 rounded-lg">
+                            Activa
+                        </span>
+                    </div>
+                    <div className="space-y-3">
+                        <div className="flex justify-between items-center text-sm">
+                            <span className="text-emerald-700/70">Frecuencia:</span>
+                            <span className="font-bold text-emerald-900 capitalize">
+                                {recurringPlan.frequency === 'WEEKLY' ? 'Semanal' :
+                                 recurringPlan.frequency === 'BIWEEKLY' ? 'Quincenal' :
+                                 recurringPlan.frequency === 'MONTHLY' ? 'Mensual' :
+                                 recurringPlan.frequency === 'BIMONTHLY' ? 'Bimensual' :
+                                 recurringPlan.frequency === 'QUARTERLY' ? 'Trimestral' :
+                                 recurringPlan.frequency === 'ANNUAL' ? 'Anual' : recurringPlan.frequency}
+                            </span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                            <span className="text-emerald-700/70">Próxima Factura:</span>
+                            <span className="font-bold text-emerald-900">
+                                {new Date(recurringPlan.nextInvoice.dueDate || recurringPlan.nextInvoice.date || '').toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                            <span className="text-emerald-700/70">Monto:</span>
+                            <span className="font-bold text-emerald-900">
+                                {recurringPlan.nextInvoice.currency} ${recurringPlan.nextInvoice.total.toFixed(2)}
+                            </span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                            <span className="text-emerald-700/70">Ciclos Restantes:</span>
+                            <span className="font-bold text-emerald-900">
+                                {recurringPlan.remainingCycles}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* INTEGRATIONS CARD (New & Prominent) */}
             <div className={`p-6 rounded-[2rem] border transition-all ${clientData.stripeCustomerId ? 'bg-indigo-50/50 border-indigo-100' : 'bg-slate-50 border-slate-100'}`}>
