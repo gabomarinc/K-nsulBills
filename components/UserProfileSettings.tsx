@@ -1484,11 +1484,18 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                 <p className="text-xs text-emerald-700 leading-relaxed mb-4">
                   Hemos generado una guía técnica completa con ejemplos interactivos en cURL, Python y Next.js en tu proyecto.
                 </p>
-                <div className="bg-white/80 p-4 rounded-xl border border-emerald-100 space-y-2">
+                <div className="bg-white/80 p-4 rounded-xl border border-emerald-100 space-y-3">
                   <p className="text-[11px] text-slate-600 font-bold">Archivo Local:</p>
                   <p className="text-xs font-mono text-[#1c2938] truncate bg-slate-100 p-2 rounded-lg">
                     LEADSHUB_API_INTEGRATION.md
                   </p>
+                  <a
+                    href="/LEADSHUB_API_INTEGRATION.md"
+                    download
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm"
+                  >
+                    <Download className="w-4 h-4" /> Descargar Guía (.md)
+                  </a>
                 </div>
               </div>
 
