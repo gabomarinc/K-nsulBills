@@ -566,11 +566,13 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                        description: 'Actualizado manualmente',
                        timestamp: new Date().toISOString()
                      };
-                     onUpdateInvoice({
-                       ...invoice,
-                       status: newStatus,
-                       timeline: [...(invoice.timeline || []), event]
-                     });
+                     if (onUpdateInvoice) {
+                       onUpdateInvoice({
+                         ...invoice,
+                         status: newStatus,
+                         timeline: [...(invoice.timeline || []), event]
+                       });
+                     }
                    }
                  }}
                >
