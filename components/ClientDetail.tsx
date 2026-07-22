@@ -57,6 +57,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
   const [editRecFreq, setEditRecFreq] = useState<'WEEKLY' | 'BIWEEKLY' | 'MONTHLY' | 'BIMONTHLY' | 'QUARTERLY' | 'ANNUAL'>('MONTHLY');
   const [editRecType, setEditRecType] = useState<'Invoice' | 'Quote'>('Invoice');
   const [editRecAmount, setEditRecAmount] = useState(0);
+  const [editRecCycles, setEditRecCycles] = useState(12);
   const [isSavingRecurrence, setIsSavingRecurrence] = useState(false);
 
   // Stripe Selector States
@@ -83,7 +84,10 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
 
   // Aggregate Client Data
   const { clientData, activeDocs, historyDocs, stats, recurringPlan } = useMemo(() => {
-    const clientDocs = invoices.filter(i => i.clientName === clientName);
+    const clientDocs = invoices.filter(i => 
+      (dbClientData?.id && i.clientId === dbClientData.id) || 
+      i.clientName.trim().toLowerCase() === clientName.trim().toLowerCase()
+    );
     
     // Sort: Newest first
     clientDocs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -167,6 +171,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
       setEditRecFreq(recurringPlan.frequency);
       setEditRecType(recurringPlan.nextInvoice.type as 'Invoice' | 'Quote');
       setEditRecAmount(recurringPlan.nextInvoice.total);
+      setEditRecCycles(recurringPlan.remainingCycles);
     }
   }, [recurringPlan, isEditingRecurrence]);
 
@@ -253,7 +258,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
         d.recurrence?.isRecurrent
       );
 
-      // We update the frequency, type (Quote/Invoice), and total amount of these recurring documents
+      // We update the frequency, type (Quote/Invoice), totalCycles, and total amount of these recurring documents
       for (const doc of recurringDocs) {
         const updatedDoc: Invoice = {
           ...doc,
@@ -261,7 +266,8 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
           total: editRecAmount,
           recurrence: {
             ...doc.recurrence!,
-            frequency: editRecFreq
+            frequency: editRecFreq,
+            totalCycles: editRecCycles
           }
         };
         // Update database
@@ -681,6 +687,16 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                             type="number"
                             value={editRecAmount}
                             onChange={(e) => setEditRecAmount(parseFloat(e.target.value) || 0)}
+                            className="w-full p-2 rounded-xl border border-emerald-200 bg-white outline-none text-xs text-emerald-900 font-medium"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-emerald-700 uppercase mb-1">Ciclos / Facturas Programadas</label>
+                          <input 
+                            type="number"
+                            min="1"
+                            value={editRecCycles}
+                            onChange={(e) => setEditRecCycles(parseInt(e.target.value, 10) || 1)}
                             className="w-full p-2 rounded-xl border border-emerald-200 bg-white outline-none text-xs text-emerald-900 font-medium"
                           />
                         </div>
