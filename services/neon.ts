@@ -843,7 +843,7 @@ export const saveClientToDb = async (clientData: DbClient, userId: string, statu
               updated_at = NOW();
         `;
       await clientDb.query(upsertClient, [
-        id, userId, clientData.name, clientData.taxId, clientData.email, clientData.address, clientData.phone, clientData.tags, clientData.notes, clientData.stripeCustomerId
+        id, userId, clientData.name, clientData.taxId || null, clientData.email || null, clientData.address || null, clientData.phone || null, clientData.tags || null, clientData.notes || null, clientData.stripeCustomerId || null
       ]);
 
       // 2. Remove from PROSPECTS if it existed there (Promotion Logic)
@@ -867,7 +867,7 @@ export const saveClientToDb = async (clientData: DbClient, userId: string, statu
                   updated_at = NOW()
                 WHERE id = $6
              `;
-        await clientDb.query(updateClient, [clientData.taxId, clientData.email, clientData.address, clientData.phone, clientData.stripeCustomerId, id]);
+        await clientDb.query(updateClient, [clientData.taxId || null, clientData.email || null, clientData.address || null, clientData.phone || null, clientData.stripeCustomerId || null, id]);
       } else {
         // 2. Not a client, Insert/Update into PROSPECTS table
         const upsertProspect = `
@@ -885,7 +885,7 @@ export const saveClientToDb = async (clientData: DbClient, userId: string, statu
                   updated_at = NOW();
             `;
         await clientDb.query(upsertProspect, [
-          id, userId, clientData.name, clientData.taxId, clientData.email, clientData.address, clientData.phone, clientData.tags, clientData.notes, clientData.stripeCustomerId
+          id, userId, clientData.name, clientData.taxId || null, clientData.email || null, clientData.address || null, clientData.phone || null, clientData.tags || null, clientData.notes || null, clientData.stripeCustomerId || null
         ]);
       }
     }
