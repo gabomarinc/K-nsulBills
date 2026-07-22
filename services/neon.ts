@@ -909,6 +909,21 @@ export const saveClientToDb = async (clientData: DbClient, userId: string, statu
         }
       } catch (e) { console.error("Repair failed", e); }
     }
+    
+    // Attempt Auto-Fix for tags being an array type instead of TEXT
+    if (error.code === '22P02' && error.message.includes('array')) {
+      try {
+        const retryDb = getDbClient();
+        if (retryDb) {
+          await retryDb.connect();
+          await retryDb.query(`ALTER TABLE clients ALTER COLUMN tags TYPE TEXT USING array_to_string(tags::text[], ',');`);
+          await retryDb.query(`ALTER TABLE prospects ALTER COLUMN tags TYPE TEXT USING array_to_string(tags::text[], ',');`);
+          await retryDb.end();
+          return { success: false, error: "Schema repaired (Formato de Etiquetas). Por favor, intenta guardar nuevamente." };
+        }
+      } catch (e) { console.error("Repair failed", e); }
+    }
+
     return { success: false, error: error.message };
   }
 };
