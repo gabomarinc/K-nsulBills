@@ -8,7 +8,7 @@ import {
   CheckCircle2, XCircle, Layout, Palette, Crown, UploadCloud,
   ExternalLink, ShieldCheck, AlertCircle, MessageSquare, Database, Share2, Printer, 
   Smartphone, Wallet, Lock, AlertTriangle, Scale, Calculator, Sparkles, Coins,
-  Bell, Activity, Clock
+  Bell, Activity, Clock, Copy
 } from 'lucide-react';
 import { updateUserProfileInDb, updateUserPassword } from '../services/neon';
 import { UserProfile, BrandingConfig, FiscalConfig, PaymentIntegration } from '../types';
@@ -37,6 +37,16 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
 
   // Stripe Portal State
   const [isRedirectingToPortal, setIsRedirectingToPortal] = useState(false);
+
+  // Tab State
+  const [activeTab, setActiveTab] = useState<'profile' | 'api'>('profile');
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  const handleCopy = (text: string, field: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
 
   // Initialize fiscal config if missing
   useEffect(() => {
@@ -322,23 +332,50 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
           <h1 className="text-3xl font-bold text-[#1c2938] tracking-tight">Tu Espacio de Trabajo</h1>
           <p className="text-slate-500 mt-1 text-lg font-light">Personaliza cómo te verán tus clientes y cómo trabaja tu IA.</p>
         </div>
+        {activeTab === 'profile' && (
+          <button
+            onClick={saveChanges}
+            disabled={isSaving}
+            className={`px-8 py-3 rounded-2xl font-bold transition-all duration-300 flex items-center gap-3 shadow-lg hover:shadow-xl hover:-translate-y-1 active:translate-y-0 active:scale-95 disabled:opacity-70 disabled:transform-none ${saveStatus === 'SUCCESS' ? 'bg-green-500 text-white' : 'bg-[#1c2938] text-white hover:bg-[#27bea5]'
+              } `}
+          >
+            {isSaving ? (
+              <><Loader2 className="w-5 h-5 animate-spin" /> Guardando...</>
+            ) : saveStatus === 'SUCCESS' ? (
+              <><Check className="w-5 h-5" /> Guardado</>
+            ) : (
+              <>Guardar Cambios <Save className="w-5 h-5" /></>
+            )}
+          </button>
+        )}
+      </div>
+
+      {/* MODERN TAB SWITCHER */}
+      <div className="flex gap-6 border-b border-slate-100 pb-1">
         <button
-          onClick={saveChanges}
-          disabled={isSaving}
-          className={`px-8 py-3 rounded-2xl font-bold transition-all duration-300 flex items-center gap-3 shadow-lg hover:shadow-xl hover:-translate-y-1 active:translate-y-0 active:scale-95 disabled:opacity-70 disabled:transform-none ${saveStatus === 'SUCCESS' ? 'bg-green-500 text-white' : 'bg-[#1c2938] text-white hover:bg-[#27bea5]'
-            } `}
+          onClick={() => setActiveTab('profile')}
+          className={`pb-4 font-bold text-sm transition-all border-b-2 px-1 relative ${
+            activeTab === 'profile' ? 'border-[#27bea5] text-[#1c2938]' : 'border-transparent text-slate-400 hover:text-slate-600'
+          }`}
         >
-          {isSaving ? (
-            <><Loader2 className="w-5 h-5 animate-spin" /> Guardando...</>
-          ) : saveStatus === 'SUCCESS' ? (
-            <><Check className="w-5 h-5" /> Guardado</>
-          ) : (
-            <>Guardar Cambios <Save className="w-5 h-5" /></>
-          )}
+          General
+        </button>
+        <button
+          onClick={() => setActiveTab('api')}
+          className={`pb-4 font-bold text-sm transition-all border-b-2 px-1 relative ${
+            activeTab === 'api' ? 'border-[#27bea5] text-[#1c2938]' : 'border-transparent text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          API & Integración LeadsHUB
+          <span className="absolute -top-1 -right-4 flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#27bea5] opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-[#27bea5]"></span>
+          </span>
         </button>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+      {activeTab === 'profile' ? (
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
 
         {/* COLUMN 1: PUBLIC IMAGE & FINANCE */}
         <div className="space-y-8 xl:col-span-2">
@@ -1278,7 +1315,187 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
           </div>
 
         </div>
-      </div>
+        </div>
+      ) : (
+        /* API & INTEGRATION TAB (RICH & DYNAMIC DESIGN) */
+        <div className="space-y-8 animate-in fade-in duration-300">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            
+            {/* LEFT COLUMN: API KEY & SETTINGS */}
+            <div className="lg:col-span-2 space-y-8">
+              
+              {/* CARD: CREDENTIALS */}
+              <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-50 relative overflow-hidden group">
+                <div className="absolute top-0 left-0 w-2 h-full bg-[#27bea5] rounded-l-[2rem]"></div>
+                <h3 className="text-xl font-bold text-[#1c2938] mb-6 flex items-center gap-3">
+                  <div className="p-2 bg-slate-50 rounded-xl text-[#27bea5]">
+                    <Key className="w-6 h-6" />
+                  </div>
+                  Credenciales de API
+                </h3>
+
+                <p className="text-sm text-slate-500 mb-6 leading-relaxed">
+                  Usa estas credenciales para conectar KônsulBills con LeadsHUB o cualquier otra herramienta de tu suite. 
+                  Mantén esta clave segura; otorga acceso completo a tu facturación.
+                </p>
+
+                <div className="space-y-6">
+                  {/* API Key Field */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">API Key (x-api-key)</label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type={showKeys['api_key'] ? "text" : "password"}
+                          value={profile.apiKeys?.gemini || profile.id}
+                          readOnly
+                          className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm font-mono text-[#1c2938] pr-12 outline-none select-all"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => toggleKeyVisibility('api_key')}
+                          className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 transition-colors"
+                        >
+                          {showKeys['api_key'] ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => handleCopy(profile.apiKeys?.gemini || profile.id, 'api_key')}
+                        className="px-5 py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl font-bold transition-all flex items-center gap-2 border border-slate-200"
+                      >
+                        {copiedField === 'api_key' ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+                        {copiedField === 'api_key' ? 'Copiado' : 'Copiar'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* API Endpoint Base URL */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">URL Base del Endpoint</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={`${window.location.origin}/api/v1`}
+                        readOnly
+                        className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm font-mono text-slate-600 outline-none"
+                      />
+                      <button
+                        onClick={() => handleCopy(`${window.location.origin}/api/v1`, 'base_url')}
+                        className="px-5 py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl font-bold transition-all flex items-center gap-2 border border-slate-200"
+                      >
+                        {copiedField === 'base_url' ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+                        {copiedField === 'base_url' ? 'Copiado' : 'Copiar'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* CARD: INTEGRATION SCHEMA & AI TOOLS */}
+              <div className="bg-gradient-to-br from-[#1c2938] to-slate-900 p-8 rounded-[2rem] shadow-xl text-white relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-[#27bea5] rounded-full blur-[80px] opacity-10 -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+                
+                <h3 className="text-xl font-bold mb-4 flex items-center gap-3 relative z-10">
+                  <div className="p-2 bg-white/10 rounded-xl text-[#27bea5]">
+                    <Sparkles className="w-6 h-6" />
+                  </div>
+                  Configuración para Agentes de IA (LeadsHUB)
+                </h3>
+                <p className="text-sm text-slate-400 mb-6 max-w-xl">
+                  Copia este esquema de herramienta (Tool Schema) directamente en tu panel de agentes en **LeadsHUB** para que el Botón de IA pueda facturar de forma autónoma.
+                </p>
+
+                <div className="relative mt-4 bg-black/35 rounded-2xl p-4 border border-white/5 font-mono text-xs overflow-x-auto max-h-80 select-all">
+                  <pre className="text-slate-300">
+{`{
+  "name": "crear_factura_konsul",
+  "description": "Crea una factura o cotización para un cliente en KônsulBills",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "clientName": { "type": "string", "description": "Nombre completo del cliente o prospecto" },
+      "clientEmail": { "type": "string", "description": "Email opcional del cliente" },
+      "total": { "type": "number", "description": "Monto total del cobro" },
+      "concept": { "type": "string", "description": "Concepto o descripción del servicio prestado" },
+      "type": { "type": "string", "enum": ["Invoice", "Quote"], "description": "Invoice = Factura, Quote = Cotización" }
+    },
+    "required": ["clientName", "total", "concept"]
+  }
+}`}
+                  </pre>
+                  <button
+                    onClick={() => handleCopy(JSON.stringify({
+                      name: "crear_factura_konsul",
+                      description: "Crea una factura o cotización para un cliente en KônsulBills",
+                      parameters: {
+                        type: "object",
+                        properties: {
+                          clientName: { type: "string", description: "Nombre completo del cliente o prospecto" },
+                          clientEmail: { type: "string", description: "Email opcional del cliente" },
+                          total: { type: "number", description: "Monto total del cobro" },
+                          concept: { type: "string", description: "Concepto o descripción del servicio prestado" },
+                          type: { type: "string", enum: ["Invoice", "Quote"], description: "Invoice = Factura, Quote = Cotización" }
+                        },
+                        required: ["clientName", "total", "concept"]
+                      }
+                    }, null, 2), 'schema')}
+                    className="absolute right-3 top-3 p-2 bg-white/10 hover:bg-white/20 text-white rounded-xl transition-all border border-white/10 flex items-center gap-1.5 font-sans font-bold text-[10px]"
+                  >
+                    {copiedField === 'schema' ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copiedField === 'schema' ? 'Copiado' : 'Copiar Schema'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* RIGHT COLUMN: WEBHOOK & INSTRUCTIONS */}
+            <div className="space-y-8">
+              
+              {/* CARD: WEBHOOK SYNC */}
+              <div className="bg-white p-6 rounded-[2rem] border border-slate-50 shadow-sm">
+                <h3 className="text-md font-bold text-slate-800 flex items-center gap-2 mb-3">
+                  <Database className="w-5 h-5 text-indigo-500" /> Webhook LeadsHUB
+                </h3>
+                <p className="text-xs text-slate-500 leading-relaxed mb-4">
+                  Configura esta URL en el disparador de LeadsHUB CRM para automatizar la creación de prospectos y clientes.
+                </p>
+
+                <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex items-center justify-between gap-2 overflow-hidden mb-3">
+                  <span className="text-[10px] font-mono text-slate-500 truncate select-all">
+                    {`${window.location.origin}/api/v1/leadshub`}
+                  </span>
+                  <button
+                    onClick={() => handleCopy(`${window.location.origin}/api/v1/leadshub`, 'webhook')}
+                    className="p-1.5 hover:bg-slate-200 text-slate-400 rounded-lg transition-colors flex-shrink-0"
+                  >
+                    {copiedField === 'webhook' ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                </div>
+                <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full font-bold">
+                  Event: lead.created / closed.deal
+                </span>
+              </div>
+
+              {/* CARD: DOC LINKS */}
+              <div className="bg-emerald-50/50 p-6 rounded-[2rem] border border-emerald-100">
+                <h3 className="text-md font-bold text-emerald-800 flex items-center gap-2 mb-3">
+                  <ExternalLink className="w-5 h-5" /> Documentación
+                </h3>
+                <p className="text-xs text-emerald-700 leading-relaxed mb-4">
+                  Hemos generado una guía técnica completa con ejemplos interactivos en cURL, Python y Next.js en tu proyecto.
+                </p>
+                <div className="bg-white/80 p-4 rounded-xl border border-emerald-100 space-y-2">
+                  <p className="text-[11px] text-slate-600 font-bold">Archivo Local:</p>
+                  <p className="text-xs font-mono text-[#1c2938] truncate bg-slate-100 p-2 rounded-lg">
+                    LEADSHUB_API_INTEGRATION.md
+                  </p>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
