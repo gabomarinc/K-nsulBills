@@ -496,8 +496,11 @@ const AppContent: React.FC = () => {
           category: invoice.items[0]?.description || 'General'
         }, currentUser.id);
       } else {
-        // Improved Matching Logic: Normalize strings
-        const existingClient = dbClients.find(c => c.name.trim().toLowerCase() === cleanName.toLowerCase());
+        // Improved Matching Logic: Use explicit clientId if available, else normalize strings
+        const existingClient = invoice.clientId 
+          ? dbClients.find(c => c.id === invoice.clientId)
+          : dbClients.find(c => c.name.trim().toLowerCase() === cleanName.toLowerCase());
+          
         let clientStatus: 'CLIENT' | 'PROSPECT' = 'PROSPECT';
 
         if (invoice.type === 'Invoice') {
@@ -510,7 +513,9 @@ const AppContent: React.FC = () => {
 
         // LOGIC CHANGE: Only save if new OR promoting Prospect -> Client
         const isPromotion = existingClient?.status === 'PROSPECT' && clientStatus === 'CLIENT';
-        const shouldSaveClient = !existingClient || isPromotion;
+        
+        // Differentiate: If created from an existing profile (has clientId), only save if promoting.
+        const shouldSaveClient = invoice.clientId ? isPromotion : (!existingClient || isPromotion);
 
         if (shouldSaveClient) {
           const saveResult = await saveClientToDb({
@@ -525,7 +530,7 @@ const AppContent: React.FC = () => {
           }, currentUser.id, clientStatus);
 
           if (!saveResult.success) {
-            alert.addToast('error', 'Error Base de Datos', 'No se pudo guardar el cliente en el directorio.');
+            alert.addToast('error', 'Error Base de Datos', saveResult.error || 'No se pudo guardar el cliente en el directorio.');
           } else {
             const updatedClients = await fetchClientsFromDb(currentUser.id);
             setDbClients(updatedClients);
@@ -738,6 +743,7 @@ const AppContent: React.FC = () => {
   const handleCreateDocumentForClient = (client: DbClient, type: 'Invoice' | 'Quote') => {
     const templateDoc: Invoice = {
       id: '',
+      clientId: client.id,
       clientName: client.name,
       clientTaxId: client.taxId,
       clientEmail: client.email,

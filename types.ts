@@ -248,6 +248,7 @@ export interface InvoiceRecurrence {
 export interface Invoice {
   id: string;
   userId?: string; // LINK TO USER PROFILE
+  clientId?: string; // NEW: Link to specific DB client
   clientName: string;
   clientTaxId?: string;
   clientEmail?: string; // Added client email for sending
