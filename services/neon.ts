@@ -837,10 +837,10 @@ export const saveClientToDb = async (clientData: DbClient, userId: string, statu
               tax_id = COALESCE(EXCLUDED.tax_id, clients.tax_id),
               email = COALESCE(EXCLUDED.email, clients.email),
               address = COALESCE(EXCLUDED.address, clients.address),
-              phone = COALESCE(EXCLUDED.phone, clients.phone),
-              tags = COALESCE(EXCLUDED.tags, clients.tags),
-              notes = COALESCE(EXCLUDED.notes, clients.notes),
-              stripe_customer_id = COALESCE(EXCLUDED.stripe_customer_id, clients.stripe_customer_id),
+              phone = EXCLUDED.phone,
+              tags = EXCLUDED.tags,
+              notes = EXCLUDED.notes,
+              stripe_customer_id = EXCLUDED.stripe_customer_id,
               updated_at = NOW();
         `;
       await clientDb.query(upsertClient, [
@@ -893,6 +893,15 @@ export const saveClientToDb = async (clientData: DbClient, userId: string, statu
 
     await clientDb.end();
     logAuditAction(userId, 'SAVE_CLIENT', { name: clientData.name, status });
+    
+    // Trigger Suite automation trigger in background
+    triggerSuiteAutomation('bills', 'Nuevo Cliente o Prospecto', userId, {
+      'Nombre del Cliente': clientData.name,
+      'Email del Cliente': clientData.email || '',
+      'Teléfono': clientData.phone || '',
+      'Fecha de Creación': new Date().toISOString()
+    });
+
     return { success: true };
 
   } catch (error: any) {
@@ -1075,6 +1084,18 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
     }
 
     await client.end();
+    
+    // Trigger Suite automation trigger (Document created)
+    if (invoice.type !== 'Expense') {
+      triggerSuiteAutomation('bills', 'Documento Creado (Factura/Cotización)', invoice.userId || '', {
+        'Nombre del Cliente': invoice.clientName,
+        'Email del Cliente': invoice.clientEmail || '',
+        'Monto Total': invoice.total.toString(),
+        'Concepto de Venta': (invoice.items && invoice.items[0]?.description) || 'Venta de servicios',
+        'Fecha de Creación': invoice.date || new Date().toISOString()
+      });
+    }
+
     return true;
   } catch (error) {
     console.error("Neon DB Save Invoice Error:", error);
@@ -1177,4 +1198,26 @@ export const getYappyConfigByApiKey = async (apiKey: string): Promise<PaymentInt
     console.error("Neon Get Yappy Config Error:", error);
     return null;
   }
+};
+
+// Trigger Suite automation helper
+const triggerSuiteAutomation = (appCode: string, triggerName: string, userId: string, data: any) => {
+  // @ts-ignore
+  const suiteUrl = (typeof process !== 'undefined' && process.env?.SUITE_URL) || 
+                   // @ts-ignore
+                   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUITE_URL) ||
+                   'https://suite.konsul.digital';
+  
+  fetch(`${suiteUrl}/api/v1/automations/trigger`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      appCode,
+      triggerName,
+      userId,
+      data
+    })
+  }).catch(err => console.error("Error triggering automation:", err));
 };
