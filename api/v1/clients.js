@@ -142,6 +142,26 @@ export default async function handler(req, res) {
 
       await client.end();
 
+      // Trigger Suite automation trigger in background
+      const suiteUrl = process.env.SUITE_URL || 'https://suite.konsul.digital';
+      fetch(`${suiteUrl}/api/v1/automations/trigger`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          appCode: 'bills',
+          triggerName: 'Nuevo Cliente o Prospecto',
+          userId: userId,
+          data: {
+            'Nombre del Cliente': name,
+            'Email del Cliente': body.email || '',
+            'Teléfono': body.phone || '',
+            'Fecha de Creación': new Date().toISOString()
+          }
+        })
+      }).catch(err => console.error("Error triggering clients automation:", err));
+
       return res.status(201).json({
         success: true,
         message: `${status === 'CLIENT' ? 'Cliente' : 'Prospecto'} guardado exitosamente`,

@@ -193,6 +193,28 @@ export default async function handler(req, res) {
       }
 
       await client.end();
+
+      // Trigger Suite automation trigger in background
+      const suiteUrl = process.env.SUITE_URL || 'https://suite.konsul.digital';
+      fetch(`${suiteUrl}/api/v1/automations/trigger`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          appCode: 'bills',
+          triggerName: 'Documento Creado (Factura/Cotización)',
+          userId: userId,
+          data: {
+            'Nombre del Cliente': clientName,
+            'Email del Cliente': invoiceData.clientEmail || '',
+            'Monto Total': String(totalAmount),
+            'Concepto de Venta': body.concept || body.description || (items[0]?.description) || 'Servicios',
+            'Fecha de Creación': docDate
+          }
+        })
+      }).catch(err => console.error("Error triggering invoices automation:", err));
+
       return res.status(201).json({
         success: true,
         message: `${type === 'Invoice' ? 'Factura' : 'Cotización'} creada exitosamente`,
