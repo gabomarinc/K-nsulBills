@@ -407,12 +407,23 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                   <h3 className="font-bold text-[#1c2938] flex items-center gap-2">
                      <Building2 className="w-5 h-5 text-slate-400" /> Perfil
                   </h3>
-                  <button 
-                    onClick={() => setIsEditingProfile(!isEditingProfile)}
-                    className={`p-2 rounded-xl transition-all ${isEditingProfile ? 'bg-slate-100 text-[#1c2938]' : 'text-slate-400 hover:text-[#27bea5] hover:bg-slate-50'}`}
-                  >
-                     {isEditingProfile ? <X className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
-                  </button>
+                  <div className="flex items-center gap-2">
+                      {onDeleteClient && dbClientData?.id && (
+                          <button 
+                            onClick={() => onDeleteClient(dbClientData.id as string, clientName)}
+                            className="p-2 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
+                            title="Eliminar Cliente"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                      )}
+                      <button 
+                        onClick={() => setIsEditingProfile(!isEditingProfile)}
+                        className={`p-2 rounded-xl transition-all ${isEditingProfile ? 'bg-slate-100 text-[#1c2938]' : 'text-slate-400 hover:text-[#27bea5] hover:bg-slate-50'}`}
+                      >
+                         {isEditingProfile ? <X className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
+                      </button>
+                  </div>
                </div>
 
                <div className="space-y-5">
@@ -508,14 +519,6 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                         >
                            <Save className="w-4 h-4" /> Guardar Perfil
                         </button>
-                        {onDeleteClient && dbClientData?.id && (
-                           <button 
-                             onClick={() => onDeleteClient(dbClientData.id as string, clientName)}
-                             className="w-full py-3 bg-red-50 text-red-600 border border-red-100 rounded-xl font-bold text-sm hover:bg-red-100 transition-colors flex items-center justify-center gap-2"
-                           >
-                              <Trash2 className="w-4 h-4" /> Eliminar Cliente
-                           </button>
-                        )}
                      </div>
                   )}
                </div>
