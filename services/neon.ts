@@ -3,6 +3,30 @@ import { Client } from '@neondatabase/serverless';
 import { Invoice, UserProfile, DbClient, DbProvider, CatalogItem, PaymentIntegration } from '../types';
 import bcrypt from 'bcryptjs';
 
+// Monkey-patch Client.connect to support automatic retries when database is waking up
+const originalConnect = Client.prototype.connect;
+Client.prototype.connect = async function (this: any, ...args: any[]) {
+  const maxRetries = 4;
+  const delayMs = 1500;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await originalConnect.apply(this, args);
+    } catch (err: any) {
+      const errMsg = err?.message || '';
+      const isConnectionError = errMsg.includes('terminated') || 
+                                errMsg.includes('WebSocket') || 
+                                errMsg.includes('handshake') ||
+                                err.code === 'ECONNREFUSED';
+      if (isConnectionError && i < maxRetries - 1) {
+        console.warn(`[Neon DB Connect] Database is suspended/waking up. Retrying in ${delayMs}ms (Attempt ${i + 1}/${maxRetries})...`);
+        await new Promise(res => setTimeout(res, delayMs));
+        continue;
+      }
+      throw err;
+    }
+  }
+};
+
 /**
  * NEON DATABASE CONFIGURATION
  */
