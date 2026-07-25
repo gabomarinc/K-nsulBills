@@ -1201,12 +1201,20 @@ export const getYappyConfigByApiKey = async (apiKey: string): Promise<PaymentInt
 };
 
 // Trigger Suite automation helper
-const triggerSuiteAutomation = (appCode: string, triggerName: string, userId: string, data: any) => {
-  // @ts-ignore
-  const suiteUrl = (typeof process !== 'undefined' && process.env?.SUITE_URL) || 
-                   // @ts-ignore
-                   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUITE_URL) ||
-                   'https://suite.konsul.digital';
+function triggerSuiteAutomation(appCode: string, triggerName: string, userId: string, data: any) {
+  let suiteUrl = 'https://suite.konsul.digital';
+  
+  try {
+    // @ts-ignore
+    if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_SUITE_URL) {
+      // @ts-ignore
+      suiteUrl = import.meta.env.VITE_SUITE_URL;
+    } else if (typeof process !== 'undefined' && process.env && process.env.SUITE_URL) {
+      suiteUrl = process.env.SUITE_URL;
+    }
+  } catch (e) {
+    // Fallback to default
+  }
   
   fetch(`${suiteUrl}/api/v1/automations/trigger`, {
     method: 'POST',
@@ -1220,4 +1228,4 @@ const triggerSuiteAutomation = (appCode: string, triggerName: string, userId: st
       data
     })
   }).catch(err => console.error("Error triggering automation:", err));
-};
+}
