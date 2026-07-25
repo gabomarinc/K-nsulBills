@@ -97,6 +97,60 @@ export default async function handler(req, res) {
     if (req.method === 'POST') {
       const body = req.body || {};
 
+      if (body.action === 'add_tag' || body.action === 'add_note') {
+        const email = body.email;
+        if (!email) {
+          await client.end();
+          return res.status(400).json({ error: 'Email is required for targeting tag/note updates' });
+        }
+
+        let targetTable = 'clients';
+        let existingUser = await client.query(
+          `SELECT id, tags, notes FROM clients WHERE email = $1 AND user_id = $2 LIMIT 1`,
+          [email, userId]
+        );
+        
+        if (existingUser.rows.length === 0) {
+          existingUser = await client.query(
+            `SELECT id, tags, notes FROM prospects WHERE email = $1 AND user_id = $2 LIMIT 1`,
+            [email, userId]
+          );
+          targetTable = 'prospects';
+        }
+
+        if (existingUser.rows.length === 0) {
+          await client.end();
+          return res.status(404).json({ error: `Client/Prospect with email ${email} not found` });
+        }
+
+        const dbId = existingUser.rows[0].id;
+        if (body.action === 'add_tag') {
+          const newTagsList = body.tags ? body.tags.split(',').map(t => t.trim()) : [];
+          const currentTags = existingUser.rows[0].tags ? existingUser.rows[0].tags.split(',').map(t => t.trim()) : [];
+          const mergedTags = Array.from(new Set([...currentTags, ...newTagsList])).join(', ');
+          
+          await client.query(
+            `UPDATE ${targetTable} SET tags = $1, updated_at = NOW() WHERE id = $2`,
+            [mergedTags, dbId]
+          );
+          
+          await client.end();
+          return res.status(200).json({ success: true, message: 'Tags updated successfully', tags: mergedTags });
+        } else {
+          const newNote = body.notes || '';
+          const currentNotes = existingUser.rows[0].notes || '';
+          const mergedNotes = currentNotes ? `${currentNotes}\n${newNote}` : newNote;
+          
+          await client.query(
+            `UPDATE ${targetTable} SET notes = $1, updated_at = NOW() WHERE id = $2`,
+            [mergedNotes, dbId]
+          );
+          
+          await client.end();
+          return res.status(200).json({ success: true, message: 'Notes updated successfully', notes: mergedNotes });
+        }
+      }
+
       if (!body.name) {
         await client.end();
         return res.status(400).json({ error: 'Client name is required' });

@@ -93,6 +93,94 @@ export default async function handler(req, res) {
     if (req.method === 'POST') {
       const body = req.body || {};
 
+      if (body.action === 'remind') {
+        const id = body.id || req.query.id;
+        if (!id) {
+          await client.end();
+          return res.status(400).json({ error: 'Invoice ID is required' });
+        }
+
+        const { rows } = await client.query(
+          `SELECT * FROM invoices WHERE id = $1 AND (user_id = $2 OR data->>'userId' = $2)`,
+          [id, userId]
+        );
+
+        if (rows.length === 0) {
+          await client.end();
+          return res.status(404).json({ error: 'Invoice not found' });
+        }
+
+        const invoice = rows[0].data || rows[0];
+        const clientEmail = invoice.clientEmail || invoice.email;
+        if (!clientEmail) {
+          await client.end();
+          return res.status(400).json({ error: 'Client email is missing in the invoice details' });
+        }
+
+        const resendApiKey = process.env.RESEND_API_KEY;
+        if (!resendApiKey) {
+          await client.end();
+          return res.status(500).json({ error: 'Mail sending is not configured (missing RESEND_API_KEY)' });
+        }
+
+        try {
+          const emailSubject = `Recordatorio de Pago: Factura ${invoice.id}`;
+          const emailHtml = `
+            <h3>Estimado/a ${invoice.clientName || 'Cliente'},</h3>
+            <p>Le escribimos para recordarle que tiene un saldo pendiente de pago por la factura <strong>${invoice.id}</strong>.</p>
+            <ul>
+              <li><strong>Monto Total:</strong> ${invoice.total} ${invoice.currency || 'USD'}</li>
+              <li><strong>Fecha de Vencimiento:</strong> ${invoice.dueDate || invoice.date}</li>
+            </ul>
+            <p>Por favor, proceda con el pago a la brevedad. Si ya ha realizado el pago, desestime este correo.</p>
+            <p>Atentamente,<br/>Kônsul Bills</p>
+          `;
+
+          const emailRes = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${resendApiKey}`
+            },
+            body: JSON.stringify({
+              from: 'Kônsul Bills <onboarding@resend.dev>',
+              to: clientEmail,
+              subject: emailSubject,
+              html: emailHtml
+            })
+          });
+
+          const emailData = await emailRes.json();
+
+          // Log in timeline
+          const updatedTimeline = [
+            ...(invoice.timeline || []),
+            {
+              id: Date.now().toString(),
+              type: 'EMAIL_REMINDER_SENT',
+              title: `Recordatorio de pago enviado a ${clientEmail}`,
+              timestamp: new Date().toISOString()
+            }
+          ];
+
+          const updatedInvoiceData = {
+            ...invoice,
+            timeline: updatedTimeline
+          };
+
+          await client.query(
+            `UPDATE invoices SET data = $1 WHERE id = $2`,
+            [JSON.stringify(updatedInvoiceData), id]
+          );
+
+          await client.end();
+          return res.status(200).json({ success: true, message: 'Email reminder sent successfully', data: emailData });
+        } catch (e) {
+          await client.end();
+          return res.status(500).json({ error: 'Error sending email reminder', details: e.message });
+        }
+      }
+
       if (!body.clientName && !body.client_name) {
         await client.end();
         return res.status(400).json({ error: 'clientName is required' });
