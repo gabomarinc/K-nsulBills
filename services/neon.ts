@@ -5,12 +5,12 @@ import bcrypt from 'bcryptjs';
 
 // Monkey-patch Client.connect to support automatic retries when database is waking up
 const originalConnect = Client.prototype.connect;
-Client.prototype.connect = async function (this: any, ...args: any[]) {
+Client.prototype.connect = async function (this: any, callback?: any) {
   const maxRetries = 4;
   const delayMs = 1500;
   for (let i = 0; i < maxRetries; i++) {
     try {
-      return await originalConnect.apply(this, args);
+      return await originalConnect.call(this, callback);
     } catch (err: any) {
       const errMsg = err?.message || '';
       const isConnectionError = errMsg.includes('terminated') || 
