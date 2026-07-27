@@ -140,7 +140,7 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
   const handleApiKeyChange = (provider: 'gemini' | 'openai', value: string) => {
     setProfile(prev => ({
       ...prev,
-      apiKeys: { ...prev.apiKeys, [provider]: value }
+      apiKeys: { ...prev.apiKeys, [provider]: value.trim() }
     }));
     setTestStatus(prev => ({ ...prev, [provider]: 'IDLE' }));
   };

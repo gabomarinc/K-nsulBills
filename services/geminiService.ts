@@ -28,7 +28,7 @@ const withTimeout = <T>(promise: Promise<T>, timeoutMs: number = TIMEOUT_MS): Pr
 const getAiClient = (keys?: AiKeys, allowSystemFallback: boolean = false) => {
     // Priority 1: User's provided key
     if (keys?.gemini) {
-        return new GoogleGenAI({ apiKey: keys.gemini });
+        return new GoogleGenAI({ apiKey: keys.gemini.trim() });
     }
 
     // Priority 2: System Key (ONLY if explicitly allowed)
@@ -38,7 +38,7 @@ const getAiClient = (keys?: AiKeys, allowSystemFallback: boolean = false) => {
             systemKey = (import.meta as any).env.VITE_API_KEY;
         }
         if (systemKey) {
-            return new GoogleGenAI({ apiKey: systemKey });
+            return new GoogleGenAI({ apiKey: systemKey.trim() });
         }
     }
 
@@ -230,7 +230,7 @@ export const generateEmailTemplate = async (tone: 'Formal' | 'Casual', keys?: Ai
 export const testAiConnection = async (provider: 'gemini' | 'openai', key: string): Promise<boolean> => {
     if (provider === 'gemini') {
         try {
-            const ai = new GoogleGenAI({ apiKey: key });
+            const ai = new GoogleGenAI({ apiKey: key.trim() });
             await withTimeout(ai.models.generateContent({ model: GEMINI_MODEL_ID, contents: "Hi" }), 5000);
             return true;
         } catch { return false; }
