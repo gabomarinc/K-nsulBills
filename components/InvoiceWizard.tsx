@@ -77,6 +77,7 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({
 
   const [aiRecommendation, setAiRecommendation] = useState<{ rate: number, text: string } | null>(null);
   const [isGettingRec, setIsGettingRec] = useState(false);
+  const [payViaGateway, setPayViaGateway] = useState(initialData?.payViaGateway ?? (currentUser.paymentIntegration?.gatewayFeeApplyAll && currentUser.paymentIntegration?.enabled ? true : false));
 
   const [draft, setDraft] = useState<{
     clientName: string;
@@ -347,7 +348,8 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({
         isRecurrent: true,
         frequency: recurrenceFreq,
         totalCycles: Math.max(1, totalCycles)
-      } : undefined
+      } : undefined,
+      payViaGateway
     };
 
     setGeneratedId(newId);
@@ -843,6 +845,21 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({
                         </div>
                       )}
                     </>
+                  )}
+
+                  {/* PAYMENT GATEWAY OPTION */}
+                  {docType === 'Invoice' && currentUser.paymentIntegration?.enabled && (
+                    <div className="flex justify-between items-center text-slate-300 pt-2 border-t border-white/5 mt-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs">Cobrar por Pasarela de Pago</span>
+                        <button onClick={() => setPayViaGateway(!payViaGateway)} className={`w-8 h-4 rounded-full relative transition-colors ${payViaGateway ? 'bg-[#27bea5]' : 'bg-slate-600'}`}>
+                          <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform`} style={{ left: payViaGateway ? 'calc(100% - 14px)' : '2px' }}></div>
+                        </button>
+                      </div>
+                      {payViaGateway && currentUser.paymentIntegration?.gatewayFeeRate && (
+                        <span className="text-[10px] text-slate-400">-{currentUser.paymentIntegration.gatewayFeeRate}%</span>
+                      )}
+                    </div>
                   )}
 
                 </div>

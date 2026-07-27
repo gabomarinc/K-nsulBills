@@ -105,6 +105,9 @@ export interface PaymentIntegration {
   yappySeed?: string;
   // Stripe
   stripeSecretKey?: string;
+  // Fee Config
+  gatewayFeeRate?: number; // e.g., 3.5
+  gatewayFeeApplyAll?: boolean; // true = apply to all invoices, false = individual select
 }
 
 // New: Configuration for the Hourly Rate Calculator
@@ -281,6 +284,8 @@ export interface Invoice {
 
   // Recurrence
   recurrence?: InvoiceRecurrence;
+  // Payment gateway fee flag
+  payViaGateway?: boolean;
 }
 
 export interface ParsedInvoiceData {

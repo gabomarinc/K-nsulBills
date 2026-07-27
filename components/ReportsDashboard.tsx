@@ -323,6 +323,15 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
         }
 
         if (collected > 0) {
+          const gatewayEnabled = currentUser?.paymentIntegration?.enabled;
+          const applyAll = currentUser?.paymentIntegration?.gatewayFeeApplyAll;
+          const feeRate = currentUser?.paymentIntegration?.gatewayFeeRate || 0;
+          const payViaGateway = inv.payViaGateway ?? (applyAll && gatewayEnabled ? true : false);
+
+          if (payViaGateway && feeRate > 0) {
+            collected = collected * (1 - feeRate / 100);
+          }
+
           entry.ingresos += collected;
           totalRevenue += collected;
         }
@@ -400,6 +409,18 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
             const occMonth = occDate.getMonth();
             const occYear = occDate.getFullYear();
             
+            let effectiveTotal = inv.total;
+            if (inv.type === 'Invoice') {
+              const gatewayEnabled = currentUser?.paymentIntegration?.enabled;
+              const applyAll = currentUser?.paymentIntegration?.gatewayFeeApplyAll;
+              const feeRate = currentUser?.paymentIntegration?.gatewayFeeRate || 0;
+              const payViaGateway = inv.payViaGateway ?? (applyAll && gatewayEnabled ? true : false);
+
+              if (payViaGateway && feeRate > 0) {
+                effectiveTotal = effectiveTotal * (1 - feeRate / 100);
+              }
+            }
+
             // Check if it already exists in projectedTimeline
             let match = projectedTimeline.find(m => m._date.getMonth() === occMonth && m._date.getFullYear() === occYear);
             if (!match) {
@@ -408,15 +429,15 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
               const realMatch = realMonthlyData.find(m => m._date.getMonth() === occMonth && m._date.getFullYear() === occYear);
               if (realMatch) {
                 realMatch.proyectado = true;
-                if (inv.type === 'Invoice') realMatch.ingresos += inv.total;
-                else if (inv.type === 'Expense') realMatch.gastos += inv.total;
+                if (inv.type === 'Invoice') realMatch.ingresos += effectiveTotal;
+                else if (inv.type === 'Expense') realMatch.gastos += effectiveTotal;
               } else {
                 const monthsDiff = (occYear - now.getFullYear()) * 12 + (occMonth - now.getMonth());
                 if (monthsDiff > 0 && monthsDiff <= 6) {
                   projectedTimeline.push({
                     name: key,
-                    ingresos: inv.type === 'Invoice' ? inv.total : 0,
-                    gastos: inv.type === 'Expense' ? inv.total : 0,
+                    ingresos: inv.type === 'Invoice' ? effectiveTotal : 0,
+                    gastos: inv.type === 'Expense' ? effectiveTotal : 0,
                     _date: new Date(occYear, occMonth, 1),
                     proyectado: true
                   });
@@ -424,9 +445,9 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
               }
             } else {
               if (inv.type === 'Invoice') {
-                match.ingresos += inv.total;
+                match.ingresos += effectiveTotal;
               } else if (inv.type === 'Expense') {
-                match.gastos += inv.total;
+                match.gastos += effectiveTotal;
               }
             }
           }

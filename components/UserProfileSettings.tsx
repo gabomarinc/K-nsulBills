@@ -167,7 +167,7 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
     });
   };
 
-  const handlePaymentConfigChange = (field: keyof PaymentIntegration, value: string) => {
+  const handlePaymentConfigChange = (field: keyof PaymentIntegration, value: any) => {
     setProfile(prev => {
       const currentInt = prev.paymentIntegration || { provider: 'PAGUELOFACIL', enabled: true };
       const updatedInt = { ...currentInt, [field]: value };
@@ -917,6 +917,42 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                           </div>
                         </div>
                       )}
+
+                      {/* GATEWAY FEE CONFIGURATION (General for any enabled provider) */}
+                      <div className="pt-4 border-t border-white/10 mt-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+                        <h4 className="text-xs font-bold text-[#27bea5] uppercase tracking-wider">Configuración de Comisión de Pasarela</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                              Comisión por Transacción (%)
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              max="100"
+                              value={profile.paymentIntegration?.gatewayFeeRate ?? 0}
+                              onChange={(e) => handlePaymentConfigChange('gatewayFeeRate', parseFloat(e.target.value) || 0)}
+                              className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-[#27bea5] transition-colors"
+                              placeholder="0.00"
+                            />
+                          </div>
+                          <div className="space-y-2 flex flex-col justify-end pb-1">
+                            <label className="flex items-center gap-3 cursor-pointer group">
+                              <input
+                                type="checkbox"
+                                checked={profile.paymentIntegration?.gatewayFeeApplyAll ?? false}
+                                onChange={(e) => handlePaymentConfigChange('gatewayFeeApplyAll', e.target.checked)}
+                                className="w-5 h-5 text-[#27bea5] bg-black/20 border border-white/10 rounded focus:ring-0"
+                              />
+                              <div className="flex-1">
+                                <span className="block font-bold text-slate-300 text-xs">Aplicar a todas las facturas</span>
+                                <span className="text-[10px] text-slate-400">Si se desactiva, podrás marcar individualmente qué facturas pagan comisión</span>
+                              </div>
+                            </label>
+                          </div>
+                        </div>
+                      </div>
 
                     </div>
                   )}
