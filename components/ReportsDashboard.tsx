@@ -378,6 +378,17 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
 
     const projectedTimeline: { name: string, ingresos: number, gastos: number, _date: Date, proyectado: boolean }[] = [];
 
+    // Debug logging to inspect recurrent documents in the console
+    const recurrentDocs = invoices.filter(i => i.recurrence?.isRecurrent);
+    console.log("[Cash Flow Debug] Active recurrent documents in user account:", recurrentDocs.map(d => ({
+      id: d.id,
+      client: d.clientName,
+      total: d.total,
+      type: d.type,
+      date: d.date,
+      recurrence: d.recurrence
+    })));
+
     // Project recurrent invoices and expenses onto future months
     invoices.forEach(inv => {
       if (inv.recurrence && inv.recurrence.isRecurrent && inv.recurrence.frequency && inv.recurrence.totalCycles) {
@@ -393,7 +404,8 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
             let match = projectedTimeline.find(m => m._date.getMonth() === occMonth && m._date.getFullYear() === occYear);
             if (!match) {
               const key = occDate.toLocaleDateString('es-ES', { month: 'short', year: '2-digit' });
-              const realMatch = realMonthlyData.find(m => m.name === key);
+              // Use month/year comparison for realMonthlyData matching to be robust against string format differences
+              const realMatch = realMonthlyData.find(m => m._date.getMonth() === occMonth && m._date.getFullYear() === occYear);
               if (realMatch) {
                 realMatch.proyectado = true;
                 if (inv.type === 'Invoice') realMatch.ingresos += inv.total;
@@ -426,8 +438,8 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
     for (let i = 1; i <= 6; i++) {
       const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
       const key = d.toLocaleDateString('es-ES', { month: 'short', year: '2-digit' });
-      const existsInReal = realMonthlyData.some(m => m.name === key);
-      const existsInProj = projectedTimeline.some(m => m.name === key);
+      const existsInReal = realMonthlyData.some(m => m._date.getMonth() === d.getMonth() && m._date.getFullYear() === d.getFullYear());
+      const existsInProj = projectedTimeline.some(m => m._date.getMonth() === d.getMonth() && m._date.getFullYear() === d.getFullYear());
       if (!existsInReal && !existsInProj) {
         projectedTimeline.push({
           name: key,
