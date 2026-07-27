@@ -19,6 +19,27 @@ interface ExpenseTrackerProps {
    onUpdateProfile?: (profile: UserProfile) => Promise<void>;
 }
 
+export const calculateMonthlyRecurrenceCost = (doc: Invoice): number => {
+  if (!doc.recurrence || !doc.recurrence.isRecurrent) return 0;
+  const total = doc.total;
+  switch (doc.recurrence.frequency) {
+    case 'WEEKLY':
+      return total * (52 / 12);
+    case 'BIWEEKLY':
+      return total * (26 / 12);
+    case 'MONTHLY':
+      return total;
+    case 'BIMONTHLY':
+      return total / 2;
+    case 'QUARTERLY':
+      return total / 3;
+    case 'ANNUAL':
+      return total / 12;
+    default:
+      return 0;
+  }
+};
+
 interface ProviderStats {
    name: string;
    totalSpend: number;
@@ -32,6 +53,14 @@ interface ProviderStats {
 const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ invoices, currencySymbol, onCreateExpense, onEditExpense, currentProfile, onUpdateProfile }) => {
    const [calculatorMode, setCalculatorMode] = useState(false);
    const [activeTab, setActiveTab] = useState<'TRANSACTIONS' | 'PROVIDERS'>('TRANSACTIONS');
+
+   // Calculate recurrent expenses total
+   const recurrentExpensesMonthlyTotal = useMemo(() => {
+      const expenses = invoices.filter(i => i.type === 'Expense');
+      return expenses
+         .filter(e => e.recurrence?.isRecurrent)
+         .reduce((acc, curr) => acc + calculateMonthlyRecurrenceCost(curr), 0);
+   }, [invoices]);
 
    // Calculator State (Initialize from profile if available)
    const [targetIncome, setTargetIncome] = useState(currentProfile?.hourlyRateConfig?.targetIncome || 3000);
@@ -115,10 +144,10 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ invoices, currencySymbo
 
    // --- CALCULATOR LOGIC ---
    const calculatedHourlyRate = useMemo(() => {
-      const totalNeeded = targetIncome + monthlyCosts;
+      const totalNeeded = targetIncome + monthlyCosts + recurrentExpensesMonthlyTotal;
       const monthlyHours = billableHours * 4;
       return monthlyHours > 0 ? totalNeeded / monthlyHours : 0;
-   }, [targetIncome, monthlyCosts, billableHours]);
+   }, [targetIncome, monthlyCosts, recurrentExpensesMonthlyTotal, billableHours]);
 
    // --- HANDLER: SAVE RATE ---
    const handleSaveRate = async () => {
@@ -287,7 +316,9 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ invoices, currencySymbo
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                            <div className="space-y-2">
-                              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Costos Fijos</label>
+                              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">
+                                 {recurrentExpensesMonthlyTotal > 0 ? 'Otros Costos Fijos' : 'Costos Fijos'}
+                              </label>
                               <div className="relative group">
                                  <TrendingDown className="absolute left-4 top-4 w-5 h-5 text-rose-400 group-focus-within:text-rose-500 transition-colors" />
                                  <input
@@ -297,6 +328,11 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ invoices, currencySymbo
                                     className="w-full pl-12 p-4 rounded-2xl bg-white/5 border border-white/10 focus:bg-white/10 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 outline-none text-xl font-bold text-white transition-all"
                                  />
                               </div>
+                              {recurrentExpensesMonthlyTotal > 0 && (
+                                 <p className="text-[10px] text-slate-400 font-medium ml-1">
+                                    + {currencySymbol}{recurrentExpensesMonthlyTotal.toFixed(0)} recurrentes (Total: {currencySymbol}{(monthlyCosts + recurrentExpensesMonthlyTotal).toFixed(0)})
+                                 </p>
+                              )}
                            </div>
 
                            <div className="space-y-2">
@@ -330,7 +366,7 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ invoices, currencySymbo
                         </h2>
                         <div className="bg-slate-100 rounded-xl p-4 mt-2 mb-6">
                            <p className="text-sm text-slate-500 leading-relaxed max-w-xs mx-auto">
-                              Cubre tus costos de <strong>{currencySymbol}{monthlyCosts}</strong> y alcanza tu meta de <strong>{currencySymbol}{targetIncome}</strong>.
+                              Cubre tus costos de <strong>{currencySymbol}{(monthlyCosts + recurrentExpensesMonthlyTotal).toFixed(0)}</strong> y alcanza tu meta de <strong>{currencySymbol}{targetIncome}</strong>.
                            </p>
                         </div>
 

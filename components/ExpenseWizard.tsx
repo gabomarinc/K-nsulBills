@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { UploadCloud, Loader2, ArrowLeft, Check, X, Camera, FileText } from 'lucide-react';
-import { UserProfile, Invoice } from '../types';
+import { UploadCloud, Loader2, ArrowLeft, Check, X, Camera, FileText, Clock } from 'lucide-react';
+import { UserProfile, Invoice, RecurrenceFrequency } from '../types';
 import { parseExpenseImage, AI_ERROR_BLOCKED } from '../services/geminiService';
 
 interface ExpenseWizardProps {
@@ -37,6 +37,10 @@ const ExpenseWizard: React.FC<ExpenseWizardProps> = ({ currentUser, onSave, onCa
         isDeductible: initialData ? initialData.expenseDeductibility !== 'NONE' : true,
         isValidDoc: initialData ? (initialData.isValidFiscalDoc ?? true) : true
     });
+
+    const [isRecurrent, setIsRecurrent] = useState(initialData?.recurrence?.isRecurrent || false);
+    const [recurrenceFreq, setRecurrenceFreq] = useState<RecurrenceFrequency>(initialData?.recurrence?.frequency || 'MONTHLY');
+    const [totalCycles, setTotalCycles] = useState(initialData?.recurrence?.totalCycles || 12);
 
     const hasAiAccess = !!currentUser.apiKeys?.gemini || !!currentUser.apiKeys?.openai;
 
@@ -120,7 +124,12 @@ const ExpenseWizard: React.FC<ExpenseWizardProps> = ({ currentUser, onSave, onCa
                 price: expenseData.amount,
                 tax: 0
             }],
-            receiptUrl: uploadedImage || undefined
+            receiptUrl: uploadedImage || undefined,
+            recurrence: isRecurrent ? {
+                isRecurrent: true,
+                frequency: recurrenceFreq,
+                totalCycles: totalCycles
+            } : undefined
         };
         onSave(newExpense);
     };
@@ -245,6 +254,58 @@ const ExpenseWizard: React.FC<ExpenseWizardProps> = ({ currentUser, onSave, onCa
                                     <span className="text-xs text-slate-400">Relacionado directamente al negocio</span>
                                 </div>
                             </label>
+                        </div>
+                    </div>
+
+                    {/* RECURRENCE CHECKS */}
+                    <div className="pt-4 border-t border-slate-100">
+                        <p className="text-xs font-bold text-[#27bea5] uppercase mb-3 flex items-center gap-1">
+                            <Clock className="w-3 h-3" /> Configuración de Recurrencia
+                        </p>
+
+                        <div className="space-y-3">
+                            <label className="flex items-center gap-3 p-3 border rounded-xl cursor-pointer hover:bg-slate-50 transition-colors">
+                                <input
+                                    type="checkbox"
+                                    checked={isRecurrent}
+                                    onChange={(e) => setIsRecurrent(e.target.checked)}
+                                    className="w-5 h-5 text-[#27bea5] rounded focus:ring-0"
+                                />
+                                <div className="flex-1">
+                                    <span className="block font-bold text-slate-700 text-sm">¿Es un Gasto Recurrente?</span>
+                                    <span className="text-xs text-slate-400">Marcar si este costo se repite periódicamente (ej: alquiler, suscripción, planilla)</span>
+                                </div>
+                            </label>
+
+                            {isRecurrent && (
+                                <div className="grid grid-cols-2 gap-4 p-3 border rounded-xl bg-slate-50 animate-in fade-in duration-300">
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Frecuencia</label>
+                                        <select
+                                            value={recurrenceFreq}
+                                            onChange={(e) => setRecurrenceFreq(e.target.value as RecurrenceFrequency)}
+                                            className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none"
+                                        >
+                                            <option value="WEEKLY">Semanal</option>
+                                            <option value="BIWEEKLY">Quincenal</option>
+                                            <option value="MONTHLY">Mensual</option>
+                                            <option value="BIMONTHLY">Bimensual</option>
+                                            <option value="QUARTERLY">Trimestral</option>
+                                            <option value="ANNUAL">Anual</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Total Ciclos</label>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            value={totalCycles}
+                                            onChange={(e) => setTotalCycles(Number(e.target.value))}
+                                            className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none"
+                                        />
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

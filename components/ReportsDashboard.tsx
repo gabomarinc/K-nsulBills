@@ -19,6 +19,64 @@ import { calculatePanamaISR, TaxCalculationResult } from '../services/taxCalcula
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 
+const getOccurrenceDates = (startDateStr: string, frequency: string, totalCycles: number): Date[] => {
+  const dates: Date[] = [];
+  const start = new Date(startDateStr);
+  if (isNaN(start.getTime())) return dates;
+
+  for (let i = 0; i < totalCycles; i++) {
+    const d = new Date(start);
+    if (frequency === 'WEEKLY') {
+      d.setDate(start.getDate() + i * 7);
+    } else if (frequency === 'BIWEEKLY') {
+      d.setDate(start.getDate() + i * 14);
+    } else if (frequency === 'MONTHLY') {
+      d.setMonth(start.getMonth() + i);
+    } else if (frequency === 'BIMONTHLY') {
+      d.setMonth(start.getMonth() + i * 2);
+    } else if (frequency === 'QUARTERLY') {
+      d.setMonth(start.getMonth() + i * 3);
+    } else if (frequency === 'ANNUAL') {
+      d.setFullYear(start.getFullYear() + i);
+    }
+    dates.push(d);
+  }
+  return dates;
+};
+
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    const isProyectado = data.proyectado;
+    const net = data.ingresos - data.gastos;
+    const flowStatus = net >= 0 ? 'Positivo' : 'Negativo';
+    const flowColor = net >= 0 ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold';
+
+    return (
+      <div className="bg-white p-4 rounded-2xl shadow-xl border border-slate-100 text-xs">
+        <p className="font-bold text-slate-800 mb-2 flex items-center gap-1.5">
+          {label} 
+          {isProyectado && <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-[9px] uppercase tracking-wider font-bold">Proyectado</span>}
+        </p>
+        <div className="space-y-1">
+          <p className="text-slate-500 font-medium">
+            Ingresos: <span className="font-bold text-slate-800">${data.ingresos.toLocaleString()}</span>
+          </p>
+          <p className="text-slate-500 font-medium">
+            Gastos: <span className="font-bold text-slate-800">${data.gastos.toLocaleString()}</span>
+          </p>
+          <div className="pt-2 mt-2 border-t border-slate-100">
+            <p className="text-slate-500 font-medium">
+              Flujo de Caja: <span className={flowColor}>{net >= 0 ? '+' : ''}${net.toLocaleString()} ({flowStatus})</span>
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
+
 interface ReportsDashboardProps {
   invoices: Invoice[];
   currencySymbol: string;
@@ -232,6 +290,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
 
   // --- 2. DATA AGGREGATION & REAL KPIs ---
   const data = useMemo(() => {
+    const now = new Date();
     const timelineMap = new Map<string, { ingresos: number, gastos: number, date: Date }>();
     const productStatsMap = new Map<string, { name: string, totalRevenue: number, count: number }>();
 
@@ -309,7 +368,79 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
       }
     });
 
-    const monthlyData = Array.from(timelineMap.entries()).map(([name, val]) => ({ name, ingresos: val.ingresos, gastos: val.gastos, _date: val.date })).sort((a, b) => a._date.getTime() - b._date.getTime());
+    const realMonthlyData = Array.from(timelineMap.entries()).map(([name, val]) => ({
+      name,
+      ingresos: val.ingresos,
+      gastos: val.gastos,
+      _date: val.date,
+      proyectado: false
+    })).sort((a, b) => a._date.getTime() - b._date.getTime());
+
+    const projectedTimeline: { name: string, ingresos: number, gastos: number, _date: Date, proyectado: boolean }[] = [];
+
+    // Project recurrent invoices and expenses onto future months
+    invoices.forEach(inv => {
+      if (inv.recurrence && inv.recurrence.isRecurrent && inv.recurrence.frequency && inv.recurrence.totalCycles) {
+        const occurrenceDates = getOccurrenceDates(inv.date, inv.recurrence.frequency, inv.recurrence.totalCycles);
+        
+        occurrenceDates.forEach(occDate => {
+          // We only project occurrences in the future
+          if (occDate.getTime() > now.getTime()) {
+            const occMonth = occDate.getMonth();
+            const occYear = occDate.getFullYear();
+            
+            // Check if it already exists in projectedTimeline
+            let match = projectedTimeline.find(m => m._date.getMonth() === occMonth && m._date.getFullYear() === occYear);
+            if (!match) {
+              const key = occDate.toLocaleDateString('es-ES', { month: 'short', year: '2-digit' });
+              const realMatch = realMonthlyData.find(m => m.name === key);
+              if (realMatch) {
+                realMatch.proyectado = true;
+                if (inv.type === 'Invoice') realMatch.ingresos += inv.total;
+                else if (inv.type === 'Expense') realMatch.gastos += inv.total;
+              } else {
+                const monthsDiff = (occYear - now.getFullYear()) * 12 + (occMonth - now.getMonth());
+                if (monthsDiff > 0 && monthsDiff <= 6) {
+                  projectedTimeline.push({
+                    name: key,
+                    ingresos: inv.type === 'Invoice' ? inv.total : 0,
+                    gastos: inv.type === 'Expense' ? inv.total : 0,
+                    _date: new Date(occYear, occMonth, 1),
+                    proyectado: true
+                  });
+                }
+              }
+            } else {
+              if (inv.type === 'Invoice') {
+                match.ingresos += inv.total;
+              } else if (inv.type === 'Expense') {
+                match.gastos += inv.total;
+              }
+            }
+          }
+        });
+      }
+    });
+
+    // Make sure we fill empty future months for next 6 months to ensure a contiguous timeline
+    for (let i = 1; i <= 6; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      const key = d.toLocaleDateString('es-ES', { month: 'short', year: '2-digit' });
+      const existsInReal = realMonthlyData.some(m => m.name === key);
+      const existsInProj = projectedTimeline.some(m => m.name === key);
+      if (!existsInReal && !existsInProj) {
+        projectedTimeline.push({
+          name: key,
+          ingresos: 0,
+          gastos: 0,
+          _date: d,
+          proyectado: true
+        });
+      }
+    }
+
+    projectedTimeline.sort((a, b) => a._date.getTime() - b._date.getTime());
+    const monthlyData = [...realMonthlyData, ...projectedTimeline];
 
     // Sort Products by Revenue (Top Sellers)
     const productSalesData = Array.from(productStatsMap.values())
@@ -366,7 +497,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
 
     // --- CLIENTS LTV & PORTFOLIO HEALTH ---
     const clientMap = new Map<string, { revenue: number, count: number, lastDate: Date }>();
-    const now = new Date();
+
 
     filteredInvoices.forEach(inv => {
       if (inv.type !== 'Invoice') return;
@@ -1117,9 +1248,9 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                   <div className="p-2 bg-slate-50 rounded-xl text-[#27bea5]">
                     <Wallet className="w-5 h-5" />
                   </div>
-                  Flujo de Caja Real
+                  Flujo de Caja Proyectado
                 </h3>
-                <p className="text-slate-400 text-sm mt-1 ml-11">Comparativa entre ingresos cobrados y gastos operativos.</p>
+                <p className="text-slate-400 text-sm mt-1 ml-11">Comparativa de ingresos y gastos (Reales + Proyecciones a 6 meses).</p>
               </div>
               <button id="no-print" onClick={() => handleDeepDive('cashflow', 'Flujo de Caja', data.monthlyData)} className="p-3 rounded-xl bg-slate-50 hover:text-[#27bea5] transition-all" title="Ver Estado de Resultados Detallado">
                 {isDeepDiving === 'cashflow' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
@@ -1148,11 +1279,31 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                   />
                   <Tooltip
                     cursor={{ fill: '#f8fafc' }}
-                    contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                    content={<CustomTooltip />}
                   />
                   <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
-                  <Bar dataKey="ingresos" name="Ingresos Cobrados" fill="#27bea5" radius={[6, 6, 0, 0]} barSize={24} />
-                  <Bar dataKey="gastos" name="Gastos Totales" fill="#ef4444" radius={[6, 6, 0, 0]} barSize={24} />
+                  <Bar dataKey="ingresos" name="Ingresos (Reales/Proy.)" radius={[6, 6, 0, 0]} barSize={18}>
+                    {data.monthlyData.map((entry: any, index: number) => (
+                      <Cell
+                        key={`cell-in-${index}`}
+                        fill={entry.proyectado ? '#a7f3d0' : '#27bea5'}
+                        stroke={entry.proyectado ? '#27bea5' : 'none'}
+                        strokeWidth={entry.proyectado ? 1.5 : 0}
+                        strokeDasharray={entry.proyectado ? '3 3' : undefined}
+                      />
+                    ))}
+                  </Bar>
+                  <Bar dataKey="gastos" name="Gastos (Reales/Proy.)" radius={[6, 6, 0, 0]} barSize={18}>
+                    {data.monthlyData.map((entry: any, index: number) => (
+                      <Cell
+                        key={`cell-out-${index}`}
+                        fill={entry.proyectado ? '#fecdd3' : '#ef4444'}
+                        stroke={entry.proyectado ? '#ef4444' : 'none'}
+                        strokeWidth={entry.proyectado ? 1.5 : 0}
+                        strokeDasharray={entry.proyectado ? '3 3' : undefined}
+                      />
+                    ))}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
