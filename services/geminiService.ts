@@ -227,15 +227,17 @@ export const generateEmailTemplate = async (tone: 'Formal' | 'Casual', keys?: Ai
 
 // --- APP FEATURES (Strict Mode Continued) ---
 
-export const testAiConnection = async (provider: 'gemini' | 'openai', key: string): Promise<boolean> => {
+export const testAiConnection = async (provider: 'gemini' | 'openai', key: string): Promise<{ success: boolean; error?: string }> => {
     if (provider === 'gemini') {
         try {
             const ai = new GoogleGenAI({ apiKey: key.trim() });
             await withTimeout(ai.models.generateContent({ model: GEMINI_MODEL_ID, contents: "Hi" }), 5000);
-            return true;
-        } catch { return false; }
+            return { success: true };
+        } catch (e: any) { 
+            return { success: false, error: e?.message || String(e) }; 
+        }
     }
-    return true;
+    return { success: true };
 };
 
 export const generateFinancialAnalysis = async (summary: string, keys?: AiKeys): Promise<FinancialAnalysisResult | null> => {

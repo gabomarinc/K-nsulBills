@@ -189,9 +189,13 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
     const key = profile.apiKeys?.[provider];
     if (!key) return;
     setTestStatus(prev => ({ ...prev, [provider]: 'LOADING' }));
-    const success = await testAiConnection(provider, key);
-    setTestStatus(prev => ({ ...prev, [provider]: success ? 'SUCCESS' : 'ERROR' }));
-    if (success) setTimeout(() => setTestStatus(prev => ({ ...prev, [provider]: 'IDLE' })), 3000);
+    const result = await testAiConnection(provider, key);
+    if (!result.success && result.error) {
+      console.error(`Error de prueba para ${provider}:`, result.error);
+      alert(`Error de conexión con ${provider}:\n${result.error}`);
+    }
+    setTestStatus(prev => ({ ...prev, [provider]: result.success ? 'SUCCESS' : 'ERROR' }));
+    if (result.success) setTimeout(() => setTestStatus(prev => ({ ...prev, [provider]: 'IDLE' })), 3000);
   };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
