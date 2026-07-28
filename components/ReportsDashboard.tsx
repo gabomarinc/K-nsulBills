@@ -161,6 +161,29 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
       clone.style.backgroundColor = '#FFFFFF';
       clone.style.color = '#1c2938';
 
+      const style = document.createElement('style');
+      style.innerHTML = `
+        * {
+          opacity: 1 !important;
+          text-shadow: none !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+        body, div, p, span, th, td, h1, h2, h3, h4, h5, h6, table, tr, label, button {
+          color: #1c2938 !important;
+        }
+        .text-rose-500, .text-rose-600, .text-red-500, .text-red-600 { color: #ef4444 !important; }
+        .text-emerald-500, .text-emerald-600, .text-[#27bea5] { color: #27bea5 !important; }
+        .text-slate-400, .text-slate-500, .text-slate-300 { color: #475569 !important; }
+        .text-slate-700, .text-slate-600 { color: #1c2938 !important; }
+        .bg-slate-50 { background-color: #f8fafc !important; }
+        .bg-red-50 { background-color: #fef2f2 !important; }
+        .bg-emerald-100 { background-color: #d1fae5 !important; }
+        .bg-rose-100 { background-color: #ffe4e6 !important; }
+        .border-b, .border-t, .border, .divide-y > * { border-color: #e2e8f0 !important; }
+      `;
+      clone.appendChild(style);
+
       document.body.appendChild(clone);
 
       const canvas = await html2canvas(clone, {
@@ -442,7 +465,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                 else if (inv.type === 'Expense') realMatch.gastos += effectiveTotalSys;
               } else {
                 const monthsDiff = (occYear - now.getFullYear()) * 12 + (occMonth - now.getMonth());
-                if (monthsDiff > 0 && monthsDiff <= 6) {
+                if (monthsDiff > 0 && monthsDiff <= 3) {
                   projectedTimeline.push({
                     name: key,
                     ingresos: inv.type === 'Invoice' ? effectiveTotalSys : 0,
@@ -464,8 +487,8 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
       }
     });
 
-    // Make sure we fill empty future months for next 6 months to ensure a contiguous timeline
-    for (let i = 1; i <= 6; i++) {
+    // Make sure we fill empty future months for next 3 months to ensure a contiguous timeline
+    for (let i = 1; i <= 3; i++) {
       const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
       const key = d.toLocaleDateString('es-ES', { month: 'short', year: '2-digit' });
       const existsInReal = realMonthlyData.some(m => m._date.getMonth() === d.getMonth() && m._date.getFullYear() === d.getFullYear());
@@ -774,25 +797,52 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
     let dataForAi = chartData; // Default to passed data (aggregated)
 
     if (chartId === 'cashflow') {
+      const incomeBreakdown = new Map<string, number>();
       const expenseBreakdown = new Map<string, number>();
       let totalExpenses = 0;
       let totalIncome = 0;
+
+      const systemCurrency = currentUser?.defaultCurrency || 'USD';
+      const rates = getCachedRates();
 
       filteredInvoices.forEach(inv => {
         if (inv.type === 'Invoice') {
           let collected = 0;
           if (inv.amountPaid && inv.amountPaid > 0) collected = inv.amountPaid;
           else if (inv.status === 'Pagada' || inv.status === 'Aceptada') collected = inv.total;
-          if (collected > 0) totalIncome += collected;
+          if (collected > 0) {
+            const gatewayEnabled = currentUser?.paymentIntegration?.enabled;
+            const applyAll = currentUser?.paymentIntegration?.gatewayFeeApplyAll;
+            const feeRate = currentUser?.paymentIntegration?.gatewayFeeRate || 0;
+            const payViaGateway = inv.payViaGateway ?? (applyAll && gatewayEnabled ? true : false);
+
+            if (payViaGateway && feeRate > 0) {
+              collected = collected * (1 - feeRate / 100);
+            }
+
+            const collectedInSystemCurrency = convertCurrency(collected, inv.currency || 'USD', systemCurrency, rates);
+            totalIncome += collectedInSystemCurrency;
+
+            // Distribute collected income to items
+            const invoiceTotal = inv.total || 1;
+            inv.items.forEach(item => {
+              const itemShare = (item.price * item.quantity) / invoiceTotal;
+              const itemCollected = collectedInSystemCurrency * itemShare;
+              const desc = item.description || 'Ingreso General';
+              incomeBreakdown.set(desc, (incomeBreakdown.get(desc) || 0) + itemCollected);
+            });
+          }
         } else if (inv.type === 'Expense') {
+          const expenseInSystemCurrency = convertCurrency(inv.total, inv.currency || 'USD', systemCurrency, rates);
           const category = inv.items[0]?.description || 'Gastos Varios';
-          expenseBreakdown.set(category, (expenseBreakdown.get(category) || 0) + inv.total);
-          totalExpenses += inv.total;
+          expenseBreakdown.set(category, (expenseBreakdown.get(category) || 0) + expenseInSystemCurrency);
+          totalExpenses += expenseInSystemCurrency;
         }
       });
 
+      const incomesArray = Array.from(incomeBreakdown.entries()).map(([category, amount]) => ({ category, amount })).sort((a, b) => b.amount - a.amount);
       const expensesArray = Array.from(expenseBreakdown.entries()).map(([category, amount]) => ({ category, amount })).sort((a, b) => b.amount - a.amount);
-      const pnlData = { income: totalIncome, expenses: totalExpenses, breakdown: expensesArray };
+      const pnlData = { income: totalIncome, expenses: totalExpenses, incomeBreakdown: incomesArray, breakdown: expensesArray };
       visualData = { type: 'cashflow', data: pnlData, title: 'Estado de Resultados (P&L)' };
       dataForAi = pnlData; // Use detailed P&L for AI
     } else if (chartId === 'products') {
@@ -998,7 +1048,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
     if (!deepDiveVisual) return null;
 
     if (deepDiveVisual.type === 'cashflow') {
-      const { income, expenses, breakdown } = deepDiveVisual.data;
+      const { income, expenses, incomeBreakdown, breakdown } = deepDiveVisual.data;
       const net = income - expenses;
       const profitMargin = income > 0 ? (net / income) * 100 : 0;
 
@@ -1009,6 +1059,42 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
             <p className="text-slate-500 text-sm font-medium uppercase tracking-wider mt-1">Pérdidas y Ganancias</p>
             <p className="text-slate-400 text-xs mt-1">{new Date().toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}</p>
           </div>
+          
+          {/* Projected Chart inside deep dive PDF/Modal */}
+          <div className="p-6 md:p-8 border-b border-slate-100">
+            <h5 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Gráfico Flujo Proyectado (3 Meses)</h5>
+            <div className="h-60 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data.monthlyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} fontSize={11} stroke="#94a3b8" />
+                  <YAxis axisLine={false} tickLine={false} fontSize={11} stroke="#94a3b8" tickFormatter={compactNumber} />
+                  <Legend iconType="circle" />
+                  <Bar dataKey="ingresos" name="Ingresos (Reales/Proy.)" radius={[4, 4, 0, 0]} barSize={16}>
+                    {data.monthlyData.map((entry: any, index: number) => (
+                      <Cell
+                        key={`cell-in-modal-${index}`}
+                        fill={entry.proyectado ? '#a7f3d0' : '#27bea5'}
+                        stroke={entry.proyectado ? '#27bea5' : 'none'}
+                        strokeWidth={entry.proyectado ? 1.5 : 0}
+                      />
+                    ))}
+                  </Bar>
+                  <Bar dataKey="gastos" name="Gastos (Reales/Proy.)" radius={[4, 4, 0, 0]} barSize={16}>
+                    {data.monthlyData.map((entry: any, index: number) => (
+                      <Cell
+                        key={`cell-out-modal-${index}`}
+                        fill={entry.proyectado ? '#fecdd3' : '#ef4444'}
+                        stroke={entry.proyectado ? '#ef4444' : 'none'}
+                        strokeWidth={entry.proyectado ? 1.5 : 0}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
           <div className="p-6 md:p-8 space-y-6">
             <div>
               <div className="flex justify-between items-center mb-2 group">
@@ -1018,10 +1104,22 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                 <span className="font-bold text-[#1c2938]">{currencySymbol}{income.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
               </div>
               <div className="pl-6 pr-0 space-y-2">
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-slate-500">Ventas Brutas</span>
-                  <span className="text-slate-700">{currencySymbol}{income.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                </div>
+                {incomeBreakdown && incomeBreakdown.length > 0 ? (
+                  incomeBreakdown.map((item: any, idx: number) => (
+                    <div key={idx} className="flex justify-between items-center text-sm group">
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-500 group-hover:text-[#1c2938] transition-colors">{item.category}</span>
+                        <div className="h-1.5 bg-emerald-100 rounded-full" style={{ width: `${Math.min(100, (item.amount / income) * 50)}px` }}></div>
+                      </div>
+                      <span className="text-slate-700">{currencySymbol}{item.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-slate-500">Ventas Brutas</span>
+                    <span className="text-slate-700">{currencySymbol}{income.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                  </div>
+                )}
                 <div className="flex justify-between items-center text-sm pt-2 border-t border-slate-100">
                   <span className="font-bold text-slate-700">Total Ingresos</span>
                   <span className="font-bold text-[#1c2938]">{currencySymbol}{income.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
@@ -1292,7 +1390,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                   </div>
                   Flujo de Caja Proyectado
                 </h3>
-                <p className="text-slate-400 text-sm mt-1 ml-11">Comparativa de ingresos y gastos (Reales + Proyecciones a 6 meses).</p>
+                <p className="text-slate-400 text-sm mt-1 ml-11">Comparativa de ingresos y gastos (Reales + Proyecciones a 3 meses).</p>
               </div>
               <button id="no-print" onClick={() => handleDeepDive('cashflow', 'Flujo de Caja', data.monthlyData)} className="p-3 rounded-xl bg-slate-50 hover:text-[#27bea5] transition-all" title="Ver Estado de Resultados Detallado">
                 {isDeepDiving === 'cashflow' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
