@@ -211,9 +211,10 @@ export const generateDocumentHtml = (invoice: Invoice, issuer: UserProfile, paym
     </a>` : '';
 
   const yappyButton = yappyUrl ? `
-    <a href="${yappyUrl}" style="background-color: #f97316; color: #ffffff; padding: 14px 28px; border-radius: 10px; text-decoration: none; font-weight: bold; font-size: 15px; display: inline-block; margin: 8px;">
-        📱 Pagar con Yappy
-    </a>` : '';
+    <a href="${yappyUrl}" style="background-color: #ffffff; border: 1px solid #e2e8f0; padding: 10px 28px; border-radius: 10px; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; margin: 8px;">
+        <img src="https://konsul.digital/images/yappy-color-landscape.png" alt="Pagar con Yappy" style="height: 20px;" />
+    </a>
+  ` : '';
 
   const paymentButtons = (stripeButton || yappyButton) ? `
     <!-- BOTONES DE PAGO -->

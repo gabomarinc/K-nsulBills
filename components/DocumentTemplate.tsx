@@ -80,9 +80,9 @@ const DocumentTemplate: React.FC<DocumentTemplateProps> = ({
                 {hasYappy && (
                     <button 
                       onClick={() => onPaymentClick?.('Yappy')}
-                      className="flex-1 bg-[#ff6b00] text-white py-2.5 px-4 rounded-xl font-bold hover:bg-[#e65c00] transition-colors shadow-sm flex items-center justify-center gap-2"
+                      className="flex-1 bg-white border border-slate-200 text-slate-800 py-2.5 px-4 rounded-xl font-bold hover:bg-slate-50 transition-colors shadow-sm flex items-center justify-center gap-2"
                     >
-                        <Smartphone className="w-4 h-4" /> Yappy
+                        <img src="https://konsul.digital/images/yappy-color-landscape.png" alt="Yappy" className="h-5" />
                     </button>
                 )}
                 {hasStripe && (
