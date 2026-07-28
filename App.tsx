@@ -42,6 +42,7 @@ import {
 } from './services/neon';
 import { processInvoicesFollowUp } from './services/followUpService';
 import { performAutomatedStripeSync } from './services/stripeSyncService';
+import { fetchExchangeRates } from './services/currencyService';
 import { useKindeAuth } from '@kinde-oss/kinde-auth-react';
 
 // --- ROUTING CONFIG ---
@@ -346,6 +347,9 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     if (currentUser) {
       const loadData = async () => {
+        // Fetch Exchange Rates
+        fetchExchangeRates();
+        
         // Fetch Invoices
         const docs = await fetchInvoicesFromDb(currentUser.id);
         if (docs) {

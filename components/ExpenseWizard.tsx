@@ -201,7 +201,17 @@ const ExpenseWizard: React.FC<ExpenseWizardProps> = ({ currentUser, onSave, onCa
                             className="w-full p-3 bg-slate-50 rounded-xl font-medium text-slate-700 outline-none focus:ring-2 focus:ring-[#27bea5]"
                         />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-3 gap-4">
+                        <div>
+                            <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Moneda</label>
+                            <select
+                                value={expenseData.currency}
+                                onChange={(e) => setExpenseData({ ...expenseData, currency: e.target.value })}
+                                className="w-full p-3 bg-slate-50 rounded-xl font-bold text-[#1c2938] outline-none focus:ring-2 focus:ring-[#27bea5]"
+                            >
+                                {(currentUser.billingCurrencies?.length ? currentUser.billingCurrencies : ['USD', 'EUR']).map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                        </div>
                         <div>
                             <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Total</label>
                             <input

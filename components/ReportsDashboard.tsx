@@ -16,6 +16,7 @@ import { Invoice, FinancialAnalysisResult, DeepDiveReport, UserProfile } from '.
 import { generateFinancialAnalysis, generateDeepDiveReport, AI_ERROR_BLOCKED, generateTaxAdvisory } from '../services/geminiService';
 import { sendEmail } from '../services/resendService';
 import { calculatePanamaISR, TaxCalculationResult } from '../services/taxCalculator';
+import { convertCurrency, getCachedRates } from '../services/currencyService';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 
@@ -301,6 +302,9 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
       (new Date(customEnd).getTime() - new Date(customStart).getTime()) / (1000 * 3600 * 24) < 60
     );
 
+    const systemCurrency = currentUser?.defaultCurrency || 'USD';
+    const rates = getCachedRates();
+
     filteredInvoices.forEach(inv => {
       const d = new Date(inv.date);
 
@@ -331,9 +335,11 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
           if (payViaGateway && feeRate > 0) {
             collected = collected * (1 - feeRate / 100);
           }
+          
+          const collectedInSystemCurrency = convertCurrency(collected, inv.currency || 'USD', systemCurrency, rates);
 
-          entry.ingresos += collected;
-          totalRevenue += collected;
+          entry.ingresos += collectedInSystemCurrency;
+          totalRevenue += collectedInSystemCurrency;
         }
 
         // Product Breakdown Logic (Sales by Item)
@@ -372,8 +378,9 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
           }
         }
       } else if (inv.type === 'Expense') {
-        entry.gastos += inv.total;
-        totalExpenses += inv.total;
+        const expenseInSystemCurrency = convertCurrency(inv.total, inv.currency || 'USD', systemCurrency, rates);
+        entry.gastos += expenseInSystemCurrency;
+        totalExpenses += expenseInSystemCurrency;
       }
     });
 
@@ -420,6 +427,8 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                 effectiveTotal = effectiveTotal * (1 - feeRate / 100);
               }
             }
+            
+            const effectiveTotalSys = convertCurrency(effectiveTotal, inv.currency || 'USD', systemCurrency, rates);
 
             // Check if it already exists in projectedTimeline
             let match = projectedTimeline.find(m => m._date.getMonth() === occMonth && m._date.getFullYear() === occYear);
@@ -429,15 +438,15 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
               const realMatch = realMonthlyData.find(m => m._date.getMonth() === occMonth && m._date.getFullYear() === occYear);
               if (realMatch) {
                 realMatch.proyectado = true;
-                if (inv.type === 'Invoice') realMatch.ingresos += effectiveTotal;
-                else if (inv.type === 'Expense') realMatch.gastos += effectiveTotal;
+                if (inv.type === 'Invoice') realMatch.ingresos += effectiveTotalSys;
+                else if (inv.type === 'Expense') realMatch.gastos += effectiveTotalSys;
               } else {
                 const monthsDiff = (occYear - now.getFullYear()) * 12 + (occMonth - now.getMonth());
                 if (monthsDiff > 0 && monthsDiff <= 6) {
                   projectedTimeline.push({
                     name: key,
-                    ingresos: inv.type === 'Invoice' ? effectiveTotal : 0,
-                    gastos: inv.type === 'Expense' ? effectiveTotal : 0,
+                    ingresos: inv.type === 'Invoice' ? effectiveTotalSys : 0,
+                    gastos: inv.type === 'Expense' ? effectiveTotalSys : 0,
                     _date: new Date(occYear, occMonth, 1),
                     proyectado: true
                   });
@@ -445,9 +454,9 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
               }
             } else {
               if (inv.type === 'Invoice') {
-                match.ingresos += effectiveTotal;
+                match.ingresos += effectiveTotalSys;
               } else if (inv.type === 'Expense') {
-                match.gastos += effectiveTotal;
+                match.gastos += effectiveTotalSys;
               }
             }
           }

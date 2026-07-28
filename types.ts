@@ -156,6 +156,7 @@ export interface UserProfile {
   bankAccount?: string; // IBAN / CBU / CLABE
   bankAccountType?: 'Ahorro' | 'Corriente'; // New: Account Type
   defaultCurrency?: string; // New: Default currency for user
+  billingCurrencies?: string[]; // New: Billing currencies accepted by user
   paymentTermsDays?: number;
   acceptsOnlinePayment?: boolean; // Legacy flag, migrating to paymentIntegration
   paymentIntegration?: PaymentIntegration; // New: PagueloFacil/Yappy Config

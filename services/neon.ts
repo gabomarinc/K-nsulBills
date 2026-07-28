@@ -174,6 +174,7 @@ export const getUserById = async (userId: string): Promise<UserProfile | null> =
       avatar: '',
       isOnboardingComplete: true,
       defaultCurrency: 'USD',
+      billingCurrencies: ['USD', 'EUR'],
       plan: 'Emprendedor Pro',
       country: 'Panamá',
       bankAccountType: 'Ahorro', // Default demo
@@ -294,6 +295,7 @@ export const authenticateUser = async (email: string, password: string): Promise
       avatar: '',
       isOnboardingComplete: true,
       defaultCurrency: 'USD',
+      billingCurrencies: ['USD', 'EUR'],
       plan: 'Emprendedor Pro',
       country: 'Panamá',
       bankAccountType: 'Ahorro',

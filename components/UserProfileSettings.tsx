@@ -689,16 +689,49 @@ const UserProfileSettings: React.FC<UserProfileSettingsProps> = ({ currentUser, 
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block">Moneda Base</label>
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block">Moneda Base (Sistema)</label>
                   <div className="relative">
                     <select
                       value={profile.defaultCurrency || 'USD'}
                       onChange={(e) => handleInputChange('defaultCurrency', e.target.value)}
                       className="w-full bg-white/10 text-white p-3 rounded-xl outline-none appearance-none cursor-pointer hover:bg-white/20 transition-colors font-bold border border-white/5 focus:border-[#27bea5]"
                     >
-                      {['USD', 'EUR', 'MXN', 'ARS', 'COP'].map(c => <option key={c} value={c} className="text-slate-900">{c}</option>)}
+                      {['USD', 'EUR'].map(c => <option key={c} value={c} className="text-slate-900">{c}</option>)}
                     </select>
                     <Coins className="absolute right-3 top-3 w-5 h-5 text-slate-400 pointer-events-none" />
+                  </div>
+                </div>
+                
+                <div className="space-y-2 md:col-span-2">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block">Monedas en las que cobra (Facturación)</label>
+                  <div className="flex gap-4 mt-2">
+                    {['USD', 'EUR'].map(currency => {
+                      const isChecked = profile.billingCurrencies?.includes(currency) || false;
+                      return (
+                        <label key={currency} className="flex items-center gap-2 cursor-pointer group">
+                          <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${isChecked ? 'bg-[#27bea5] border-[#27bea5]' : 'border-slate-500 group-hover:border-slate-400'}`}>
+                            {isChecked && <Check className="w-3 h-3 text-white" />}
+                          </div>
+                          <span className="text-white font-medium">{currency}</span>
+                          <input 
+                            type="checkbox" 
+                            className="hidden" 
+                            checked={isChecked}
+                            onChange={() => {
+                              const current = profile.billingCurrencies || ['USD'];
+                              let updated;
+                              if (isChecked) {
+                                updated = current.filter(c => c !== currency);
+                                if (updated.length === 0) updated = ['USD']; // Prevent empty selection
+                              } else {
+                                updated = [...current, currency];
+                              }
+                              handleInputChange('billingCurrencies', updated);
+                            }}
+                          />
+                        </label>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
