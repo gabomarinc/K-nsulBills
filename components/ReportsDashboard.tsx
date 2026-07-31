@@ -51,25 +51,46 @@ const CustomTooltip = ({ active, payload, label }: any) => {
     const isProyectado = data.proyectado;
     const net = data.ingresos - data.gastos;
     const flowStatus = net >= 0 ? 'Positivo' : 'Negativo';
-    const flowColor = net >= 0 ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold';
+    const flowColor = net >= 0 ? 'text-emerald-650 font-bold' : 'text-rose-655 font-bold';
+
+    const ingRec = data.ingresosRecurrentes || 0;
+    const ingNoRec = data.ingresosNoRecurrentes || 0;
+    const gasRec = data.gastosRecurrentes || 0;
+    const gasNoRec = data.gastosNoRecurrentes || 0;
 
     return (
-      <div className="bg-white p-4 rounded-2xl shadow-xl border border-slate-100 text-xs">
-        <p className="font-bold text-slate-800 mb-2 flex items-center gap-1.5">
+      <div className="bg-white p-4 rounded-2xl shadow-xl border border-slate-100 text-xs min-w-[210px] space-y-2">
+        <p className="font-bold text-slate-800 mb-1 flex items-center gap-1.5 border-b border-slate-100 pb-1.5">
           {label} 
           {isProyectado && <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-[9px] uppercase tracking-wider font-bold">Proyectado</span>}
         </p>
-        <div className="space-y-1">
-          <p className="text-slate-500 font-medium">
-            Ingresos: <span className="font-bold text-slate-800">${data.ingresos.toLocaleString()}</span>
-          </p>
-          <p className="text-slate-500 font-medium">
-            Gastos: <span className="font-bold text-slate-800">${data.gastos.toLocaleString()}</span>
-          </p>
-          <div className="pt-2 mt-2 border-t border-slate-100">
-            <p className="text-slate-500 font-medium">
-              Flujo de Caja: <span className={flowColor}>{net >= 0 ? '+' : ''}${net.toLocaleString()} ({flowStatus})</span>
+        <div className="space-y-2">
+          <div>
+            <p className="text-slate-500 font-semibold flex justify-between gap-4">
+              <span>Ingresos:</span>
+              <span className="font-bold text-slate-800">${data.ingresos.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </p>
+            <div className="pl-3 text-[10px] text-slate-400 space-y-0.5 mt-0.5">
+              <p className="flex justify-between"><span>• Recurrentes:</span> <span className="font-medium text-slate-500">${ingRec.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></p>
+              <p className="flex justify-between"><span>• No Recurrentes:</span> <span className="font-medium text-slate-500">${ingNoRec.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></p>
+            </div>
+          </div>
+          <div>
+            <p className="text-slate-500 font-semibold flex justify-between gap-4">
+              <span>Gastos:</span>
+              <span className="font-bold text-slate-805">${data.gastos.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </p>
+            <div className="pl-3 text-[10px] text-slate-400 space-y-0.5 mt-0.5">
+              <p className="flex justify-between"><span>• Recurrentes:</span> <span className="font-medium text-slate-505">${gasRec.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></p>
+              <p className="flex justify-between"><span>• No Recurrentes:</span> <span className="font-medium text-slate-505">${gasNoRec.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></p>
+            </div>
+          </div>
+          <div className="pt-1.5 mt-1.5 border-t border-slate-100">
+            <p className="text-slate-550 font-semibold flex justify-between">
+              <span>Flujo de Caja:</span>
+              <span className={flowColor}>{net >= 0 ? '+' : ''}${net.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </p>
+            <p className="text-[9px] text-right text-slate-400 font-medium">({flowStatus})</p>
           </div>
         </div>
       </div>
@@ -91,6 +112,7 @@ type ReportTab = 'OVERVIEW' | 'DOCUMENTS' | 'CLIENTS' | 'FISCAL';
 const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: ReportsDashboardProps) => {
   // Navigation State
   const [activeTab, setActiveTab] = useState<ReportTab>('OVERVIEW');
+  const [showProjection, setShowProjection] = useState(true);
 
   // AI State
   const [analysis, setAnalysis] = useState<FinancialAnalysisResult | null>(null);
@@ -315,9 +337,16 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
   // --- 2. DATA AGGREGATION & REAL KPIs ---
   const data = useMemo(() => {
     const now = new Date();
-    const timelineMap = new Map<string, { ingresos: number, gastos: number, date: Date }>();
+    const timelineMap = new Map<string, {
+      ingresos: number,
+      gastos: number,
+      ingresosRecurrentes: number,
+      ingresosNoRecurrentes: number,
+      gastosRecurrentes: number,
+      gastosNoRecurrentes: number,
+      date: Date
+    }>();
     const productStatsMap = new Map<string, { name: string, totalRevenue: number, count: number }>();
-
     let totalRevenue = 0; let totalExpenses = 0; let paymentDaysSum = 0; let paidInvoicesCount = 0;
 
     const isDaily = timeRange === 'THIS_MONTH' || (
@@ -338,7 +367,17 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
         key = d.toLocaleDateString('es-ES', { month: 'short', year: '2-digit' });
       }
 
-      if (!timelineMap.has(key)) timelineMap.set(key, { ingresos: 0, gastos: 0, date: d });
+      if (!timelineMap.has(key)) {
+        timelineMap.set(key, {
+          ingresos: 0,
+          gastos: 0,
+          ingresosRecurrentes: 0,
+          ingresosNoRecurrentes: 0,
+          gastosRecurrentes: 0,
+          gastosNoRecurrentes: 0,
+          date: d
+        });
+      }
       const entry = timelineMap.get(key)!;
 
       if (inv.type === 'Invoice') {
@@ -363,6 +402,13 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
 
           entry.ingresos += collectedInSystemCurrency;
           totalRevenue += collectedInSystemCurrency;
+
+          const isRec = inv.recurrence?.isRecurrent || false;
+          if (isRec) {
+            entry.ingresosRecurrentes += collectedInSystemCurrency;
+          } else {
+            entry.ingresosNoRecurrentes += collectedInSystemCurrency;
+          }
         }
 
         // Product Breakdown Logic (Sales by Item)
@@ -404,6 +450,13 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
         const expenseInSystemCurrency = convertCurrency(inv.total, inv.currency || 'USD', systemCurrency, rates);
         entry.gastos += expenseInSystemCurrency;
         totalExpenses += expenseInSystemCurrency;
+
+        const isRec = inv.recurrence?.isRecurrent || false;
+        if (isRec) {
+          entry.gastosRecurrentes += expenseInSystemCurrency;
+        } else {
+          entry.gastosNoRecurrentes += expenseInSystemCurrency;
+        }
       }
     });
 
@@ -411,11 +464,25 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
       name,
       ingresos: val.ingresos,
       gastos: val.gastos,
+      ingresosRecurrentes: val.ingresosRecurrentes,
+      ingresosNoRecurrentes: val.ingresosNoRecurrentes,
+      gastosRecurrentes: val.gastosRecurrentes,
+      gastosNoRecurrentes: val.gastosNoRecurrentes,
       _date: val.date,
       proyectado: false
     })).sort((a, b) => a._date.getTime() - b._date.getTime());
 
-    const projectedTimeline: { name: string, ingresos: number, gastos: number, _date: Date, proyectado: boolean }[] = [];
+    const projectedTimeline: {
+      name: string,
+      ingresos: number,
+      gastos: number,
+      ingresosRecurrentes: number,
+      ingresosNoRecurrentes: number,
+      gastosRecurrentes: number,
+      gastosNoRecurrentes: number,
+      _date: Date,
+      proyectado: boolean
+    }[] = [];
 
     // Debug logging to inspect recurrent documents in the console
     const recurrentDocs = invoices.filter(i => i.recurrence?.isRecurrent);
@@ -461,8 +528,13 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
               const realMatch = realMonthlyData.find(m => m._date.getMonth() === occMonth && m._date.getFullYear() === occYear);
               if (realMatch) {
                 realMatch.proyectado = true;
-                if (inv.type === 'Invoice') realMatch.ingresos += effectiveTotalSys;
-                else if (inv.type === 'Expense') realMatch.gastos += effectiveTotalSys;
+                if (inv.type === 'Invoice') {
+                  realMatch.ingresos += effectiveTotalSys;
+                  realMatch.ingresosRecurrentes += effectiveTotalSys;
+                } else if (inv.type === 'Expense') {
+                  realMatch.gastos += effectiveTotalSys;
+                  realMatch.gastosRecurrentes += effectiveTotalSys;
+                }
               } else {
                 const monthsDiff = (occYear - now.getFullYear()) * 12 + (occMonth - now.getMonth());
                 if (monthsDiff > 0 && monthsDiff <= 3) {
@@ -470,6 +542,10 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                     name: key,
                     ingresos: inv.type === 'Invoice' ? effectiveTotalSys : 0,
                     gastos: inv.type === 'Expense' ? effectiveTotalSys : 0,
+                    ingresosRecurrentes: inv.type === 'Invoice' ? effectiveTotalSys : 0,
+                    ingresosNoRecurrentes: 0,
+                    gastosRecurrentes: inv.type === 'Expense' ? effectiveTotalSys : 0,
+                    gastosNoRecurrentes: 0,
                     _date: new Date(occYear, occMonth, 1),
                     proyectado: true
                   });
@@ -478,8 +554,10 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
             } else {
               if (inv.type === 'Invoice') {
                 match.ingresos += effectiveTotalSys;
+                match.ingresosRecurrentes += effectiveTotalSys;
               } else if (inv.type === 'Expense') {
                 match.gastos += effectiveTotalSys;
+                match.gastosRecurrentes += effectiveTotalSys;
               }
             }
           }
@@ -498,6 +576,10 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
           name: key,
           ingresos: 0,
           gastos: 0,
+          ingresosRecurrentes: 0,
+          ingresosNoRecurrentes: 0,
+          gastosRecurrentes: 0,
+          gastosNoRecurrentes: 0,
           _date: d,
           proyectado: true
         });
@@ -1164,6 +1246,51 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                 {currencySymbol}{net.toLocaleString(undefined, { minimumFractionDigits: 2 })}
               </span>
             </div>
+
+            {/* Projected Next 3 Months Details Section */}
+            <div className="pt-6 border-t border-slate-100 mt-6 space-y-4">
+              <h5 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-[#27bea5]" />
+                Detalle de Proyección de Caja (Siguientes 3 Meses)
+              </h5>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {data.monthlyData.filter((m: any) => m.proyectado).slice(0, 3).map((item: any, idx: number) => {
+                  const netProj = item.ingresos - item.gastos;
+                  return (
+                    <div key={idx} className="p-4 bg-slate-50 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                      <div className="flex justify-between items-center border-b border-slate-200 pb-2">
+                        <span className="font-bold text-slate-800 uppercase tracking-wider text-xs">{item.name}</span>
+                        <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-[8px] uppercase tracking-wider font-bold">Proyectado</span>
+                      </div>
+                      <div className="space-y-1.5 text-xs">
+                        <div className="flex justify-between font-medium text-slate-600">
+                          <span>Ingresos:</span>
+                          <span className="font-bold text-slate-800">{currencySymbol}{item.ingresos.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                        </div>
+                        <div className="pl-2 text-[10px] text-slate-400 space-y-0.5">
+                          <div className="flex justify-between"><span>• Recurrentes:</span> <span>{currencySymbol}{(item.ingresosRecurrentes || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                          <div className="flex justify-between"><span>• No Recurrentes:</span> <span>{currencySymbol}{(item.ingresosNoRecurrentes || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                        </div>
+                        <div className="flex justify-between font-medium text-slate-600">
+                          <span>Gastos:</span>
+                          <span className="font-bold text-slate-800">{currencySymbol}{item.gastos.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                        </div>
+                        <div className="pl-2 text-[10px] text-slate-400 space-y-0.5">
+                          <div className="flex justify-between"><span>• Recurrentes:</span> <span>{currencySymbol}{(item.gastosRecurrentes || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                          <div className="flex justify-between"><span>• No Recurrentes:</span> <span>{currencySymbol}{(item.gastosNoRecurrentes || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                        </div>
+                        <div className="flex justify-between font-bold text-slate-700 pt-2 border-t border-slate-200/60">
+                          <span>Flujo Neto:</span>
+                          <span className={netProj >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
+                            {netProj >= 0 ? '+' : ''}{currencySymbol}{netProj.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
       );
@@ -1350,104 +1477,121 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
     }
   };
 
-  const renderOverview = () => (
-    <div ref={overviewRef} className="p-4 bg-slate-50/50 rounded-[3rem] -m-4">
-      <div className="p-4">
-        {/* KPI CARDS - REAL DATA FIRST */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-50">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Ingreso Neto</p>
-            <h3 className="text-2xl font-bold text-[#1c2938]">{currencySymbol}{data.kpis.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
-            <span className="text-[10px] text-slate-400">Cobrado (Total + Abonos)</span>
-          </div>
-          <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-50">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Margen Real</p>
-            <h3 className={`text-2xl font-bold ${data.kpis.marginPercent > 0 ? 'text-[#27bea5]' : 'text-red-500'}`}>
-              {data.kpis.marginPercent.toFixed(1)}%
-            </h3>
-            <span className="text-[10px] text-slate-400">Rentabilidad</span>
-          </div>
-          <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-50">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Gastos</p>
-            <h3 className="text-2xl font-bold text-rose-500">-{currencySymbol}{data.kpis.totalExpenses.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
-            <span className="text-[10px] text-slate-400">Operativos</span>
-          </div>
-          <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-50">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Utilidad</p>
-            <h3 className="text-2xl font-bold text-[#1c2938]">{currencySymbol}{data.kpis.netMargin.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
-            <span className="text-[10px] text-slate-400">En caja</span>
-          </div>
-        </div>
+  const renderOverview = () => {
+    const chartData = showProjection
+      ? data.monthlyData
+      : data.monthlyData.filter((d: any) => !d.proyectado);
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4">
-          {/* Card: Cash Flow */}
-          <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-slate-50 hover:shadow-md transition-shadow">
-            <div className="flex justify-between items-start mb-6">
-              <div>
-                <h3 className="font-bold text-[#1c2938] text-xl flex items-center gap-2">
-                  <div className="p-2 bg-slate-50 rounded-xl text-[#27bea5]">
-                    <Wallet className="w-5 h-5" />
-                  </div>
-                  Flujo de Caja Proyectado
-                </h3>
-                <p className="text-slate-400 text-sm mt-1 ml-11">Comparativa de ingresos y gastos (Reales + Proyecciones a 3 meses).</p>
-              </div>
-              <button id="no-print" onClick={() => handleDeepDive('cashflow', 'Flujo de Caja', data.monthlyData)} className="p-3 rounded-xl bg-slate-50 hover:text-[#27bea5] transition-all" title="Ver Estado de Resultados Detallado">
-                {isDeepDiving === 'cashflow' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
-              </button>
+    return (
+      <div ref={overviewRef} className="p-4 bg-slate-50/50 rounded-[3rem] -m-4">
+        <div className="p-4">
+          {/* KPI CARDS - REAL DATA FIRST */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-50">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Ingreso Neto</p>
+              <h3 className="text-2xl font-bold text-[#1c2938]">{currencySymbol}{data.kpis.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
+              <span className="text-[10px] text-slate-400">Cobrado (Total + Abonos)</span>
             </div>
-            <div className="h-72 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={data.monthlyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis
-                    dataKey="name"
-                    axisLine={false}
-                    tickLine={false}
-                    fontSize={11}
-                    stroke="#94a3b8"
-                    dy={10}
-                    interval="preserveStartEnd"
-                  />
-                  <YAxis
-                    axisLine={false}
-                    tickLine={false}
-                    fontSize={11}
-                    stroke="#94a3b8"
-                    tickFormatter={compactNumber}
-                    width={40}
-                  />
-                  <Tooltip
-                    cursor={{ fill: '#f8fafc' }}
-                    content={<CustomTooltip />}
-                  />
-                  <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
-                  <Bar dataKey="ingresos" name="Ingresos (Reales/Proy.)" radius={[6, 6, 0, 0]} barSize={18}>
-                    {data.monthlyData.map((entry: any, index: number) => (
-                      <Cell
-                        key={`cell-in-${index}`}
-                        fill={entry.proyectado ? '#a7f3d0' : '#27bea5'}
-                        stroke={entry.proyectado ? '#27bea5' : 'none'}
-                        strokeWidth={entry.proyectado ? 1.5 : 0}
-                        strokeDasharray={entry.proyectado ? '3 3' : undefined}
-                      />
-                    ))}
-                  </Bar>
-                  <Bar dataKey="gastos" name="Gastos (Reales/Proy.)" radius={[6, 6, 0, 0]} barSize={18}>
-                    {data.monthlyData.map((entry: any, index: number) => (
-                      <Cell
-                        key={`cell-out-${index}`}
-                        fill={entry.proyectado ? '#fecdd3' : '#ef4444'}
-                        stroke={entry.proyectado ? '#ef4444' : 'none'}
-                        strokeWidth={entry.proyectado ? 1.5 : 0}
-                        strokeDasharray={entry.proyectado ? '3 3' : undefined}
-                      />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+            <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-50">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Margen Real</p>
+              <h3 className={`text-2xl font-bold ${data.kpis.marginPercent > 0 ? 'text-[#27bea5]' : 'text-red-500'}`}>
+                {data.kpis.marginPercent.toFixed(1)}%
+              </h3>
+              <span className="text-[10px] text-slate-400">Rentabilidad</span>
+            </div>
+            <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-50">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Gastos</p>
+              <h3 className="text-2xl font-bold text-rose-500">-{currencySymbol}{data.kpis.totalExpenses.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
+              <span className="text-[10px] text-slate-400">Operativos</span>
+            </div>
+            <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-50">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Utilidad</p>
+              <h3 className="text-2xl font-bold text-[#1c2938]">{currencySymbol}{data.kpis.netMargin.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
+              <span className="text-[10px] text-slate-400">En caja</span>
             </div>
           </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4">
+            {/* Card: Cash Flow */}
+            <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-slate-50 hover:shadow-md transition-shadow">
+              <div className="flex justify-between items-start mb-6">
+                <div>
+                  <h3 className="font-bold text-[#1c2938] text-xl flex items-center gap-2">
+                    <div className="p-2 bg-slate-50 rounded-xl text-[#27bea5]">
+                      <Wallet className="w-5 h-5" />
+                    </div>
+                    Flujo de Caja Proyectado
+                  </h3>
+                  <p className="text-slate-400 text-sm mt-1 ml-11">Comparativa de ingresos y gastos {showProjection ? '(Reales + Proyecciones a 3 meses)' : '(Solo Reales)'}.</p>
+                </div>
+                <div className="flex items-center gap-3" id="no-print">
+                  {/* PROJECTION TOGGLE */}
+                  <label className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100 text-xs font-semibold text-slate-500 cursor-pointer hover:bg-slate-100 transition-colors">
+                    <span>Proyección</span>
+                    <button 
+                      onClick={() => setShowProjection(!showProjection)} 
+                      className={`w-8 h-4 rounded-full relative transition-colors ${showProjection ? 'bg-[#27bea5]' : 'bg-slate-300'}`}
+                    >
+                      <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform`} style={{ left: showProjection ? 'calc(100% - 14px)' : '2px' }}></div>
+                    </button>
+                  </label>
+                  <button onClick={() => handleDeepDive('cashflow', 'Flujo de Caja', data.monthlyData)} className="p-3 rounded-xl bg-slate-50 hover:text-[#27bea5] transition-all" title="Ver Estado de Resultados Detallado">
+                    {isDeepDiving === 'cashflow' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+              <div className="h-72 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis
+                      dataKey="name"
+                      axisLine={false}
+                      tickLine={false}
+                      fontSize={11}
+                      stroke="#94a3b8"
+                      dy={10}
+                      interval="preserveStartEnd"
+                    />
+                    <YAxis
+                      axisLine={false}
+                      tickLine={false}
+                      fontSize={11}
+                      stroke="#94a3b8"
+                      tickFormatter={compactNumber}
+                      width={40}
+                    />
+                    <Tooltip
+                      cursor={{ fill: '#f8fafc' }}
+                      content={<CustomTooltip />}
+                    />
+                    <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
+                    <Bar dataKey="ingresos" name="Ingresos (Reales/Proy.)" radius={[6, 6, 0, 0]} barSize={18}>
+                      {chartData.map((entry: any, index: number) => (
+                        <Cell
+                          key={`cell-in-${index}`}
+                          fill={entry.proyectado ? '#a7f3d0' : '#27bea5'}
+                          stroke={entry.proyectado ? '#27bea5' : 'none'}
+                          strokeWidth={entry.proyectado ? 1.5 : 0}
+                          strokeDasharray={entry.proyectado ? '3 3' : undefined}
+                        />
+                      ))}
+                    </Bar>
+                    <Bar dataKey="gastos" name="Gastos (Reales/Proy.)" radius={[6, 6, 0, 0]} barSize={18}>
+                      {chartData.map((entry: any, index: number) => (
+                        <Cell
+                          key={`cell-out-${index}`}
+                          fill={entry.proyectado ? '#fecdd3' : '#ef4444'}
+                          stroke={entry.proyectado ? '#ef4444' : 'none'}
+                          strokeWidth={entry.proyectado ? 1.5 : 0}
+                          strokeDasharray={entry.proyectado ? '3 3' : undefined}
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
 
           {/* Card: Sales Details by Product (NEW REPLACEMENT) */}
           <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-slate-50 hover:shadow-md transition-shadow">
@@ -1497,6 +1641,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
       </div>
     </div>
   );
+};
 
   const renderDocumentsView = () => (
     <div ref={documentsRef} className="p-4 bg-slate-50/50 rounded-[3rem] -m-4">
