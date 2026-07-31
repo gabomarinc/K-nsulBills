@@ -577,8 +577,12 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
               const key = occDate.toLocaleDateString('es-ES', { month: 'short', year: '2-digit' });
               // Use month/year comparison for realMonthlyData matching to be robust against string format differences
               const realMatch = realMonthlyData.find(m => m._date.getMonth() === occMonth && m._date.getFullYear() === occYear);
+              const isStrictlyFuture = (occYear > now.getFullYear()) || (occYear === now.getFullYear() && occMonth > now.getMonth());
+
               if (realMatch) {
-                realMatch.proyectado = true;
+                if (isStrictlyFuture) {
+                  realMatch.proyectado = true;
+                }
                 if (inv.type === 'Invoice') {
                   realMatch.ingresos += effectiveTotalSys;
                   realMatch.ingresosRecurrentes += effectiveTotalSys;
@@ -588,7 +592,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                 }
               } else {
                 const monthsDiff = (occYear - now.getFullYear()) * 12 + (occMonth - now.getMonth());
-                if (monthsDiff > 0 && monthsDiff <= 3) {
+                if (monthsDiff >= 0 && monthsDiff <= 3) {
                   projectedTimeline.push({
                     name: key,
                     ingresos: inv.type === 'Invoice' ? effectiveTotalSys : 0,
@@ -598,7 +602,7 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
                     gastosRecurrentes: inv.type === 'Expense' ? effectiveTotalSys : 0,
                     gastosNoRecurrentes: 0,
                     _date: new Date(occYear, occMonth, 1),
-                    proyectado: true
+                    proyectado: isStrictlyFuture
                   });
                 }
               }
