@@ -499,12 +499,27 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
     invoices.forEach(inv => {
       if (inv.recurrence && inv.recurrence.isRecurrent && inv.recurrence.frequency && inv.recurrence.totalCycles) {
         const occurrenceDates = getOccurrenceDates(inv.date, inv.recurrence.frequency, inv.recurrence.totalCycles);
+        const start = new Date(inv.date);
         
-        occurrenceDates.forEach(occDate => {
-          // We only project occurrences in the future
-          if (occDate.getTime() > now.getTime()) {
-            const occMonth = occDate.getMonth();
-            const occYear = occDate.getFullYear();
+        occurrenceDates.forEach((occDate, index) => {
+          const occMonth = occDate.getMonth();
+          const occYear = occDate.getFullYear();
+          
+          // Project occurrences in the current month or future months
+          const isCurrentOrFutureMonth = (occYear > now.getFullYear()) || (occYear === now.getFullYear() && occMonth >= now.getMonth());
+          
+          if (isCurrentOrFutureMonth) {
+            // Avoid double counting the original document (index === 0) in its creation month if it's already counted in realMonthlyData
+            const isCreationMonth = (occMonth === start.getMonth() && occYear === start.getFullYear());
+            if (isCreationMonth && index === 0) {
+              if (inv.type === 'Expense') {
+                return; // Expenses are always counted in realMonthlyData
+              }
+              if (inv.type === 'Invoice') {
+                const isPaid = (typeof inv.amountPaid === 'number' && inv.amountPaid > 0) || inv.status === 'Pagada' || inv.status === 'Aceptada';
+                if (isPaid) return; // Only skip if already paid and counted
+              }
+            }
             
             let effectiveTotal = inv.total;
             if (inv.type === 'Invoice') {

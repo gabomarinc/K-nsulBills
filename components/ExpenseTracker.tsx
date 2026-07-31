@@ -62,26 +62,72 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ invoices, currencySymbo
          .reduce((acc, curr) => acc + calculateMonthlyRecurrenceCost(curr), 0);
    }, [invoices]);
 
+   // Calculator & TimeRange State
+   type TimeRange = 'THIS_MONTH' | 'LAST_QUARTER' | 'THIS_YEAR' | 'CUSTOM';
+   const [timeRange, setTimeRange] = useState<TimeRange>('THIS_YEAR');
+   const [customStart, setCustomStart] = useState(() => {
+      const d = new Date();
+      d.setDate(1);
+      return d.toISOString().split('T')[0];
+   });
+   const [customEnd, setCustomEnd] = useState(() => {
+      return new Date().toISOString().split('T')[0];
+   });
+
    // Calculator State (Initialize from profile if available)
    const [targetIncome, setTargetIncome] = useState(currentProfile?.hourlyRateConfig?.targetIncome || 3000);
-   const [monthlyCosts, setMonthlyCosts] = useState(currentProfile?.hourlyRateConfig?.monthlyCosts || 500);
+   const [monthlyCosts, setMonthlyCosts] = useState(recurrentExpensesMonthlyTotal);
    const [billableHours, setBillableHours] = useState(currentProfile?.hourlyRateConfig?.billableHours || 25);
    const [isSavingRate, setIsSavingRate] = useState(false);
    const [rateSaved, setRateSaved] = useState(false);
+
+   // Sync monthly costs automatically with recurrent expenses total
+   useEffect(() => {
+      setMonthlyCosts(recurrentExpensesMonthlyTotal);
+   }, [recurrentExpensesMonthlyTotal]);
 
    // Sync state if profile loads later
    useEffect(() => {
       if (currentProfile?.hourlyRateConfig) {
          setTargetIncome(currentProfile.hourlyRateConfig.targetIncome);
-         setMonthlyCosts(currentProfile.hourlyRateConfig.monthlyCosts);
          setBillableHours(currentProfile.hourlyRateConfig.billableHours);
       }
    }, [currentProfile]);
 
+   // Filter invoices/expenses based on selected time range
+   const filteredInvoices = useMemo(() => {
+      const now = new Date();
+      let startDate = new Date();
+      let endDate = new Date();
+
+      if (timeRange === 'THIS_MONTH') {
+         startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      } else if (timeRange === 'LAST_QUARTER') {
+         startDate = new Date();
+         startDate.setMonth(now.getMonth() - 3);
+      } else if (timeRange === 'THIS_YEAR') {
+         startDate = new Date(now.getFullYear(), 0, 1);
+      } else if (timeRange === 'CUSTOM') {
+         startDate = new Date(customStart + 'T00:00:00');
+         const end = new Date(customEnd + 'T23:59:59');
+         endDate = end;
+      }
+
+      if (timeRange !== 'CUSTOM') {
+         endDate = new Date();
+         endDate.setHours(23, 59, 59, 999);
+      }
+
+      return invoices.filter(inv => {
+         const d = new Date(inv.date);
+         return d >= startDate && d <= endDate;
+      });
+   }, [invoices, timeRange, customStart, customEnd]);
+
    // --- STATS & DATA AGGREGATION ---
    const { totalIncome, totalExpenses, netProfit, expensesList, providers } = useMemo(() => {
       // 1. Income (Money In) - UPDATED LOGIC FOR PARTIAL PAYMENTS
-      const income = invoices
+      const income = filteredInvoices
          .filter(i => i.type === 'Invoice')
          .reduce((acc, curr) => {
             let collected = 0;
@@ -94,7 +140,7 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ invoices, currencySymbo
          }, 0);
 
       // 2. Expenses List (Raw)
-      const expenses = invoices.filter(i => i.type === 'Expense');
+      const expenses = filteredInvoices.filter(i => i.type === 'Expense');
       const expensesTotal = expenses.reduce((acc, curr) => acc + curr.total, 0);
 
       // 3. Providers Aggregation
@@ -140,14 +186,14 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ invoices, currencySymbo
          expensesList: expenses.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
          providers: refinedProviders
       };
-   }, [invoices]);
+   }, [filteredInvoices]);
 
    // --- CALCULATOR LOGIC ---
    const calculatedHourlyRate = useMemo(() => {
-      const totalNeeded = targetIncome + monthlyCosts + recurrentExpensesMonthlyTotal;
+      const totalNeeded = targetIncome + recurrentExpensesMonthlyTotal;
       const monthlyHours = billableHours * 4;
       return monthlyHours > 0 ? totalNeeded / monthlyHours : 0;
-   }, [targetIncome, monthlyCosts, recurrentExpensesMonthlyTotal, billableHours]);
+   }, [targetIncome, recurrentExpensesMonthlyTotal, billableHours]);
 
    // --- HANDLER: SAVE RATE ---
    const handleSaveRate = async () => {
@@ -158,7 +204,7 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ invoices, currencySymbo
          ...currentProfile,
          hourlyRateConfig: {
             targetIncome,
-            monthlyCosts,
+            monthlyCosts: recurrentExpensesMonthlyTotal,
             billableHours,
             calculatedRate: calculatedHourlyRate
          }
@@ -207,6 +253,67 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ invoices, currencySymbo
                   <span>Nuevo Gasto</span>
                </button>
             </div>
+         </div>
+
+         {/* DATE FILTER BUTTONS */}
+         <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-slate-50/50 p-4 rounded-[2rem] border border-slate-100">
+           <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 overflow-x-auto max-w-full">
+             <button
+               onClick={() => setTimeRange('THIS_MONTH')}
+               className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 ${timeRange === 'THIS_MONTH'
+                 ? 'bg-[#1c2938] text-white shadow-md'
+                 : 'text-slate-400 hover:text-slate-600'
+                 }`}
+             >
+               Mes Actual
+             </button>
+             <button
+               onClick={() => setTimeRange('LAST_QUARTER')}
+               className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 ${timeRange === 'LAST_QUARTER'
+                 ? 'bg-[#1c2938] text-white shadow-md'
+                 : 'text-slate-400 hover:text-slate-600'
+                 }`}
+             >
+               Último Trimestre
+             </button>
+             <button
+               onClick={() => setTimeRange('THIS_YEAR')}
+               className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 ${timeRange === 'THIS_YEAR'
+                 ? 'bg-[#1c2938] text-white shadow-md'
+                 : 'text-slate-400 hover:text-slate-600'
+                 }`}
+             >
+               Todo el Año
+             </button>
+             <button
+               onClick={() => setTimeRange('CUSTOM')}
+               className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 flex items-center gap-1 ${timeRange === 'CUSTOM'
+                 ? 'bg-[#1c2938] text-white shadow-md'
+                 : 'text-slate-400 hover:text-slate-600'
+                 }`}
+             >
+               <Calendar className="w-3 h-3" />
+               Personalizado
+             </button>
+           </div>
+
+           {timeRange === 'CUSTOM' && (
+             <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-4 bg-white p-1 rounded-xl border border-slate-100 shadow-sm w-full md:w-auto">
+               <input
+                 type="date"
+                 value={customStart}
+                 onChange={(e) => setCustomStart(e.target.value)}
+                 className="px-3 py-2 bg-slate-50 rounded-lg text-xs font-bold text-[#1c2938] outline-none focus:ring-1 focus:ring-[#27bea5] w-full md:w-auto"
+               />
+               <span className="text-slate-400 text-xs font-bold">a</span>
+               <input
+                 type="date"
+                 value={customEnd}
+                 onChange={(e) => setCustomEnd(e.target.value)}
+                 className="px-3 py-2 bg-slate-50 rounded-lg text-xs font-bold text-[#1c2938] outline-none focus:ring-1 focus:ring-[#27bea5] w-full md:w-auto"
+               />
+             </div>
+           )}
          </div>
 
          {/* FINANCIAL HEALTH FLOW */}
@@ -317,22 +424,21 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ invoices, currencySymbo
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                            <div className="space-y-2">
                               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">
-                                 {recurrentExpensesMonthlyTotal > 0 ? 'Otros Costos Fijos' : 'Costos Fijos'}
+                                 Costos Fijos
                               </label>
                               <div className="relative group">
-                                 <TrendingDown className="absolute left-4 top-4 w-5 h-5 text-rose-400 group-focus-within:text-rose-500 transition-colors" />
+                                 <TrendingDown className="absolute left-4 top-4 w-5 h-5 text-rose-400" />
                                  <input
-                                    type="number"
-                                    value={monthlyCosts}
-                                    onChange={(e) => setMonthlyCosts(Number(e.target.value))}
-                                    className="w-full pl-12 p-4 rounded-2xl bg-white/5 border border-white/10 focus:bg-white/10 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 outline-none text-xl font-bold text-white transition-all"
+                                    type="text"
+                                    value={`${currencySymbol}${recurrentExpensesMonthlyTotal.toFixed(0)}`}
+                                    readOnly
+                                    disabled
+                                    className="w-full pl-12 p-4 rounded-2xl bg-white/5 border border-white/10 outline-none text-xl font-bold text-slate-400 cursor-not-allowed transition-all"
                                  />
                               </div>
-                              {recurrentExpensesMonthlyTotal > 0 && (
-                                 <p className="text-[10px] text-slate-400 font-medium ml-1">
-                                    + {currencySymbol}{recurrentExpensesMonthlyTotal.toFixed(0)} recurrentes (Total: {currencySymbol}{(monthlyCosts + recurrentExpensesMonthlyTotal).toFixed(0)})
-                                 </p>
-                              )}
+                              <p className="text-[10px] text-slate-400 font-medium ml-1">
+                                 Autocompletado desde tus gastos recurrentes
+                              </p>
                            </div>
 
                            <div className="space-y-2">
@@ -366,7 +472,7 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ invoices, currencySymbo
                         </h2>
                         <div className="bg-slate-100 rounded-xl p-4 mt-2 mb-6">
                            <p className="text-sm text-slate-500 leading-relaxed max-w-xs mx-auto">
-                              Cubre tus costos de <strong>{currencySymbol}{(monthlyCosts + recurrentExpensesMonthlyTotal).toFixed(0)}</strong> y alcanza tu meta de <strong>{currencySymbol}{targetIncome}</strong>.
+                              Cubre tus costos de <strong>{currencySymbol}{recurrentExpensesMonthlyTotal.toFixed(0)}</strong> y alcanza tu meta de <strong>{currencySymbol}{targetIncome}</strong>.
                            </p>
                         </div>
 
