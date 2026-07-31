@@ -659,46 +659,37 @@ const AppContent: React.FC = () => {
     if (!targetInvoice) return;
 
     if (targetInvoice.type === 'Quote' && newStatus === 'Aceptada' && targetInvoice.status !== 'Aceptada') {
-      const confirmed = await alert.confirm({
-        title: 'Convertir a Factura',
-        message: '¿Deseas convertir esta cotización aprobada en una nueva factura de venta?',
-        confirmText: 'Sí, Convertir',
-        type: 'info'
-      });
+      const sequences = currentUser.documentSequences || { invoicePrefix: 'FAC', invoiceNextNumber: 1, quotePrefix: 'COT', quoteNextNumber: 1 };
+      let nextNum = sequences.invoiceNextNumber;
+      let newInvoiceId = `${sequences.invoicePrefix}-${String(nextNum).padStart(4, '0')}`;
 
-      if (confirmed) {
-        const sequences = currentUser.documentSequences || { invoicePrefix: 'FAC', invoiceNextNumber: 1, quotePrefix: 'COT', quoteNextNumber: 1 };
-        let nextNum = sequences.invoiceNextNumber;
-        let newInvoiceId = `${sequences.invoicePrefix}-${String(nextNum).padStart(4, '0')}`;
-
-        while (invoices.some(i => i.id === newInvoiceId)) {
-          nextNum++;
-          newInvoiceId = `${sequences.invoicePrefix}-${String(nextNum).padStart(4, '0')}`;
-        }
-
-        const newInvoice: Invoice = {
-          ...targetInvoice,
-          id: newInvoiceId,
-          type: 'Invoice',
-          status: 'Enviada',
-          date: new Date().toISOString(),
-          timeline: [
-            { id: Date.now().toString(), type: 'CREATED', title: `Convertida desde ${targetInvoice.id}`, timestamp: new Date().toISOString() }
-          ]
-        };
-
-        await handleSaveInvoice(newInvoice);
-
-        const quoteEvent: TimelineEvent = {
-          id: Date.now().toString(), type: 'APPROVED', title: 'Cotización Aceptada', description: `Convertida a factura ${newInvoiceId}`, timestamp: new Date().toISOString()
-        };
-        const updatedQuote = { ...targetInvoice, status: newStatus, timeline: [...(targetInvoice.timeline || []), quoteEvent] };
-
-        setInvoices(prev => prev.map(i => i.id === id ? updatedQuote : i));
-        await saveInvoiceToDb({ ...updatedQuote, userId: currentUser.id });
-        alert.addToast('success', 'Conversión Exitosa', `Se creó la factura ${newInvoiceId}`);
-        return;
+      while (invoices.some(i => i.id === newInvoiceId)) {
+        nextNum++;
+        newInvoiceId = `${sequences.invoicePrefix}-${String(nextNum).padStart(4, '0')}`;
       }
+
+      const newInvoice: Invoice = {
+        ...targetInvoice,
+        id: newInvoiceId,
+        type: 'Invoice',
+        status: 'Enviada',
+        date: new Date().toISOString(),
+        timeline: [
+          { id: Date.now().toString(), type: 'CREATED', title: `Convertida desde ${targetInvoice.id}`, timestamp: new Date().toISOString() }
+        ]
+      };
+
+      await handleSaveInvoice(newInvoice);
+
+      const quoteEvent: TimelineEvent = {
+        id: Date.now().toString(), type: 'APPROVED', title: 'Cotización Aceptada', description: `Convertida a factura ${newInvoiceId}`, timestamp: new Date().toISOString()
+      };
+      const updatedQuote = { ...targetInvoice, status: newStatus, timeline: [...(targetInvoice.timeline || []), quoteEvent] };
+
+      setInvoices(prev => prev.map(i => i.id === id ? updatedQuote : i));
+      await saveInvoiceToDb({ ...updatedQuote, userId: currentUser.id });
+      alert.addToast('success', 'Conversión Exitosa', `Se creó automáticamente la factura ${newInvoiceId}`);
+      return;
     }
 
     const event: TimelineEvent = {
