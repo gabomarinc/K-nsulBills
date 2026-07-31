@@ -269,6 +269,47 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
     alert.addToast('success', 'Pago Registrado', `Se ha abonado ${invoice.currency} ${amount.toFixed(2)}`);
   };
 
+  const handleDeletePayment = (paymentId: string) => {
+    if (!invoice.payments) return;
+    const deletedPayment = invoice.payments.find(p => p.id === paymentId);
+    const updatedPayments = invoice.payments.filter(p => p.id !== paymentId);
+    
+    const newTotalPaid = updatedPayments.reduce((sum, p) => sum + p.amount, 0);
+    const newRemaining = invoice.total - newTotalPaid;
+    
+    let newStatus: InvoiceStatus = invoice.status;
+    if (invoice.type === 'Invoice' && invoice.status !== 'Borrador') {
+       if (newRemaining <= 0.01) {
+           newStatus = 'Pagada';
+       } else if (newTotalPaid > 0) {
+           newStatus = 'Abonada';
+       } else {
+           newStatus = 'Enviada';
+       }
+    }
+
+    const event: TimelineEvent = {
+        id: Date.now().toString(),
+        type: 'STATUS_CHANGE',
+        title: 'Cobro Eliminado',
+        description: `Se anuló el cobro de ${deletedPayment?.currency || invoice.currency} ${deletedPayment?.amount}`,
+        timestamp: new Date().toISOString()
+    };
+
+    const updatedInvoice: Invoice = {
+        ...invoice,
+        amountPaid: newTotalPaid,
+        status: newStatus,
+        payments: updatedPayments,
+        timeline: [...(invoice.timeline || []), event]
+    };
+    
+    if (onUpdateInvoice) {
+        onUpdateInvoice(updatedInvoice);
+        alert.addToast('info', 'Cobro Eliminado', 'El registro ha sido eliminado exitosamente.');
+    }
+  };
+
   const handleSend = async () => {
     if (!invoice.clientEmail) {
         alert.addToast('error', 'Falta Email', "El cliente no tiene un email registrado.");
@@ -658,6 +699,32 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                 </div>
 
                 <div className="space-y-6">
+                    {/* Lista de Cobros Anteriores */}
+                    {invoice.payments && invoice.payments.length > 0 && (
+                        <div className="bg-orange-50/50 border border-orange-100 rounded-2xl p-4 mb-6">
+                            <label className="text-[10px] font-bold text-orange-600 uppercase tracking-widest block mb-3">Cobros Registrados</label>
+                            <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar pr-1">
+                                {invoice.payments.map((p, i) => (
+                                    <div key={p.id} className="flex items-center justify-between bg-white border border-orange-200 rounded-xl p-3">
+                                        <div>
+                                            <p className="text-xs font-bold text-[#1c2938]">Cobro {i + 1}</p>
+                                            <p className="text-[10px] text-slate-500 font-medium">{new Date(p.date).toLocaleDateString()} {p.method ? `• ${p.method}` : ''}</p>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <div className="text-right">
+                                                <p className="text-sm font-bold text-[#1c2938]">{p.currency || invoice.currency} {p.amount.toFixed(2)}</p>
+                                                <p className="text-[10px] font-bold text-green-600 uppercase">Pagado</p>
+                                            </div>
+                                            <button onClick={() => handleDeletePayment(p.id)} className="text-slate-300 hover:text-red-500 transition-colors p-1" title="Eliminar cobro">
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Método de Pago */}
                     <div>
                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Método de Pago</label>
