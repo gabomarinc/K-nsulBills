@@ -122,6 +122,18 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
   const amountPaid = invoice.amountPaid || 0;
   const remainingBalance = Math.max(0, invoice.total - amountPaid);
   
+  // Handle Legacy Payments (if they were added before the payments array existed)
+  const displayPayments = invoice.payments && invoice.payments.length > 0 
+    ? invoice.payments 
+    : (amountPaid > 0 ? [{
+        id: 'legacy-payment',
+        date: invoice.date,
+        amount: amountPaid,
+        method: 'Otro' as const,
+        currency: invoice.currency,
+        notes: 'Cobro previo'
+      }] : []);
+
   const isQuote = invoice.type === 'Quote';
 
   // Handle Yappy V2 Events
@@ -270,9 +282,10 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
   };
 
   const handleDeletePayment = (paymentId: string) => {
-    if (!invoice.payments) return;
-    const deletedPayment = invoice.payments.find(p => p.id === paymentId);
-    const updatedPayments = invoice.payments.filter(p => p.id !== paymentId);
+    // We use displayPayments to handle the case where it's a legacy payment being deleted
+    const currentPayments = displayPayments;
+    const deletedPayment = currentPayments.find(p => p.id === paymentId);
+    const updatedPayments = currentPayments.filter(p => p.id !== paymentId);
     
     const newTotalPaid = updatedPayments.reduce((sum, p) => sum + p.amount, 0);
     const newRemaining = invoice.total - newTotalPaid;
@@ -700,11 +713,11 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
 
                 <div className="space-y-6">
                     {/* Lista de Cobros Anteriores */}
-                    {invoice.payments && invoice.payments.length > 0 && (
+                    {displayPayments.length > 0 && (
                         <div className="bg-orange-50/50 border border-orange-100 rounded-2xl p-4 mb-6">
                             <label className="text-[10px] font-bold text-orange-600 uppercase tracking-widest block mb-3">Cobros Registrados</label>
                             <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar pr-1">
-                                {invoice.payments.map((p, i) => (
+                                {displayPayments.map((p, i) => (
                                     <div key={p.id} className="flex items-center justify-between bg-white border border-orange-200 rounded-xl p-3">
                                         <div>
                                             <p className="text-xs font-bold text-[#1c2938]">Cobro {i + 1}</p>
