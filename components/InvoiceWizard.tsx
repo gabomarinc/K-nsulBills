@@ -3,12 +3,12 @@ import React, { useState, useEffect } from 'react';
 import {
   Mic, Send, Sparkles, Check, ArrowLeft, Edit2, Loader2,
   FileText, FileBadge, Calendar, User, Search, Plus, Trash2,
-  ShoppingBag, Calculator, ChevronDown, Building2, Eye,
+  ShoppingBag, Calculator, ChevronDown, Building2, Eye, Wallet,
   Coins, Lock, AlertTriangle, Settings, Save, Archive, Percent, DollarSign, BrainCircuit, Scissors, X
 } from 'lucide-react';
 import { 
   Invoice, ParsedInvoiceData, UserProfile, InvoiceItem, InvoiceStatus, CatalogItem,
-  RecurrenceFrequency, InvoiceRecurrence 
+  RecurrenceFrequency, InvoiceRecurrence, PaymentRecord
 } from '../types';
 import { parseInvoiceRequest, getDiscountRecommendation, AI_ERROR_BLOCKED } from '../services/geminiService';
 
@@ -87,14 +87,28 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({
     currency: string;
     notes: string;
     validityDate: string;
-  }>({
-    clientName: initialData?.clientName || '',
-    clientTaxId: initialData?.clientTaxId || '',
-    clientEmail: initialData?.clientEmail || '',
-    items: initialData?.items || [],
-    currency: initialData?.currency || currentUser.defaultCurrency || 'USD',
-    notes: initialData?.notes || '',
-    validityDate: initialData?.dueDate || (initialData ? new Date(initialData.date).toISOString().split('T')[0] : new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
+    payments: PaymentRecord[];
+  }>(() => {
+    let initialPayments = initialData?.payments || [];
+    if (initialData?.amountPaid && initialData.amountPaid > 0 && initialPayments.length === 0) {
+      initialPayments.push({
+        id: 'legacy-payment',
+        date: initialData.date,
+        amount: initialData.amountPaid,
+        notes: 'Cobro importado'
+      });
+    }
+
+    return {
+      clientName: initialData?.clientName || '',
+      clientTaxId: initialData?.clientTaxId || '',
+      clientEmail: initialData?.clientEmail || '',
+      items: initialData?.items || [],
+      currency: initialData?.currency || currentUser.defaultCurrency || 'USD',
+      notes: initialData?.notes || '',
+      validityDate: initialData?.dueDate || (initialData ? new Date(initialData.date).toISOString().split('T')[0] : new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]),
+      payments: initialPayments
+    };
   });
 
   const [generatedId, setGeneratedId] = useState(initialData?.id || '');
@@ -328,6 +342,18 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({
     
     let newId = generatedId || generateUniqueId();
 
+    const finalAmountPaid = draft.payments.reduce((sum, p) => sum + p.amount, 0);
+    
+    // Auto-update status if fully paid
+    let finalStatus = isOffline ? 'PendingSync' as const : (isEditMode ? docStatus : targetStatus);
+    if (docType === 'Invoice' && finalStatus !== 'Borrador') {
+       if (finalAmountPaid >= totals.total - 0.01) {
+           finalStatus = 'Pagada';
+       } else if (finalAmountPaid > 0) {
+           finalStatus = 'Abonada';
+       }
+    }
+
     const finalInvoice: Invoice = {
       id: newId,
       clientName: draft.clientName,
@@ -339,11 +365,13 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({
       discountRate: totals.effectiveRate,
       withholdingAmount: showWithholding ? totals.finalWithholding : 0,
       notes: draft.notes,
-      status: isOffline ? 'PendingSync' : (isEditMode ? docStatus : targetStatus),
+      status: finalStatus,
       currency: draft.currency,
       type: docType,
       dueDate: baseDueDate,
       timeline: initialData?.timeline || [],
+      payments: draft.payments,
+      amountPaid: finalAmountPaid,
       recurrence: isRecurrent ? {
         isRecurrent: true,
         frequency: recurrenceFreq,
@@ -393,6 +421,16 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({
 
   const removeItem = (index: number) => {
     setDraft(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== index) }));
+  };
+
+  const updatePayment = (index: number, field: keyof PaymentRecord, value: any) => {
+    const newPayments = [...draft.payments];
+    newPayments[index] = { ...newPayments[index], [field]: value };
+    setDraft(prev => ({ ...prev, payments: newPayments }));
+  };
+
+  const removePayment = (index: number) => {
+    setDraft(prev => ({ ...prev, payments: prev.payments.filter((_, i) => i !== index) }));
   };
 
   // ... (Step Logic and Components for Type Select, AI Input remain mostly same) ...
@@ -729,6 +767,54 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({
                 )}
               </div>
             </section>
+            
+            {/* 4. Registros de Cobro (Only in edit mode for invoices) */}
+            {isEditMode && docType === 'Invoice' && (
+              <section className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                    <Wallet className="w-4 h-4" /> Registros de Cobro
+                  </h3>
+                </div>
+                
+                {draft.payments.length > 0 ? (
+                  <div className="space-y-3">
+                    {draft.payments.map((payment, idx) => (
+                      <div key={payment.id} className="flex gap-3 items-center group bg-slate-50 p-3 rounded-xl border border-slate-100">
+                        <div className="w-32">
+                          <input 
+                            type="date" 
+                            value={payment.date} 
+                            onChange={(e) => updatePayment(idx, 'date', e.target.value)} 
+                            className="w-full p-2 rounded-lg bg-white border border-slate-200 outline-none focus:border-[#27bea5] text-sm font-bold text-slate-700" 
+                          />
+                        </div>
+                        <div className="flex-1 relative">
+                          <span className="absolute left-3 top-2.5 text-slate-400 text-sm">{draft.currency === 'EUR' ? '€' : '$'}</span>
+                          <input 
+                            type="number" 
+                            value={payment.amount} 
+                            onChange={(e) => updatePayment(idx, 'amount', parseFloat(e.target.value) || 0)} 
+                            className="w-full p-2 pl-6 rounded-lg bg-white border border-slate-200 outline-none focus:border-[#27bea5] text-sm font-bold text-[#1c2938]" 
+                            placeholder="Monto"
+                          />
+                        </div>
+                        <button onClick={() => removePayment(idx)} className="p-2 text-slate-300 hover:text-red-500 transition-colors" title="Eliminar cobro">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 bg-slate-50 rounded-xl border border-slate-100 border-dashed">
+                    <p className="text-sm text-slate-400 font-medium">No hay cobros registrados aún.</p>
+                  </div>
+                )}
+                <div className="mt-4 flex justify-between items-center pt-4 border-t border-slate-100">
+                   <div className="text-sm text-slate-500">Total cobrado: <span className="font-bold text-[#1c2938]">{draft.currency === 'EUR' ? '€' : '$'} {draft.payments.reduce((sum, p) => sum + p.amount, 0).toFixed(2)}</span></div>
+                </div>
+              </section>
+            )}
           </div>
 
           {/* RIGHT/BOTTOM: LIVE PREVIEW & MATH (Sticky) */}

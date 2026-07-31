@@ -250,6 +250,13 @@ export interface InvoiceRecurrence {
   isRecurrent: boolean;
 }
 
+export interface PaymentRecord {
+  id: string;
+  date: string; // ISO string
+  amount: number;
+  notes?: string;
+}
+
 export interface Invoice {
   id: string;
   userId?: string; // LINK TO USER PROFILE
@@ -282,6 +289,7 @@ export interface Invoice {
 
   // Payment Tracking
   stripeMapping?: string[]; // Array of Stripe Session/Payment IDs linked to this doc
+  payments?: PaymentRecord[]; // New: Granular payment history
 
   // Recurrence
   recurrence?: InvoiceRecurrence;

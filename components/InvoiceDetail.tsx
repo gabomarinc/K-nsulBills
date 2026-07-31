@@ -39,6 +39,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
   // Payment Modal State
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
   const [isProcessingYappy, setIsProcessingYappy] = useState(false);
   const yappyBtnRef = useRef<any>(null);
 
@@ -239,11 +240,19 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
         timestamp: new Date().toISOString()
     };
 
+    const newPaymentRecord = {
+        id: Date.now().toString(),
+        date: paymentDate,
+        amount: amount,
+        notes: ''
+    };
+
     const updatedInvoice: Invoice = {
         ...invoice,
         amountPaid: newTotalPaid,
         status: newStatus,
-        timeline: [...(invoice.timeline || []), paymentEvent]
+        timeline: [...(invoice.timeline || []), paymentEvent],
+        payments: [...(invoice.payments || []), newPaymentRecord]
     };
 
     if (onUpdateInvoice) {
@@ -252,6 +261,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
     
     setIsPaymentModalOpen(false);
     setPaymentAmount('');
+    setPaymentDate(new Date().toISOString().split('T')[0]);
     alert.addToast('success', 'Pago Registrado', `Se ha abonado ${invoice.currency} ${amount.toFixed(2)}`);
   };
 
@@ -639,19 +649,31 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                 </div>
 
                 <div className="space-y-4">
-                    <div>
-                        <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Monto Recibido</label>
-                        <div className="relative">
-                            <span className="absolute left-4 top-4 text-slate-400 font-bold">$</span>
-                            <input 
-                                type="number" 
-                                value={paymentAmount}
-                                onChange={(e) => setPaymentAmount(e.target.value)}
-                                className="w-full pl-10 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-2xl font-bold text-[#1c2938] outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-all"
-                                placeholder="0.00"
-                                autoFocus
-                            />
+                    <div className="flex gap-4">
+                        <div className="flex-1">
+                            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Monto Recibido</label>
+                            <div className="relative">
+                                <span className="absolute left-4 top-4 text-slate-400 font-bold">$</span>
+                                <input 
+                                    type="number" 
+                                    value={paymentAmount}
+                                    onChange={(e) => setPaymentAmount(e.target.value)}
+                                    className="w-full pl-10 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-2xl font-bold text-[#1c2938] outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-all"
+                                    placeholder="0.00"
+                                    autoFocus
+                                />
+                            </div>
                         </div>
+                    </div>
+                    
+                    <div>
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Fecha de Cobro</label>
+                        <input 
+                            type="date"
+                            value={paymentDate}
+                            onChange={(e) => setPaymentDate(e.target.value)}
+                            className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-lg font-bold text-[#1c2938] outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-all"
+                        />
                     </div>
                     
                     <button 
