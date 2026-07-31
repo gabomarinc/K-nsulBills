@@ -6,7 +6,7 @@ import {
    Calendar, Tag, MoreHorizontal, AlertCircle,
    Lightbulb, ArrowUpRight, ArrowDownRight,
    Receipt, Sparkles, Truck, Package, LayoutGrid, List, Briefcase, Star,
-   Save, CheckCircle2, Edit2
+   Save, CheckCircle2, Edit2, Repeat
 } from 'lucide-react';
 import { Invoice, UserProfile } from '../types';
 
@@ -52,7 +52,7 @@ interface ProviderStats {
 
 const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ invoices, currencySymbol, onCreateExpense, onEditExpense, currentProfile, onUpdateProfile }) => {
    const [calculatorMode, setCalculatorMode] = useState(false);
-   const [activeTab, setActiveTab] = useState<'TRANSACTIONS' | 'PROVIDERS'>('TRANSACTIONS');
+   const [activeTab, setActiveTab] = useState<'TRANSACTIONS' | 'PROVIDERS' | 'RECURRENTS'>('TRANSACTIONS');
 
    // Calculate recurrent expenses total
    const recurrentExpensesMonthlyTotal = useMemo(() => {
@@ -414,6 +414,15 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ invoices, currencySymbo
                >
                   <Briefcase className="w-4 h-4" /> Proveedores
                </button>
+               <button
+                  onClick={() => setActiveTab('RECURRENTS')}
+                  className={`px-6 py-3 rounded-xl text-sm font-bold transition-all duration-300 whitespace-nowrap flex items-center gap-2 ${activeTab === 'RECURRENTS'
+                     ? 'text-white bg-[#1c2938] shadow-md'
+                     : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+                     }`}
+               >
+                  <Repeat className="w-4 h-4" /> Recurrentes
+               </button>
             </div>
          </div>
 
@@ -477,6 +486,73 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ invoices, currencySymbo
                         <button onClick={onCreateExpense} className="text-[#27bea5] font-bold text-sm hover:underline">
                            + Registrar primer gasto
                         </button>
+                     </div>
+                  )}
+               </div>
+            </div>
+         )}
+
+         {/* RECURRENTS VIEW */}
+         {activeTab === 'RECURRENTS' && (
+            <div className="animate-in fade-in slide-in-from-bottom-4">
+               <div className="flex items-center justify-between mb-6 px-4">
+                  <h3 className="font-bold text-[#1c2938] text-xl flex items-center gap-2">
+                     <Repeat className="w-5 h-5 text-[#27bea5]" />
+                     Gastos Recurrentes
+                  </h3>
+               </div>
+
+               <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-50 overflow-hidden min-h-[300px]">
+                  {expensesList.filter(e => e.recurrence?.isRecurrent).length > 0 ? (
+                     <div className="divide-y divide-slate-50">
+                        {expensesList.filter(e => e.recurrence?.isRecurrent).map(expense => (
+                           <div key={expense.id} className="p-6 md:px-8 flex flex-col md:flex-row items-start md:items-center justify-between hover:bg-slate-50 transition-colors group gap-4 relative">
+                              <div className="flex items-center gap-5">
+                                 <div className="w-14 h-14 rounded-[1.2rem] bg-emerald-50 text-[#27bea5] flex items-center justify-center group-hover:scale-110 group-hover:shadow-md transition-all duration-300 shadow-sm border border-emerald-100">
+                                    <Repeat className="w-6 h-6" />
+                                 </div>
+                                 <div>
+                                    <h4 className="font-bold text-[#1c2938] text-lg mb-1">{expense.items[0]?.description || 'Gasto Recurrente'}</h4>
+                                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 text-xs text-slate-400 font-medium">
+                                       <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> Frecuencia: {
+                                          expense.recurrence?.frequency === 'WEEKLY' ? 'Semanal' :
+                                          expense.recurrence?.frequency === 'BIWEEKLY' ? 'Quincenal' :
+                                          expense.recurrence?.frequency === 'MONTHLY' ? 'Mensual' :
+                                          expense.recurrence?.frequency === 'BIMONTHLY' ? 'Bimestral' :
+                                          expense.recurrence?.frequency === 'QUARTERLY' ? 'Trimestral' :
+                                          expense.recurrence?.frequency === 'ANNUAL' ? 'Anual' : 'Personalizada'
+                                       }</span>
+                                       <span className="hidden sm:inline w-1 h-1 rounded-full bg-slate-300"></span>
+                                       <span>{expense.clientName || 'Proveedor General'}</span>
+                                    </div>
+                                 </div>
+                              </div>
+                              <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
+                                 <p className="font-bold text-[#1c2938] text-xl tracking-tight">
+                                    {currencySymbol} {expense.total.toLocaleString()}
+                                 </p>
+
+                                 {/* Edit Button */}
+                                 {onEditExpense && (
+                                    <button
+                                       onClick={() => onEditExpense(expense)}
+                                       className="p-2 text-slate-300 hover:text-[#1c2938] hover:bg-slate-200 rounded-full transition-colors md:opacity-0 md:group-hover:opacity-100"
+                                       title="Editar Recurrencia"
+                                    >
+                                       <Edit2 className="w-4 h-4" />
+                                    </button>
+                                 )}
+                              </div>
+                           </div>
+                        ))}
+                     </div>
+                  ) : (
+                     <div className="flex flex-col items-center justify-center h-[300px] text-center">
+                        <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-4">
+                           <Repeat className="w-8 h-8 text-slate-300" />
+                        </div>
+                        <h3 className="font-bold text-slate-700">Sin gastos recurrentes</h3>
+                        <p className="text-slate-400 text-sm mt-1 mb-6">Identifica tus suscripciones y pagos fijos para automatizar tu flujo.</p>
                      </div>
                   )}
                </div>
