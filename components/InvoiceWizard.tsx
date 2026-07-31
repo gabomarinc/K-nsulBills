@@ -789,8 +789,22 @@ const InvoiceWizard: React.FC<InvoiceWizardProps> = ({
                             className="w-full p-2 rounded-lg bg-white border border-slate-200 outline-none focus:border-[#27bea5] text-sm font-bold text-slate-700" 
                           />
                         </div>
+                        <div className="w-28">
+                          <select 
+                            value={payment.method || 'Banco'} 
+                            onChange={(e) => updatePayment(idx, 'method', e.target.value as any)} 
+                            className="w-full p-2 rounded-lg bg-white border border-slate-200 outline-none focus:border-[#27bea5] text-sm font-bold text-slate-700" 
+                          >
+                             <option value="Banco">Banco</option>
+                             <option value="Tarjeta">Tarjeta</option>
+                             <option value="Efectivo">Efectivo</option>
+                             <option value="Otro">Otro</option>
+                          </select>
+                        </div>
                         <div className="flex-1 relative">
-                          <span className="absolute left-3 top-2.5 text-slate-400 text-sm">{draft.currency === 'EUR' ? '€' : '$'}</span>
+                          <span className="absolute left-3 top-2.5 text-slate-400 text-sm">
+                            {payment.currency === 'EUR' ? '€' : '$'}
+                          </span>
                           <input 
                             type="number" 
                             value={payment.amount} 

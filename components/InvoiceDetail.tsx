@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   ArrowLeft, Printer, Share2, Download, Building2, 
   CheckCircle2, Loader2, Send, MessageCircle, Smartphone, Mail, Check, AlertTriangle, Edit2, 
-  ChevronDown, XCircle, Wallet, ArrowRight, X, Trash2, CreditCard, Clock, StickyNote, Lock, Link
+  ChevronDown, XCircle, Wallet, ArrowRight, X, Trash2, CreditCard, Clock, StickyNote, Lock, Link, Landmark, Coins, FileText
 } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
 import { Invoice, UserProfile, TimelineEvent, InvoiceStatus } from '../types';
@@ -40,6 +40,8 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+  const [paymentMethod, setPaymentMethod] = useState<'Banco'|'Tarjeta'|'Efectivo'|'Otro'>('Banco');
+  const [paymentCurrency, setPaymentCurrency] = useState(invoice.currency);
   const [isProcessingYappy, setIsProcessingYappy] = useState(false);
   const yappyBtnRef = useRef<any>(null);
 
@@ -244,6 +246,8 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
         id: Date.now().toString(),
         date: paymentDate,
         amount: amount,
+        method: paymentMethod,
+        currency: paymentCurrency,
         notes: ''
     };
 
@@ -632,53 +636,92 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
       {/* PAYMENT MODAL */}
       {isPaymentModalOpen && (
         <div className="fixed inset-0 bg-[#1c2938]/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
-            <div className="bg-white rounded-[2rem] p-8 w-full max-w-sm shadow-2xl animate-in zoom-in-95 relative">
-                <button 
-                    onClick={() => setIsPaymentModalOpen(false)}
-                    className="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-100 text-slate-400 transition-colors"
-                >
-                    <X className="w-5 h-5" />
-                </button>
+            <div className="bg-white rounded-[2rem] p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95">
                 
-                <div className="text-center mb-6">
-                    <div className="w-16 h-16 bg-green-50 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <Wallet className="w-8 h-8" />
+                {/* Header */}
+                <div className="flex justify-between items-start mb-8">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-green-50 text-green-600 rounded-xl flex items-center justify-center">
+                            <CreditCard className="w-6 h-6" />
+                        </div>
+                        <div>
+                            <h3 className="text-2xl font-bold text-[#1c2938]">Registrar Cobro</h3>
+                            <p className="text-[10px] font-bold text-slate-400 tracking-widest uppercase mt-0.5">Factura #{invoice.id}</p>
+                        </div>
                     </div>
-                    <h3 className="text-xl font-bold text-[#1c2938]">Registrar Pago</h3>
-                    <p className="text-sm text-slate-500 mt-1">Saldo pendiente: {invoice.currency} {remainingBalance.toFixed(2)}</p>
+                    <button 
+                        onClick={() => setIsPaymentModalOpen(false)}
+                        className="p-2 rounded-full hover:bg-slate-100 text-slate-400 transition-colors -mr-2"
+                    >
+                        <X className="w-5 h-5" />
+                    </button>
                 </div>
 
-                <div className="space-y-4">
-                    <div className="flex gap-4">
-                        <div className="flex-1">
-                            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Monto Recibido</label>
+                <div className="space-y-6">
+                    {/* Método de Pago */}
+                    <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Método de Pago</label>
+                        <div className="grid grid-cols-4 gap-2">
+                            {[{id: 'Banco', icon: Landmark}, {id: 'Tarjeta', icon: CreditCard}, {id: 'Efectivo', icon: Coins}, {id: 'Otro', icon: FileText}].map(method => (
+                                <button 
+                                    key={method.id}
+                                    onClick={() => setPaymentMethod(method.id as any)}
+                                    className={`flex flex-col items-center justify-center py-3 px-1 rounded-2xl border-2 transition-all ${paymentMethod === method.id ? 'border-green-500 text-green-600 bg-green-50 shadow-sm' : 'border-slate-50 text-slate-500 bg-slate-50 hover:bg-slate-100'}`}
+                                >
+                                    <method.icon className="w-5 h-5 mb-1" />
+                                    <span className="text-[10px] font-bold">{method.id}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Monto Recibido */}
+                    <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Monto Recibido</label>
+                        <div className="relative">
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xl">$</span>
+                            <input 
+                                type="number" 
+                                value={paymentAmount}
+                                onChange={(e) => setPaymentAmount(e.target.value)}
+                                className="w-full pl-10 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-2xl font-bold text-[#1c2938] outline-none focus:border-green-500 focus:bg-white transition-all"
+                                placeholder="0.00"
+                                autoFocus
+                            />
+                        </div>
+                    </div>
+                    
+                    {/* Fecha y Moneda */}
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Fecha Cobro</label>
+                            <input 
+                                type="date"
+                                value={paymentDate}
+                                onChange={(e) => setPaymentDate(e.target.value)}
+                                className="w-full px-4 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-[#1c2938] outline-none focus:border-green-500 focus:bg-white transition-all"
+                            />
+                        </div>
+                        <div>
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Moneda</label>
                             <div className="relative">
-                                <span className="absolute left-4 top-4 text-slate-400 font-bold">$</span>
-                                <input 
-                                    type="number" 
-                                    value={paymentAmount}
-                                    onChange={(e) => setPaymentAmount(e.target.value)}
-                                    className="w-full pl-10 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-2xl font-bold text-[#1c2938] outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-all"
-                                    placeholder="0.00"
-                                    autoFocus
-                                />
+                                <select 
+                                    value={paymentCurrency}
+                                    onChange={(e) => setPaymentCurrency(e.target.value)}
+                                    className="w-full px-4 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-[#1c2938] outline-none focus:border-green-500 focus:bg-white transition-all appearance-none"
+                                >
+                                    {(issuer.billingCurrencies?.length ? issuer.billingCurrencies : ['USD', 'EUR', 'PAB']).map(c => (
+                                        <option key={c} value={c}>{c}</option>
+                                    ))}
+                                </select>
+                                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                             </div>
                         </div>
                     </div>
                     
-                    <div>
-                        <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Fecha de Cobro</label>
-                        <input 
-                            type="date"
-                            value={paymentDate}
-                            onChange={(e) => setPaymentDate(e.target.value)}
-                            className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-lg font-bold text-[#1c2938] outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-all"
-                        />
-                    </div>
-                    
                     <button 
                         onClick={handleRegisterPayment}
-                        className="w-full py-4 bg-green-500 text-white rounded-2xl font-bold text-lg hover:bg-green-600 transition-all shadow-lg hover:shadow-xl hover:-translate-y-1 active:translate-y-0"
+                        className="w-full py-4 mt-2 bg-green-500 text-white rounded-2xl font-bold hover:bg-green-600 transition-all shadow-lg hover:shadow-xl hover:-translate-y-1 active:translate-y-0"
                     >
                         Confirmar
                     </button>

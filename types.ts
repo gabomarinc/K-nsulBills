@@ -254,6 +254,8 @@ export interface PaymentRecord {
   id: string;
   date: string; // ISO string
   amount: number;
+  method?: 'Banco' | 'Tarjeta' | 'Efectivo' | 'Otro';
+  currency?: string;
   notes?: string;
 }
 
