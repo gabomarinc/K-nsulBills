@@ -42,6 +42,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
   const [paymentMethod, setPaymentMethod] = useState<'Banco'|'Tarjeta'|'Efectivo'|'Otro'>('Banco');
   const [paymentCurrency, setPaymentCurrency] = useState(invoice.currency);
+  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
   const [isProcessingYappy, setIsProcessingYappy] = useState(false);
   const yappyBtnRef = useRef<any>(null);
 
@@ -239,28 +240,35 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
     const amount = parseFloat(paymentAmount);
     if (isNaN(amount) || amount <= 0) return;
 
-    const newTotalPaid = amountPaid + amount;
+    let updatedPayments = [...displayPayments];
+
+    if (editingPaymentId) {
+        updatedPayments = updatedPayments.map(p => p.id === editingPaymentId ? {
+            ...p, date: paymentDate, amount: amount, method: paymentMethod, currency: paymentCurrency
+        } : p);
+    } else {
+        updatedPayments.push({
+            id: Date.now().toString(),
+            date: paymentDate,
+            amount: amount,
+            method: paymentMethod,
+            currency: paymentCurrency,
+            notes: ''
+        });
+    }
+
+    const newTotalPaid = updatedPayments.reduce((sum, p) => sum + p.amount, 0);
     const newRemaining = invoice.total - newTotalPaid;
     
     // Auto-update status based on balance
-    // Allow a tiny margin for float precision
     const newStatus: InvoiceStatus = newRemaining <= 0.01 ? 'Pagada' : 'Abonada';
 
     const paymentEvent: TimelineEvent = {
         id: Date.now().toString(),
         type: 'PAID',
-        title: `Pago registrado: ${invoice.currency} ${amount.toFixed(2)}`,
+        title: editingPaymentId ? `Cobro actualizado: ${paymentCurrency} ${amount.toFixed(2)}` : `Pago registrado: ${paymentCurrency} ${amount.toFixed(2)}`,
         description: newRemaining > 0.01 ? `Resta: ${invoice.currency} ${newRemaining.toFixed(2)}` : 'Deuda saldada',
         timestamp: new Date().toISOString()
-    };
-
-    const newPaymentRecord = {
-        id: Date.now().toString(),
-        date: paymentDate,
-        amount: amount,
-        method: paymentMethod,
-        currency: paymentCurrency,
-        notes: ''
     };
 
     const updatedInvoice: Invoice = {
@@ -268,17 +276,15 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
         amountPaid: newTotalPaid,
         status: newStatus,
         timeline: [...(invoice.timeline || []), paymentEvent],
-        payments: [...(invoice.payments || []), newPaymentRecord]
+        payments: updatedPayments
     };
 
     if (onUpdateInvoice) {
         onUpdateInvoice(updatedInvoice);
     }
     
-    setIsPaymentModalOpen(false);
-    setPaymentAmount('');
-    setPaymentDate(new Date().toISOString().split('T')[0]);
-    alert.addToast('success', 'Pago Registrado', `Se ha abonado ${invoice.currency} ${amount.toFixed(2)}`);
+    closePaymentModal();
+    alert.addToast('success', editingPaymentId ? 'Cobro Actualizado' : 'Pago Registrado', `Se ha guardado ${paymentCurrency} ${amount.toFixed(2)}`);
   };
 
   const handleDeletePayment = (paymentId: string) => {
@@ -321,6 +327,21 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
         onUpdateInvoice(updatedInvoice);
         alert.addToast('info', 'Cobro Eliminado', 'El registro ha sido eliminado exitosamente.');
     }
+  };
+
+  const closePaymentModal = () => {
+      setIsPaymentModalOpen(false);
+      setEditingPaymentId(null);
+      setPaymentAmount('');
+      setPaymentDate(new Date().toISOString().split('T')[0]);
+  };
+
+  const handleEditPayment = (p: any) => {
+      setEditingPaymentId(p.id);
+      setPaymentAmount(p.amount.toString());
+      setPaymentDate(p.date);
+      setPaymentMethod(p.method || 'Banco');
+      setPaymentCurrency(p.currency || invoice.currency);
   };
 
   const handleSend = async () => {
@@ -704,7 +725,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                         </div>
                     </div>
                     <button 
-                        onClick={() => setIsPaymentModalOpen(false)}
+                        onClick={closePaymentModal}
                         className="p-2 rounded-full hover:bg-slate-100 text-slate-400 transition-colors -mr-2"
                     >
                         <X className="w-5 h-5" />
@@ -728,6 +749,9 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                                                 <p className="text-sm font-bold text-[#1c2938]">{p.currency || invoice.currency} {p.amount.toFixed(2)}</p>
                                                 <p className="text-[10px] font-bold text-green-600 uppercase">Pagado</p>
                                             </div>
+                                            <button onClick={() => handleEditPayment(p)} className="text-slate-300 hover:text-blue-500 transition-colors p-1" title="Editar cobro">
+                                                <Edit2 className="w-4 h-4" />
+                                            </button>
                                             <button onClick={() => handleDeletePayment(p.id)} className="text-slate-300 hover:text-red-500 transition-colors p-1" title="Eliminar cobro">
                                                 <Trash2 className="w-4 h-4" />
                                             </button>
@@ -803,7 +827,7 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                         onClick={handleRegisterPayment}
                         className="w-full py-4 mt-2 bg-green-500 text-white rounded-2xl font-bold hover:bg-green-600 transition-all shadow-lg hover:shadow-xl hover:-translate-y-1 active:translate-y-0"
                     >
-                        Confirmar
+                        {editingPaymentId ? 'Actualizar Cobro' : 'Confirmar'}
                     </button>
                 </div>
             </div>
