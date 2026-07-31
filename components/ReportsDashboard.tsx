@@ -381,33 +381,69 @@ const ReportsDashboard = ({ invoices, currencySymbol, apiKey, currentUser }: Rep
       const entry = timelineMap.get(key)!;
 
       if (inv.type === 'Invoice') {
-        let collected = 0;
-        if (typeof inv.amountPaid === 'number' && inv.amountPaid > 0) {
-          collected = inv.amountPaid;
-        } else if (inv.status === 'Pagada' || inv.status === 'Aceptada') {
-          collected = inv.total;
-        }
+        const gatewayEnabled = currentUser?.paymentIntegration?.enabled;
+        const applyAll = currentUser?.paymentIntegration?.gatewayFeeApplyAll;
+        const feeRate = currentUser?.paymentIntegration?.gatewayFeeRate || 0;
+        const payViaGateway = inv.payViaGateway ?? (applyAll && gatewayEnabled ? true : false);
 
-        if (collected > 0) {
-          const gatewayEnabled = currentUser?.paymentIntegration?.enabled;
-          const applyAll = currentUser?.paymentIntegration?.gatewayFeeApplyAll;
-          const feeRate = currentUser?.paymentIntegration?.gatewayFeeRate || 0;
-          const payViaGateway = inv.payViaGateway ?? (applyAll && gatewayEnabled ? true : false);
+        if (inv.payments && inv.payments.length > 0) {
+          // Distribute revenue based on actual payment dates
+          inv.payments.forEach(payment => {
+            const pd = new Date(payment.date);
+            let pKey;
+            if (isDaily) {
+              pKey = pd.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
+            } else {
+              pKey = pd.toLocaleDateString('es-ES', { month: 'short', year: '2-digit' });
+            }
 
-          if (payViaGateway && feeRate > 0) {
-            collected = collected * (1 - feeRate / 100);
+            if (!timelineMap.has(pKey)) {
+              timelineMap.set(pKey, {
+                ingresos: 0, gastos: 0, ingresosRecurrentes: 0, ingresosNoRecurrentes: 0, gastosRecurrentes: 0, gastosNoRecurrentes: 0, date: isDaily ? pd : new Date(pd.getFullYear(), pd.getMonth(), 1)
+              });
+            }
+            const pEntry = timelineMap.get(pKey)!;
+
+            let amount = payment.amount;
+            if (payViaGateway && feeRate > 0) {
+              amount = amount * (1 - feeRate / 100);
+            }
+            const collectedInSystemCurrency = convertCurrency(amount, payment.currency || inv.currency || 'USD', systemCurrency, rates);
+
+            pEntry.ingresos += collectedInSystemCurrency;
+            totalRevenue += collectedInSystemCurrency;
+
+            if (inv.recurrence?.isRecurrent) {
+              pEntry.ingresosRecurrentes += collectedInSystemCurrency;
+            } else {
+              pEntry.ingresosNoRecurrentes += collectedInSystemCurrency;
+            }
+          });
+        } else {
+          // Legacy / Fallback logic based on invoice date
+          let collected = 0;
+          if (typeof inv.amountPaid === 'number' && inv.amountPaid > 0) {
+            collected = inv.amountPaid;
+          } else if (inv.status === 'Pagada' || inv.status === 'Aceptada') {
+            collected = inv.total;
           }
-          
-          const collectedInSystemCurrency = convertCurrency(collected, inv.currency || 'USD', systemCurrency, rates);
 
-          entry.ingresos += collectedInSystemCurrency;
-          totalRevenue += collectedInSystemCurrency;
+          if (collected > 0) {
+            if (payViaGateway && feeRate > 0) {
+              collected = collected * (1 - feeRate / 100);
+            }
+            
+            const collectedInSystemCurrency = convertCurrency(collected, inv.currency || 'USD', systemCurrency, rates);
 
-          const isRec = inv.recurrence?.isRecurrent || false;
-          if (isRec) {
-            entry.ingresosRecurrentes += collectedInSystemCurrency;
-          } else {
-            entry.ingresosNoRecurrentes += collectedInSystemCurrency;
+            entry.ingresos += collectedInSystemCurrency;
+            totalRevenue += collectedInSystemCurrency;
+
+            const isRec = inv.recurrence?.isRecurrent || false;
+            if (isRec) {
+              entry.ingresosRecurrentes += collectedInSystemCurrency;
+            } else {
+              entry.ingresosNoRecurrentes += collectedInSystemCurrency;
+            }
           }
         }
 
