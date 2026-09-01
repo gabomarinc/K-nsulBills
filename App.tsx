@@ -31,6 +31,7 @@ import {
   saveInvoiceToDb,
   deleteInvoiceFromDb,
   saveClientToDb,
+  updateClientInvoicesInDb,
   saveProviderToDb,
   getUserById,
   getUserByEmail,
@@ -773,8 +774,22 @@ const AppContent: React.FC = () => {
 
     const res = await saveClientToDb(clientToSave, currentUser.id, currentStatus);
     if (res.success) {
-      const updated = await fetchClientsFromDb(currentUser.id);
-      setDbClients(updated);
+      // Cascade update client's invoices in DB and memory
+      await updateClientInvoicesInDb(
+        currentUser.id,
+        clientToSave.id,
+        oldName || existing?.name,
+        clientToSave
+      );
+
+      // Refresh both clients and invoices from DB
+      const [updatedClients, updatedDocs] = await Promise.all([
+        fetchClientsFromDb(currentUser.id),
+        fetchInvoicesFromDb(currentUser.id)
+      ]);
+
+      if (updatedClients) setDbClients(updatedClients);
+      if (updatedDocs) setInvoices(updatedDocs);
       
       // Update selected name and history URL if name changed
       if (oldName && updatedClient.name !== oldName) {

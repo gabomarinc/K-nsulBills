@@ -1078,6 +1078,69 @@ export const saveClientToDb = async (clientData: DbClient, userId: string, statu
 };
 
 /**
+ * CASCADE UPDATE CLIENT INFO ACROSS ALL INVOICES IN DB
+ */
+export const updateClientInvoicesInDb = async (
+  userId: string,
+  clientId?: string,
+  oldName?: string,
+  updatedClient?: DbClient
+): Promise<boolean> => {
+  const client = getDbClient();
+  if (!client || !updatedClient) return false;
+
+  try {
+    await client.connect();
+
+    const res = await client.query(
+      `SELECT id, data FROM invoices WHERE user_id = $1 OR data->>'userId' = $1`,
+      [userId]
+    );
+
+    const normOldName = oldName ? oldName.trim().toLowerCase() : '';
+    const normNewName = updatedClient.name ? updatedClient.name.trim().toLowerCase() : '';
+
+    for (const row of res.rows) {
+      const invData = row.data || {};
+      const invClientName = (invData.clientName || row.client_name || '').trim().toLowerCase();
+      
+      const matchesId = clientId && invData.clientId === clientId;
+      const matchesName = (normOldName && invClientName === normOldName) || (normNewName && invClientName === normNewName);
+
+      if (matchesId || matchesName) {
+        const newClientName = updatedClient.name || invData.clientName;
+        const newTaxId = updatedClient.taxId ?? invData.clientTaxId;
+        const newEmail = updatedClient.email ?? invData.clientEmail;
+        const newAddress = updatedClient.address ?? invData.clientAddress;
+        const targetClientId = clientId || invData.clientId || `cli_${userId.substring(0, 8)}_${updatedClient.name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+
+        const updatedData = {
+          ...invData,
+          clientId: targetClientId,
+          clientName: newClientName,
+          clientTaxId: newTaxId,
+          clientEmail: newEmail,
+          clientAddress: newAddress
+        };
+
+        await client.query(
+          `UPDATE invoices 
+           SET client_name = $1, client_tax_id = $2, data = $3 
+           WHERE id = $4`,
+          [newClientName, newTaxId, JSON.stringify(updatedData), row.id]
+        );
+      }
+    }
+
+    await client.end();
+    return true;
+  } catch (error) {
+    console.error("Error updating client invoices in DB:", error);
+    return false;
+  }
+};
+
+/**
  * SAVE DOCUMENT
  */
 export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
