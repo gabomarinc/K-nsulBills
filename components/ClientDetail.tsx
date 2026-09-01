@@ -41,6 +41,9 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
   onSaveBatch
 }) => {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isSavingNote, setIsSavingNote] = useState(false);
+  const [isSavingTag, setIsSavingTag] = useState(false);
   
   // Multi-selection state
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
@@ -216,31 +219,39 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
   // --- HANDLERS ---
 
   // 1. General Profile Save
-  const handleProfileSave = () => {
-    const updatedProfile = {
-      ...dbClientData, 
-      name: editForm.name || clientName,
-      email: editForm.email,
-      address: editForm.address,
-      taxId: editForm.taxId,
-      phone: editForm.phone,
-      tags: clientData.tags,
-      notes: clientData.notes,
-      stripeCustomerId: editForm.stripeCustomerId
-    };
-
-    // Optimistic Update
-    setOptimisticOverrides(prev => ({
-        ...prev,
+  const handleProfileSave = async () => {
+    setIsSavingProfile(true);
+    try {
+      const updatedProfile = {
+        ...dbClientData, 
+        id: dbClientData?.id,
+        name: editForm.name || clientName,
         email: editForm.email,
         address: editForm.address,
         taxId: editForm.taxId,
         phone: editForm.phone,
+        tags: clientData.tags,
+        notes: tempNote || clientData.notes,
         stripeCustomerId: editForm.stripeCustomerId
-    }));
+      };
 
-    onUpdateClientContact(clientName, updatedProfile);
-    setIsEditingProfile(false);
+      // Optimistic Update
+      setOptimisticOverrides(prev => ({
+          ...prev,
+          email: editForm.email,
+          address: editForm.address,
+          taxId: editForm.taxId,
+          phone: editForm.phone,
+          stripeCustomerId: editForm.stripeCustomerId
+      }));
+
+      await onUpdateClientContact(clientName, updatedProfile);
+      setIsEditingProfile(false);
+    } catch (err) {
+      console.error("Error saving profile:", err);
+    } finally {
+      setIsSavingProfile(false);
+    }
   };
 
   const handleSaveRecurrencePlan = async () => {
@@ -272,7 +283,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
   };
 
   // 2. Tag Logic
-  const handleAddTag = () => {
+  const handleAddTag = async () => {
     if (!newTag.trim()) {
         setIsAddingTag(false);
         return;
@@ -280,61 +291,83 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
     const currentTags = clientData.tags ? clientData.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
     if (!currentTags.includes(newTag.trim())) {
         const updatedTags = [...currentTags, newTag.trim()].join(',');
-        
-        // Optimistic Update
-        setOptimisticOverrides(prev => ({ ...prev, tags: updatedTags }));
+        setIsSavingTag(true);
+        try {
+          // Optimistic Update
+          setOptimisticOverrides(prev => ({ ...prev, tags: updatedTags }));
 
-        onUpdateClientContact(clientName, {
-            ...dbClientData,
-            name: clientName,
-            // Ensure we include existing fields so we don't overwrite them with blanks if dbClientData is partial
-            email: clientData.email,
-            address: clientData.address,
-            phone: clientData.phone,
-            taxId: clientData.taxId,
-            notes: clientData.notes,
-            tags: updatedTags
-        });
+          await onUpdateClientContact(clientName, {
+              ...dbClientData,
+              id: dbClientData?.id,
+              name: clientData.name || clientName,
+              email: clientData.email,
+              address: clientData.address,
+              phone: clientData.phone,
+              taxId: clientData.taxId,
+              notes: clientData.notes,
+              tags: updatedTags
+          });
+        } catch (err) {
+          console.error("Error adding tag:", err);
+        } finally {
+          setIsSavingTag(false);
+        }
     }
     setNewTag('');
     setIsAddingTag(false);
   };
 
-  const handleRemoveTag = (tagToRemove: string) => {
+  const handleRemoveTag = async (tagToRemove: string) => {
     const currentTags = clientData.tags ? clientData.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
     const updatedTags = currentTags.filter(t => t !== tagToRemove).join(',');
     
-    // Optimistic Update
-    setOptimisticOverrides(prev => ({ ...prev, tags: updatedTags }));
+    setIsSavingTag(true);
+    try {
+      // Optimistic Update
+      setOptimisticOverrides(prev => ({ ...prev, tags: updatedTags }));
 
-    onUpdateClientContact(clientName, {
-        ...dbClientData,
-        name: clientName,
-        email: clientData.email,
-        address: clientData.address,
-        phone: clientData.phone,
-        taxId: clientData.taxId,
-        notes: clientData.notes,
-        tags: updatedTags
-    });
+      await onUpdateClientContact(clientName, {
+          ...dbClientData,
+          id: dbClientData?.id,
+          name: clientData.name || clientName,
+          email: clientData.email,
+          address: clientData.address,
+          phone: clientData.phone,
+          taxId: clientData.taxId,
+          notes: clientData.notes,
+          tags: updatedTags
+      });
+    } catch (err) {
+      console.error("Error removing tag:", err);
+    } finally {
+      setIsSavingTag(false);
+    }
   };
 
   // 3. Note Logic
-  const handleNoteSave = () => {
-    // Optimistic Update
-    setOptimisticOverrides(prev => ({ ...prev, notes: tempNote }));
+  const handleNoteSave = async () => {
+    setIsSavingNote(true);
+    try {
+      // Optimistic Update
+      setOptimisticOverrides(prev => ({ ...prev, notes: tempNote }));
 
-    onUpdateClientContact(clientName, {
-        ...dbClientData,
-        name: clientName,
-        email: clientData.email,
-        address: clientData.address,
-        phone: clientData.phone,
-        taxId: clientData.taxId,
-        tags: clientData.tags,
-        notes: tempNote
-    });
-    setIsEditingNote(false);
+      await onUpdateClientContact(clientName, {
+          ...dbClientData,
+          id: dbClientData?.id,
+          name: clientData.name || clientName,
+          email: clientData.email,
+          address: clientData.address,
+          phone: clientData.phone,
+          taxId: clientData.taxId,
+          tags: clientData.tags,
+          notes: tempNote
+      });
+      setIsEditingNote(false);
+    } catch (err) {
+      console.error("Error saving note:", err);
+    } finally {
+      setIsSavingNote(false);
+    }
   };
 
   const getStatusColor = (status: InvoiceStatus) => {
@@ -406,6 +439,11 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                <div className="flex justify-between items-center mb-6">
                   <h3 className="font-bold text-[#1c2938] flex items-center gap-2">
                      <Building2 className="w-5 h-5 text-slate-400" /> Perfil
+                     {isSavingProfile && (
+                       <span className="text-[10px] bg-emerald-50 text-[#27bea5] px-2 py-0.5 rounded-full font-bold border border-emerald-100 flex items-center gap-1 animate-pulse">
+                         <Loader2 className="w-3 h-3 animate-spin" /> Guardando...
+                       </span>
+                     )}
                   </h3>
                   <div className="flex items-center gap-2">
                       {onDeleteClient && dbClientData?.id && (
@@ -413,12 +451,14 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                             onClick={() => onDeleteClient(dbClientData.id as string, clientName)}
                             className="p-2 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
                             title="Eliminar Cliente"
+                            disabled={isSavingProfile}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
                       )}
                       <button 
                         onClick={() => setIsEditingProfile(!isEditingProfile)}
+                        disabled={isSavingProfile}
                         className={`p-2 rounded-xl transition-all ${isEditingProfile ? 'bg-slate-100 text-[#1c2938]' : 'text-slate-400 hover:text-[#27bea5] hover:bg-slate-50'}`}
                       >
                          {isEditingProfile ? <X className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
@@ -437,6 +477,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                            value={editForm.name}
                            onChange={(e) => setEditForm({...editForm, name: e.target.value})}
                            className="w-full p-2 bg-slate-50 border rounded-lg text-sm outline-none focus:border-[#27bea5]"
+                           disabled={isSavingProfile}
                         />
                      </div>
                   )}
@@ -451,6 +492,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                           value={editForm.email}
                           onChange={(e) => setEditForm({...editForm, email: e.target.value})}
                           className="w-full p-2 bg-slate-50 border rounded-lg text-sm outline-none focus:border-[#27bea5]"
+                          disabled={isSavingProfile}
                         />
                      ) : (
                         <div className="flex justify-between items-center">
@@ -471,6 +513,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                           onChange={(e) => setEditForm({...editForm, phone: e.target.value})}
                           className="w-full p-2 bg-slate-50 border rounded-lg text-sm outline-none focus:border-[#27bea5]"
                           placeholder="+507 6000-0000"
+                          disabled={isSavingProfile}
                         />
                      ) : (
                         <div className="flex justify-between items-center">
@@ -489,6 +532,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                           value={editForm.taxId}
                           onChange={(e) => setEditForm({...editForm, taxId: e.target.value})}
                           className="w-full p-2 bg-slate-50 border rounded-lg text-sm outline-none focus:border-[#27bea5]"
+                          disabled={isSavingProfile}
                         />
                      ) : (
                         <p className="font-mono font-bold text-slate-600 bg-slate-50 px-2 py-1 rounded inline-block text-sm">{clientData.taxId || 'N/A'}</p>
@@ -505,6 +549,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                           value={editForm.address}
                           onChange={(e) => setEditForm({...editForm, address: e.target.value})}
                           className="w-full p-2 bg-slate-50 border rounded-lg text-sm outline-none focus:border-[#27bea5] h-20 resize-none"
+                          disabled={isSavingProfile}
                         />
                      ) : (
                         <p className="text-sm text-slate-500 leading-relaxed">{clientData.address || 'No registrada'}</p>
@@ -515,9 +560,18 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                      <div className="flex flex-col gap-3 mt-4">
                         <button 
                           onClick={handleProfileSave}
-                          className="w-full py-3 bg-[#1c2938] text-white rounded-xl font-bold text-sm hover:bg-[#27bea5] transition-colors flex items-center justify-center gap-2 shadow-lg"
+                          disabled={isSavingProfile}
+                          className="w-full py-3 bg-[#1c2938] text-white rounded-xl font-bold text-sm hover:bg-[#27bea5] transition-all flex items-center justify-center gap-2 shadow-lg disabled:opacity-75 disabled:cursor-not-allowed"
                         >
-                           <Save className="w-4 h-4" /> Guardar Perfil
+                           {isSavingProfile ? (
+                              <>
+                                 <Loader2 className="w-4 h-4 animate-spin" /> Guardando en Servidor...
+                              </>
+                           ) : (
+                              <>
+                                 <Save className="w-4 h-4" /> Guardar Perfil
+                              </>
+                           )}
                         </button>
                      </div>
                   )}
@@ -529,6 +583,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="font-bold text-[#1c2938] flex items-center gap-2 text-sm uppercase tracking-wider">
                         <Tag className="w-4 h-4 text-slate-400" /> Etiquetas
+                        {isSavingTag && <Loader2 className="w-3 h-3 animate-spin text-[#27bea5]" />}
                     </h3>
                 </div>
                 
@@ -538,7 +593,8 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                             {tag.trim()}
                             <button 
                                 onClick={() => handleRemoveTag(tag.trim())}
-                                className="p-0.5 rounded-full hover:bg-slate-300 hover:text-red-500 transition-colors"
+                                disabled={isSavingTag}
+                                className="p-0.5 rounded-full hover:bg-slate-300 hover:text-red-500 transition-colors disabled:opacity-50"
                             >
                                 <X className="w-3 h-3" />
                             </button>
@@ -556,19 +612,21 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                                 className="w-24 px-2 py-1 text-xs bg-white border border-[#27bea5] rounded-lg outline-none focus:ring-1 focus:ring-[#27bea5]"
                                 placeholder="Nueva..."
                                 onKeyDown={(e) => e.key === 'Enter' && handleAddTag()}
+                                disabled={isSavingTag}
                                 autoFocus
                             />
-                            <button onClick={handleAddTag} className="p-1 bg-[#27bea5] text-white rounded-full hover:scale-110 transition-transform">
-                                <Check className="w-3 h-3" />
+                            <button onClick={handleAddTag} disabled={isSavingTag} className="p-1 bg-[#27bea5] text-white rounded-full hover:scale-110 transition-transform disabled:opacity-50">
+                                {isSavingTag ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
                             </button>
-                            <button onClick={() => setIsAddingTag(false)} className="p-1 bg-slate-200 text-slate-500 rounded-full hover:bg-slate-300 transition-colors">
+                            <button onClick={() => setIsAddingTag(false)} disabled={isSavingTag} className="p-1 bg-slate-200 text-slate-500 rounded-full hover:bg-slate-300 transition-colors disabled:opacity-50">
                                 <X className="w-3 h-3" />
                             </button>
                         </div>
                     ) : (
                         <button 
                             onClick={() => setIsAddingTag(true)}
-                            className="p-1 rounded-full border border-dashed border-slate-300 text-slate-400 hover:text-[#27bea5] hover:border-[#27bea5] transition-all"
+                            disabled={isSavingTag}
+                            className="p-1 rounded-full border border-dashed border-slate-300 text-slate-400 hover:text-[#27bea5] hover:border-[#27bea5] transition-all disabled:opacity-50"
                             title="Agregar etiqueta"
                         >
                             <Plus className="w-3 h-3" />
@@ -582,6 +640,7 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="font-bold text-amber-800 flex items-center gap-2 text-sm uppercase tracking-wider">
                         <StickyNote className="w-4 h-4" /> Notas Internas
+                        {isSavingNote && <Loader2 className="w-3 h-3 animate-spin text-amber-600" />}
                     </h3>
                     {!isEditingNote && (
                         <button 
@@ -600,11 +659,15 @@ const ClientDetail: React.FC<ClientDetailProps> = ({
                            onChange={(e) => setTempNote(e.target.value)}
                            className="w-full p-3 bg-white/80 border border-amber-200 rounded-xl text-sm outline-none focus:border-amber-400 h-24 resize-none text-amber-900 mb-2"
                            placeholder="Preferencias, recordatorios..."
+                           disabled={isSavingNote}
                            autoFocus
                         />
                         <div className="flex justify-end gap-2">
-                            <button onClick={() => setIsEditingNote(false)} className="text-xs font-bold text-amber-700 hover:bg-amber-100 px-3 py-1.5 rounded-lg transition-colors">Cancelar</button>
-                            <button onClick={handleNoteSave} className="text-xs font-bold bg-amber-500 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600 transition-colors shadow-sm">Guardar Nota</button>
+                            <button onClick={() => setIsEditingNote(false)} disabled={isSavingNote} className="text-xs font-bold text-amber-700 hover:bg-amber-100 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50">Cancelar</button>
+                            <button onClick={handleNoteSave} disabled={isSavingNote} className="text-xs font-bold bg-amber-500 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600 transition-colors shadow-sm disabled:opacity-75 flex items-center gap-1.5">
+                                {isSavingNote && <Loader2 className="w-3 h-3 animate-spin" />}
+                                {isSavingNote ? 'Guardando...' : 'Guardar Nota'}
+                            </button>
                         </div>
                     </div>
                 ) : (
