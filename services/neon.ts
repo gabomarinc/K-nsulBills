@@ -981,13 +981,13 @@ export const saveClientToDb = async (clientData: DbClient, userId: string, statu
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
                 ON CONFLICT (id) DO UPDATE SET 
                   name = EXCLUDED.name,
-                  tax_id = COALESCE(EXCLUDED.tax_id, clients.tax_id),
-                  email = COALESCE(EXCLUDED.email, clients.email),
-                  address = COALESCE(EXCLUDED.address, clients.address),
-                  phone = COALESCE(EXCLUDED.phone, clients.phone),
-                  tags = COALESCE(EXCLUDED.tags, clients.tags),
-                  notes = COALESCE(EXCLUDED.notes, clients.notes),
-                  stripe_customer_id = COALESCE(EXCLUDED.stripe_customer_id, clients.stripe_customer_id),
+                  tax_id = EXCLUDED.tax_id,
+                  email = EXCLUDED.email,
+                  address = EXCLUDED.address,
+                  phone = EXCLUDED.phone,
+                  tags = EXCLUDED.tags,
+                  notes = EXCLUDED.notes,
+                  stripe_customer_id = EXCLUDED.stripe_customer_id,
                   updated_at = NOW();
               `;
               await secondRetryDb.query(upsertClient, [
@@ -1000,13 +1000,13 @@ export const saveClientToDb = async (clientData: DbClient, userId: string, statu
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
                 ON CONFLICT (id) DO UPDATE SET 
                   name = EXCLUDED.name,
-                  tax_id = COALESCE(EXCLUDED.tax_id, prospects.tax_id),
-                  email = COALESCE(EXCLUDED.email, prospects.email),
-                  address = COALESCE(EXCLUDED.address, prospects.address),
-                  phone = COALESCE(EXCLUDED.phone, prospects.phone),
-                  tags = COALESCE(EXCLUDED.tags, prospects.tags),
-                  notes = COALESCE(EXCLUDED.notes, prospects.notes),
-                  stripe_customer_id = COALESCE(EXCLUDED.stripe_customer_id, prospects.stripe_customer_id),
+                  tax_id = EXCLUDED.tax_id,
+                  email = EXCLUDED.email,
+                  address = EXCLUDED.address,
+                  phone = EXCLUDED.phone,
+                  tags = EXCLUDED.tags,
+                  notes = EXCLUDED.notes,
+                  stripe_customer_id = EXCLUDED.stripe_customer_id,
                   updated_at = NOW();
               `;
               await secondRetryDb.query(upsertProspect, [
@@ -1032,13 +1032,13 @@ export const saveClientToDb = async (clientData: DbClient, userId: string, statu
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
                 ON CONFLICT (id) DO UPDATE SET 
                   name = EXCLUDED.name,
-                  tax_id = COALESCE(EXCLUDED.tax_id, clients.tax_id),
-                  email = COALESCE(EXCLUDED.email, clients.email),
-                  address = COALESCE(EXCLUDED.address, clients.address),
-                  phone = COALESCE(EXCLUDED.phone, clients.phone),
-                  tags = COALESCE(EXCLUDED.tags, clients.tags),
-                  notes = COALESCE(EXCLUDED.notes, clients.notes),
-                  stripe_customer_id = COALESCE(EXCLUDED.stripe_customer_id, clients.stripe_customer_id),
+                  tax_id = EXCLUDED.tax_id,
+                  email = EXCLUDED.email,
+                  address = EXCLUDED.address,
+                  phone = EXCLUDED.phone,
+                  tags = EXCLUDED.tags,
+                  notes = EXCLUDED.notes,
+                  stripe_customer_id = EXCLUDED.stripe_customer_id,
                   updated_at = NOW();
               `;
               await fallbackDb.query(upsertClient, [
@@ -1051,13 +1051,13 @@ export const saveClientToDb = async (clientData: DbClient, userId: string, statu
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
                 ON CONFLICT (id) DO UPDATE SET 
                   name = EXCLUDED.name,
-                  tax_id = COALESCE(EXCLUDED.tax_id, prospects.tax_id),
-                  email = COALESCE(EXCLUDED.email, prospects.email),
-                  address = COALESCE(EXCLUDED.address, prospects.address),
-                  phone = COALESCE(EXCLUDED.phone, prospects.phone),
-                  tags = COALESCE(EXCLUDED.tags, prospects.tags),
-                  notes = COALESCE(EXCLUDED.notes, prospects.notes),
-                  stripe_customer_id = COALESCE(EXCLUDED.stripe_customer_id, prospects.stripe_customer_id),
+                  tax_id = EXCLUDED.tax_id,
+                  email = EXCLUDED.email,
+                  address = EXCLUDED.address,
+                  phone = EXCLUDED.phone,
+                  tags = EXCLUDED.tags,
+                  notes = EXCLUDED.notes,
+                  stripe_customer_id = EXCLUDED.stripe_customer_id,
                   updated_at = NOW();
               `;
               await fallbackDb.query(upsertProspect, [
