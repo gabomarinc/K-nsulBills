@@ -11,10 +11,17 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-    // Only intercept GET requests and skip Yappy API to avoid body consumption issues
-    if (event.request.method !== 'GET' || event.request.url.includes('/api/yappy')) {
+    // Only intercept GET requests and skip /api/ requests
+    if (event.request.method !== 'GET' || event.request.url.includes('/api/')) {
         return;
     }
     
-    event.respondWith(fetch(event.request));
+    event.respondWith(
+        fetch(event.request).catch((err) => {
+            if (event.request.mode === 'navigate') {
+                return fetch('/');
+            }
+            return Promise.reject(err);
+        })
+    );
 });

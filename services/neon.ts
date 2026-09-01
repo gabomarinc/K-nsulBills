@@ -861,9 +861,9 @@ export const saveClientToDb = async (clientData: DbClient, userId: string, statu
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
             ON CONFLICT (id) DO UPDATE SET 
               name = EXCLUDED.name,
-              tax_id = COALESCE(EXCLUDED.tax_id, clients.tax_id),
-              email = COALESCE(EXCLUDED.email, clients.email),
-              address = COALESCE(EXCLUDED.address, clients.address),
+              tax_id = EXCLUDED.tax_id,
+              email = EXCLUDED.email,
+              address = EXCLUDED.address,
               phone = EXCLUDED.phone,
               tags = EXCLUDED.tags,
               notes = EXCLUDED.notes,
@@ -887,15 +887,28 @@ export const saveClientToDb = async (clientData: DbClient, userId: string, statu
         // Already a client, update client table instead
         const updateClient = `
                 UPDATE clients SET 
-                  tax_id = COALESCE($1, tax_id),
-                  email = COALESCE($2, email),
-                  address = COALESCE($3, address),
-                  phone = COALESCE($4, phone),
-                  stripe_customer_id = COALESCE($5, stripe_customer_id),
+                  name = $1,
+                  tax_id = $2,
+                  email = $3,
+                  address = $4,
+                  phone = $5,
+                  tags = $6,
+                  notes = $7,
+                  stripe_customer_id = $8,
                   updated_at = NOW()
-                WHERE id = $6
+                WHERE id = $9
              `;
-        await clientDb.query(updateClient, [clientData.taxId || null, clientData.email || null, clientData.address || null, clientData.phone || null, clientData.stripeCustomerId || null, id]);
+        await clientDb.query(updateClient, [
+          clientData.name,
+          clientData.taxId || null,
+          clientData.email || null,
+          clientData.address || null,
+          clientData.phone || null,
+          parsedTags,
+          clientData.notes || null,
+          clientData.stripeCustomerId || null,
+          id
+        ]);
       } else {
         // 2. Not a client, Insert/Update into PROSPECTS table
         const upsertProspect = `
@@ -903,13 +916,13 @@ export const saveClientToDb = async (clientData: DbClient, userId: string, statu
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
                 ON CONFLICT (id) DO UPDATE SET 
                   name = EXCLUDED.name,
-                  tax_id = COALESCE(EXCLUDED.tax_id, prospects.tax_id),
-                  email = COALESCE(EXCLUDED.email, prospects.email),
-                  address = COALESCE(EXCLUDED.address, prospects.address),
-                  phone = COALESCE(EXCLUDED.phone, prospects.phone),
-                  tags = COALESCE(EXCLUDED.tags, prospects.tags),
-                  notes = COALESCE(EXCLUDED.notes, prospects.notes),
-                  stripe_customer_id = COALESCE(EXCLUDED.stripe_customer_id, prospects.stripe_customer_id),
+                  tax_id = EXCLUDED.tax_id,
+                  email = EXCLUDED.email,
+                  address = EXCLUDED.address,
+                  phone = EXCLUDED.phone,
+                  tags = EXCLUDED.tags,
+                  notes = EXCLUDED.notes,
+                  stripe_customer_id = EXCLUDED.stripe_customer_id,
                   updated_at = NOW();
             `;
         await clientDb.query(upsertProspect, [

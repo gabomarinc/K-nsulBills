@@ -758,24 +758,34 @@ const AppContent: React.FC = () => {
   const handleSaveClient = async (oldName: string | null, updatedClient: DbClient) => {
     if (!currentUser) return;
     
-    // Loose matching logic for finding the original client record
+    // Find original client record by ID or Name
     const existing = dbClients.find(c => 
+      (updatedClient.id && c.id === updatedClient.id) ||
       c.name.trim().toLowerCase() === (oldName || updatedClient.name).trim().toLowerCase()
     );
     const currentStatus = existing?.status || updatedClient.status || 'PROSPECT';
 
-    const res = await saveClientToDb(updatedClient, currentUser.id, currentStatus);
+    const clientToSave: DbClient = {
+      ...existing,
+      ...updatedClient,
+      id: updatedClient.id || existing?.id
+    };
+
+    const res = await saveClientToDb(clientToSave, currentUser.id, currentStatus);
     if (res.success) {
       const updated = await fetchClientsFromDb(currentUser.id);
       setDbClients(updated);
       
-      // Update selected name if needed
+      // Update selected name and history URL if name changed
       if (oldName && updatedClient.name !== oldName) {
         setSelectedClientName(updatedClient.name);
+        if (activeView === AppView.CLIENT_DETAIL) {
+          window.history.replaceState(null, '', `/clients/view/${encodeURIComponent(updatedClient.name)}`);
+        }
       }
       alert.addToast('success', 'Cliente Actualizado');
     } else {
-      alert.addToast('error', 'Error al Guardar', res.error);
+      alert.addToast('error', 'Error al Guardar', res.error || 'No se pudo guardar en la base de datos');
     }
   };
 
