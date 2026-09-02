@@ -689,7 +689,22 @@ const AppContent: React.FC = () => {
 
       setInvoices(prev => prev.map(i => i.id === id ? updatedQuote : i));
       await saveInvoiceToDb({ ...updatedQuote, userId: currentUser.id });
-      alert.addToast('success', 'Conversión Exitosa', `Se creó automáticamente la factura ${newInvoiceId}`);
+
+      const clientEmailStr = targetInvoice.clientEmail ? ` (${targetInvoice.clientEmail})` : '';
+      const shouldSendNow = await alert.confirm({
+        title: '🎉 Cotización Aceptada',
+        message: `La cotización ${targetInvoice.id} ha sido convertida automáticamente en la Factura ${newInvoiceId}.\n\n¿Deseas abrir la nueva factura e enviarla por correo${clientEmailStr} para iniciar el proceso de cobro?`,
+        confirmText: 'Ver y Enviar Factura',
+        cancelText: 'Permanecer aquí',
+        type: 'info'
+      });
+
+      if (shouldSendNow) {
+        setSelectedInvoice(newInvoice);
+        handleNavigate(AppView.INVOICE_DETAIL, { id: newInvoice.id });
+      } else {
+        alert.addToast('success', 'Conversión Exitosa', `Se creó automáticamente la factura ${newInvoiceId}`);
+      }
       return;
     }
 

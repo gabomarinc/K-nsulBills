@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   ArrowLeft, Printer, Share2, Download, Building2, 
-  CheckCircle2, Loader2, Send, MessageCircle, Smartphone, Mail, Check, AlertTriangle, Edit2, 
+  CheckCircle2, Loader2, Send, MessageCircle, Smartphone, Mail, Check, AlertTriangle, Edit2, Sparkles, 
   ChevronDown, XCircle, Wallet, ArrowRight, X, Trash2, CreditCard, Clock, StickyNote, Lock, Link, Landmark, Coins, FileText
 } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
@@ -546,6 +546,32 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
       
       {/* LEFT: PREVIEW */}
       <div className="flex-1 flex flex-col h-full">
+         {invoice.type === 'Invoice' && invoice.timeline?.some(e => e.title?.includes('Convertida desde')) && (
+            <div className="bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-emerald-500/10 border border-emerald-200/80 rounded-2xl p-4 mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+               <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center font-bold shadow-sm shrink-0">
+                     <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                     <h4 className="font-bold text-[#1c2938] text-sm flex items-center gap-2">
+                       Factura Generada Automáticamente
+                     </h4>
+                     <p className="text-xs text-slate-500">
+                       Esta factura proviene de una cotización aceptada. Envía el correo al cliente para iniciar el cobro.
+                     </p>
+                  </div>
+               </div>
+               <button 
+                 onClick={handleSend}
+                 disabled={isSending}
+                 className="w-full sm:w-auto px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2 whitespace-nowrap disabled:opacity-50"
+               >
+                 {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                 <span>Enviar Factura e Iniciar Cobro</span>
+               </button>
+            </div>
+         )}
+
          <div className="flex justify-between items-center mb-4 px-2">
             <button onClick={onBack} className="flex items-center text-slate-500 hover:text-[#1c2938] transition-colors gap-2 text-sm font-bold">
                <ArrowLeft className="w-4 h-4" /> Volver
