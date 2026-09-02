@@ -16,12 +16,14 @@ self.addEventListener('fetch', (event) => {
         return;
     }
     
+    if (event.request.mode === 'navigate') {
+        event.respondWith(
+            fetch(event.request).catch(() => fetch('/'))
+        );
+        return;
+    }
+
     event.respondWith(
-        fetch(event.request).catch((err) => {
-            if (event.request.mode === 'navigate') {
-                return fetch('/');
-            }
-            return Promise.reject(err);
-        })
+        fetch(event.request).catch(() => new Response('', { status: 404 }))
     );
 });

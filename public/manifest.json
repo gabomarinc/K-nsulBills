@@ -9,7 +9,7 @@
     "icons": [
         {
             "src": "https://konsul.digital/images/logo-app-konsul.png",
-            "sizes": "192x192 512x512",
+            "sizes": "any",
             "type": "image/png",
             "purpose": "any"
         }
