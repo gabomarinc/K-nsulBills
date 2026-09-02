@@ -658,24 +658,11 @@ const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoice, issuer, onBack, 
                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                      value={invoice.status}
                      onChange={(e) => {
-                       const newStatus = e.target.value as InvoiceStatus;
-                       if (newStatus !== invoice.status) {
-                         const event: TimelineEvent = {
-                           id: Date.now().toString(),
-                           type: 'STATUS_CHANGE',
-                           title: `Estado cambiado a ${newStatus}`,
-                           description: 'Actualizado manualmente',
-                           timestamp: new Date().toISOString()
-                         };
-                         if (onUpdateInvoice) {
-                           onUpdateInvoice({
-                             ...invoice,
-                             status: newStatus,
-                             timeline: [...(invoice.timeline || []), event]
-                           });
-                         }
-                       }
-                     }}
+                        const newStatus = e.target.value as InvoiceStatus;
+                        if (newStatus !== invoice.status) {
+                          handleStatusChange(newStatus);
+                        }
+                      }}
                    >
                      <option disabled>Cambiar Estado</option>
                      {invoice.type === 'Quote' ? (

@@ -663,58 +663,88 @@ const AppContent: React.FC = () => {
     const isAceptadaStatus = newStatus === 'Aceptada' || (newStatus as string)?.toLowerCase() === 'aceptada';
 
     if (isQuoteDoc && isAceptadaStatus) {
-      // Find if an invoice has already been converted from this quote
-      let convertedInvoice = invoices.find(i => 
-        i.type === 'Invoice' && 
-        i.timeline?.some(e => e.title?.includes(`Convertida desde ${targetInvoice.id}`))
-      );
-
-      if (!convertedInvoice) {
-        const sequences = currentUser.documentSequences || { invoicePrefix: 'FAC', invoiceNextNumber: 1, quotePrefix: 'COT', quoteNextNumber: 1 };
-        let nextNum = sequences.invoiceNextNumber;
-        let newInvoiceId = `${sequences.invoicePrefix}-${String(nextNum).padStart(4, '0')}`;
-
-        while (invoices.some(i => i.id === newInvoiceId)) {
-          nextNum++;
-          newInvoiceId = `${sequences.invoicePrefix}-${String(nextNum).padStart(4, '0')}`;
-        }
-
-        convertedInvoice = {
-          ...targetInvoice,
-          id: newInvoiceId,
-          type: 'Invoice',
-          status: 'Enviada',
-          date: new Date().toISOString(),
-          timeline: [
-            { id: Date.now().toString(), type: 'CREATED', title: `Convertida desde ${targetInvoice.id}`, timestamp: new Date().toISOString() }
-          ]
-        };
-
-        await handleSaveInvoice(convertedInvoice);
-      }
-
-      const quoteEvent: TimelineEvent = {
-        id: Date.now().toString(), type: 'APPROVED', title: 'Cotización Aceptada', description: `Convertida a factura ${convertedInvoice.id}`, timestamp: new Date().toISOString()
-      };
-      const updatedQuote = { ...targetInvoice, status: 'Aceptada' as InvoiceStatus, timeline: [...(targetInvoice.timeline || []), quoteEvent] };
-
-      setInvoices(prev => prev.map(i => i.id === id ? updatedQuote : i));
-      await saveInvoiceToDb({ ...updatedQuote, userId: currentUser.id });
-
-      const clientEmailStr = targetInvoice.clientEmail ? ` (${targetInvoice.clientEmail})` : '';
-      const shouldSendNow = await alert.confirm({
-        title: '🎉 Cotización Aceptada',
-        message: `La cotización ${targetInvoice.id} ha sido convertida automáticamente en la Factura ${convertedInvoice.id}.\n\n¿Deseas abrir la nueva factura e enviarla por correo${clientEmailStr} para iniciar el proceso de cobro?`,
-        confirmText: 'Ver y Enviar Factura',
-        cancelText: 'Permanecer aquí',
+      // Step 1: Prompt user asking if they want to convert the quote to an Invoice
+      const wantToConvert = await alert.confirm({
+        title: '📄 ¿Convertir Cotización a Factura?',
+        message: `Has marcado la cotización ${targetInvoice.id} como ACEPTADA.\n\n¿Deseas generar la Factura de cobro oficial automáticamente a partir de esta cotización?`,
+        confirmText: 'Sí, Convertir a Factura',
+        cancelText: 'Solo Marcar Aceptada',
         type: 'info'
       });
 
-      if (shouldSendNow) {
-        setSelectedInvoice(convertedInvoice);
-        handleNavigate(AppView.INVOICE_DETAIL, { id: convertedInvoice.id });
+      let convertedInvoice: Invoice | undefined = undefined;
+
+      if (wantToConvert) {
+        // Find if an invoice has already been converted from this quote
+        convertedInvoice = invoices.find(i => 
+          i.type === 'Invoice' && 
+          i.timeline?.some(e => e.title?.includes(`Convertida desde ${targetInvoice.id}`))
+        );
+
+        if (!convertedInvoice) {
+          const sequences = currentUser.documentSequences || { invoicePrefix: 'FAC', invoiceNextNumber: 1, quotePrefix: 'COT', quoteNextNumber: 1 };
+          let nextNum = sequences.invoiceNextNumber;
+          let newInvoiceId = `${sequences.invoicePrefix}-${String(nextNum).padStart(4, '0')}`;
+
+          while (invoices.some(i => i.id === newInvoiceId)) {
+            nextNum++;
+            newInvoiceId = `${sequences.invoicePrefix}-${String(nextNum).padStart(4, '0')}`;
+          }
+
+          convertedInvoice = {
+            ...targetInvoice,
+            id: newInvoiceId,
+            type: 'Invoice',
+            status: 'Enviada',
+            date: new Date().toISOString(),
+            timeline: [
+              { id: Date.now().toString(), type: 'CREATED', title: `Convertida desde ${targetInvoice.id}`, timestamp: new Date().toISOString() }
+            ]
+          };
+
+          await handleSaveInvoice(convertedInvoice);
+        }
+      }
+
+      // Update Quote Status
+      const quoteEvent: TimelineEvent = {
+        id: Date.now().toString(), 
+        type: 'APPROVED', 
+        title: 'Cotización Aceptada', 
+        description: convertedInvoice ? `Convertida a factura ${convertedInvoice.id}` : 'Marcada como Aceptada', 
+        timestamp: new Date().toISOString()
+      };
+      const updatedQuote: Invoice = { 
+        ...targetInvoice, 
+        status: 'Aceptada' as InvoiceStatus, 
+        timeline: [...(targetInvoice.timeline || []), quoteEvent] 
+      };
+
+      setInvoices(prev => prev.map(i => i.id === id ? updatedQuote : i));
+      if (selectedInvoice?.id === id) {
+        setSelectedInvoice(updatedQuote);
+      }
+      await saveInvoiceToDb({ ...updatedQuote, userId: currentUser.id });
+
+      // Step 2: If converted, prompt user asking if they want to open and send the invoice to client
+      if (convertedInvoice) {
+        const clientEmailStr = targetInvoice.clientEmail ? ` (${targetInvoice.clientEmail})` : '';
+        const wantToSend = await alert.confirm({
+          title: '✉️ Enviar Factura para Cobro',
+          message: `¡Factura ${convertedInvoice.id} lista!\n\n¿Deseas abrir la nueva factura ahora para enviarla por correo${clientEmailStr} e iniciar el proceso de cobro?`,
+          confirmText: 'Ver y Enviar Factura',
+          cancelText: 'Más tarde',
+          type: 'info'
+        });
+
+        if (wantToSend) {
+          setSelectedInvoice(convertedInvoice);
+          handleNavigate(AppView.INVOICE_DETAIL, { id: convertedInvoice.id });
+        } else {
+          alert.addToast('success', 'Conversión Exitosa', `Factura ${convertedInvoice.id} generada exitosamente.`);
+        }
       } else {
-        alert.addToast('success', 'Conversión Exitosa', `Factura vinculada: ${convertedInvoice.id}`);
+        alert.addToast('success', 'Cotización Aceptada', `La cotización ${targetInvoice.id} fue marcada como Aceptada.`);
       }
       return;
     }

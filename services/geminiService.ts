@@ -3,8 +3,8 @@ import { GoogleGenAI, Type, Schema, GenerateContentResponse } from "@google/gena
 import { CatalogItem, FinancialAnalysisResult, DeepDiveReport, ParsedInvoiceData, PriceAnalysisResult, UserProfile } from "../types";
 
 export const AI_ERROR_BLOCKED = 'AI_BLOCKED_MISSING_KEYS';
-const GEMINI_MODEL_ID = 'gemini-2.5-flash';
-const GEMINI_VISION_MODEL_ID = 'gemini-2.5-flash';
+const GEMINI_MODEL_ID = 'gemini-1.5-flash';
+const GEMINI_VISION_MODEL_ID = 'gemini-1.5-flash';
 const TIMEOUT_MS = 25000; // 25 seconds timeout
 
 export interface AiKeys {
