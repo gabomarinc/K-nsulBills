@@ -659,33 +659,44 @@ const AppContent: React.FC = () => {
     const targetInvoice = invoices.find(i => i.id === id);
     if (!targetInvoice) return;
 
-    if (targetInvoice.type === 'Quote' && newStatus === 'Aceptada' && targetInvoice.status !== 'Aceptada') {
-      const sequences = currentUser.documentSequences || { invoicePrefix: 'FAC', invoiceNextNumber: 1, quotePrefix: 'COT', quoteNextNumber: 1 };
-      let nextNum = sequences.invoiceNextNumber;
-      let newInvoiceId = `${sequences.invoicePrefix}-${String(nextNum).padStart(4, '0')}`;
+    const isQuoteDoc = targetInvoice.type === 'Quote' || (targetInvoice.type as string)?.toUpperCase() === 'QUOTE' || targetInvoice.id.startsWith('COT');
+    const isAceptadaStatus = newStatus === 'Aceptada' || (newStatus as string)?.toLowerCase() === 'aceptada';
 
-      while (invoices.some(i => i.id === newInvoiceId)) {
-        nextNum++;
-        newInvoiceId = `${sequences.invoicePrefix}-${String(nextNum).padStart(4, '0')}`;
+    if (isQuoteDoc && isAceptadaStatus) {
+      // Find if an invoice has already been converted from this quote
+      let convertedInvoice = invoices.find(i => 
+        i.type === 'Invoice' && 
+        i.timeline?.some(e => e.title?.includes(`Convertida desde ${targetInvoice.id}`))
+      );
+
+      if (!convertedInvoice) {
+        const sequences = currentUser.documentSequences || { invoicePrefix: 'FAC', invoiceNextNumber: 1, quotePrefix: 'COT', quoteNextNumber: 1 };
+        let nextNum = sequences.invoiceNextNumber;
+        let newInvoiceId = `${sequences.invoicePrefix}-${String(nextNum).padStart(4, '0')}`;
+
+        while (invoices.some(i => i.id === newInvoiceId)) {
+          nextNum++;
+          newInvoiceId = `${sequences.invoicePrefix}-${String(nextNum).padStart(4, '0')}`;
+        }
+
+        convertedInvoice = {
+          ...targetInvoice,
+          id: newInvoiceId,
+          type: 'Invoice',
+          status: 'Enviada',
+          date: new Date().toISOString(),
+          timeline: [
+            { id: Date.now().toString(), type: 'CREATED', title: `Convertida desde ${targetInvoice.id}`, timestamp: new Date().toISOString() }
+          ]
+        };
+
+        await handleSaveInvoice(convertedInvoice);
       }
 
-      const newInvoice: Invoice = {
-        ...targetInvoice,
-        id: newInvoiceId,
-        type: 'Invoice',
-        status: 'Enviada',
-        date: new Date().toISOString(),
-        timeline: [
-          { id: Date.now().toString(), type: 'CREATED', title: `Convertida desde ${targetInvoice.id}`, timestamp: new Date().toISOString() }
-        ]
-      };
-
-      await handleSaveInvoice(newInvoice);
-
       const quoteEvent: TimelineEvent = {
-        id: Date.now().toString(), type: 'APPROVED', title: 'Cotización Aceptada', description: `Convertida a factura ${newInvoiceId}`, timestamp: new Date().toISOString()
+        id: Date.now().toString(), type: 'APPROVED', title: 'Cotización Aceptada', description: `Convertida a factura ${convertedInvoice.id}`, timestamp: new Date().toISOString()
       };
-      const updatedQuote = { ...targetInvoice, status: newStatus, timeline: [...(targetInvoice.timeline || []), quoteEvent] };
+      const updatedQuote = { ...targetInvoice, status: 'Aceptada' as InvoiceStatus, timeline: [...(targetInvoice.timeline || []), quoteEvent] };
 
       setInvoices(prev => prev.map(i => i.id === id ? updatedQuote : i));
       await saveInvoiceToDb({ ...updatedQuote, userId: currentUser.id });
@@ -693,17 +704,17 @@ const AppContent: React.FC = () => {
       const clientEmailStr = targetInvoice.clientEmail ? ` (${targetInvoice.clientEmail})` : '';
       const shouldSendNow = await alert.confirm({
         title: '🎉 Cotización Aceptada',
-        message: `La cotización ${targetInvoice.id} ha sido convertida automáticamente en la Factura ${newInvoiceId}.\n\n¿Deseas abrir la nueva factura e enviarla por correo${clientEmailStr} para iniciar el proceso de cobro?`,
+        message: `La cotización ${targetInvoice.id} ha sido convertida automáticamente en la Factura ${convertedInvoice.id}.\n\n¿Deseas abrir la nueva factura e enviarla por correo${clientEmailStr} para iniciar el proceso de cobro?`,
         confirmText: 'Ver y Enviar Factura',
         cancelText: 'Permanecer aquí',
         type: 'info'
       });
 
       if (shouldSendNow) {
-        setSelectedInvoice(newInvoice);
-        handleNavigate(AppView.INVOICE_DETAIL, { id: newInvoice.id });
+        setSelectedInvoice(convertedInvoice);
+        handleNavigate(AppView.INVOICE_DETAIL, { id: convertedInvoice.id });
       } else {
-        alert.addToast('success', 'Conversión Exitosa', `Se creó automáticamente la factura ${newInvoiceId}`);
+        alert.addToast('success', 'Conversión Exitosa', `Factura vinculada: ${convertedInvoice.id}`);
       }
       return;
     }
