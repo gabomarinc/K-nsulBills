@@ -350,6 +350,27 @@ export default async function handler(req, res) {
       );
 
       await client.end();
+
+      // Trigger Suite automation trigger in background for status change
+      const suiteUrl = process.env.SUITE_URL || 'https://suite.konsul.digital';
+      fetch(`${suiteUrl}/api/v1/automations/trigger`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          appCode: 'bills',
+          triggerName: 'Estado de Factura Actualizado',
+          userId: userId,
+          data: {
+            'Nombre del Cliente': updatedData.clientName || '',
+            'Email del Cliente': updatedData.clientEmail || '',
+            'Monto Total': String(updatedData.total || 0),
+            'Concepto de Venta': updatedData.concept || 'Servicios',
+            'Nuevo Estado': newStatus,
+            'Fecha de Creación': updatedData.date || new Date().toISOString()
+          }
+        })
+      }).catch(err => console.error("Error triggering status update automation:", err));
+
       return res.status(200).json({
         success: true,
         message: 'Documento actualizado exitosamente',

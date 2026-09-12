@@ -1188,7 +1188,7 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
 
     await client.end();
     
-    // Trigger Suite automation trigger (Document created)
+    // Trigger Suite automation trigger (Document created and/or status updated)
     if (invoice.type !== 'Expense') {
       triggerSuiteAutomation('bills', 'Documento Creado (Factura/Cotización)', invoice.userId || '', {
         'Nombre del Cliente': invoice.clientName,
@@ -1197,6 +1197,17 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
         'Concepto de Venta': (invoice.items && invoice.items[0]?.description) || 'Venta de servicios',
         'Fecha de Creación': invoice.date || new Date().toISOString()
       });
+
+      if (['Pagada', 'Aceptada', 'Incobrable', 'Abonada', 'Rechazada'].includes(invoice.status)) {
+        triggerSuiteAutomation('bills', 'Estado de Factura Actualizado', invoice.userId || '', {
+          'Nombre del Cliente': invoice.clientName,
+          'Email del Cliente': invoice.clientEmail || '',
+          'Monto Total': invoice.total.toString(),
+          'Concepto de Venta': (invoice.items && invoice.items[0]?.description) || 'Venta de servicios',
+          'Nuevo Estado': invoice.status,
+          'Fecha de Creación': invoice.date || new Date().toISOString()
+        });
+      }
     }
 
     return true;
