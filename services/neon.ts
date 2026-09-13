@@ -1189,23 +1189,91 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
     await client.end();
     
     // Trigger Suite automation trigger (Document created and/or status updated)
-    if (invoice.type !== 'Expense') {
+    if (invoice.type === 'Expense') {
+      const category = (invoice.items && invoice.items[0]?.description) || 'General';
+      triggerSuiteAutomation('bills', 'Gasto registrado en categoría específica', invoice.userId || '', {
+        'Concepto de Gasto': invoice.clientName || ((invoice.items && invoice.items[0]?.description)) || 'Gasto',
+        'Categoría': category,
+        'Monto Total': invoice.total.toString()
+      });
+    } else {
+      const concept = (invoice.items && invoice.items[0]?.description) || 'Venta de servicios';
+      const totalStr = invoice.total.toString();
+      const clientName = invoice.clientName || '';
+      const clientEmail = invoice.clientEmail || '';
+      const docDate = invoice.date || new Date().toISOString();
+
       triggerSuiteAutomation('bills', 'Documento Creado (Factura/Cotización)', invoice.userId || '', {
-        'Nombre del Cliente': invoice.clientName,
-        'Email del Cliente': invoice.clientEmail || '',
-        'Monto Total': invoice.total.toString(),
-        'Concepto de Venta': (invoice.items && invoice.items[0]?.description) || 'Venta de servicios',
-        'Fecha de Creación': invoice.date || new Date().toISOString()
+        'Nombre del Cliente': clientName,
+        'Email del Cliente': clientEmail,
+        'Monto Total': totalStr,
+        'Concepto de Venta': concept,
+        'Fecha de Creación': docDate
       });
 
-      if (['Pagada', 'Aceptada', 'Incobrable', 'Abonada', 'Rechazada'].includes(invoice.status)) {
+      if (['Pagada', 'Aceptada', 'Incobrable', 'Abonada', 'Rechazada', 'Seguimiento', 'Enviada'].includes(invoice.status)) {
         triggerSuiteAutomation('bills', 'Estado de Factura Actualizado', invoice.userId || '', {
-          'Nombre del Cliente': invoice.clientName,
-          'Email del Cliente': invoice.clientEmail || '',
-          'Monto Total': invoice.total.toString(),
-          'Concepto de Venta': (invoice.items && invoice.items[0]?.description) || 'Venta de servicios',
+          'Nombre del Cliente': clientName,
+          'Email del Cliente': clientEmail,
+          'Monto Total': totalStr,
+          'Concepto de Venta': concept,
           'Nuevo Estado': invoice.status,
-          'Fecha de Creación': invoice.date || new Date().toISOString()
+          'Fecha de Creación': docDate
+        });
+      }
+
+      if (invoice.status === 'Incobrable') {
+        triggerSuiteAutomation('bills', 'Factura marcada Incobrable', invoice.userId || '', {
+          'Nombre del Cliente': clientName,
+          'Email del Cliente': clientEmail,
+          'Monto Total': totalStr,
+          'Concepto de Venta': concept
+        });
+      }
+
+      if (invoice.status === 'Abonada') {
+        triggerSuiteAutomation('bills', 'Factura marcada como Abonada (Pago Parcial)', invoice.userId || '', {
+          'Nombre del Cliente': clientName,
+          'Email del Cliente': clientEmail,
+          'Monto Total': totalStr,
+          'Monto Abonado': (invoice.amountPaid || (invoice.total * 0.5)).toString(),
+          'Concepto de Venta': concept
+        });
+      }
+
+      if (invoice.status === 'Rechazada') {
+        triggerSuiteAutomation('bills', 'Cotización Rechazada', invoice.userId || '', {
+          'Nombre del Cliente': clientName,
+          'Email del Cliente': clientEmail,
+          'Monto Total': totalStr,
+          'Concepto de Venta': concept
+        });
+      }
+
+      if (invoice.status === 'Pagada' || invoice.status === 'Aceptada') {
+        triggerSuiteAutomation('bills', 'Prospecto convertido a Cliente (primer Invoice pagado)', invoice.userId || '', {
+          'Nombre del Cliente': clientName,
+          'Email del Cliente': clientEmail,
+          'Monto Total': totalStr
+        });
+      }
+
+      if (invoice.total >= 5000) {
+        triggerSuiteAutomation('bills', 'Cliente alcanza VIP', invoice.userId || '', {
+          'Nombre del Cliente': clientName,
+          'Email del Cliente': clientEmail,
+          'Total Facturado': totalStr,
+          'Cantidad Documentos': '1'
+        });
+      }
+
+      if (invoice.status === 'Seguimiento') {
+        triggerSuiteAutomation('bills', 'Factura vencida sin pago', invoice.userId || '', {
+          'Nombre del Cliente': clientName,
+          'Email del Cliente': clientEmail,
+          'Monto Total': totalStr,
+          'Concepto de Venta': concept,
+          'Fecha de Vencimiento': invoice.dueDate || docDate
         });
       }
     }

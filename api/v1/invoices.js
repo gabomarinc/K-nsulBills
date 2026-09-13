@@ -284,24 +284,34 @@ export default async function handler(req, res) {
 
       // Trigger Suite automation trigger in background
       const suiteUrl = process.env.SUITE_URL || 'https://suite.konsul.digital';
-      fetch(`${suiteUrl}/api/v1/automations/trigger`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          appCode: 'bills',
-          triggerName: 'Documento Creado (Factura/Cotización)',
-          userId: userId,
-          data: {
-            'Nombre del Cliente': clientName,
-            'Email del Cliente': invoiceData.clientEmail || '',
-            'Monto Total': String(totalAmount),
-            'Concepto de Venta': body.concept || body.description || (items[0]?.description) || 'Servicios',
-            'Fecha de Creación': docDate
-          }
-        })
-      }).catch(err => console.error("Error triggering invoices automation:", err));
+      const conceptStr = body.concept || body.description || (items[0]?.description) || 'Servicios';
+      const totalStr = String(totalAmount);
+      const clientEmailStr = invoiceData.clientEmail || '';
+
+      const triggerCall = (triggerName, data) => {
+        fetch(`${suiteUrl}/api/v1/automations/trigger`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ appCode: 'bills', triggerName, userId, data })
+        }).catch(err => console.error(`Error triggering ${triggerName}:`, err));
+      };
+
+      triggerCall('Documento Creado (Factura/Cotización)', {
+        'Nombre del Cliente': clientName,
+        'Email del Cliente': clientEmailStr,
+        'Monto Total': totalStr,
+        'Concepto de Venta': conceptStr,
+        'Fecha de Creación': docDate
+      });
+
+      if (totalAmount >= 5000) {
+        triggerCall('Cliente alcanza VIP', {
+          'Nombre del Cliente': clientName,
+          'Email del Cliente': clientEmailStr,
+          'Total Facturado': totalStr,
+          'Cantidad Documentos': '1'
+        });
+      }
 
       return res.status(201).json({
         success: true,
@@ -351,25 +361,85 @@ export default async function handler(req, res) {
 
       await client.end();
 
-      // Trigger Suite automation trigger in background for status change
+      // Trigger Suite automation triggers in background for status change
       const suiteUrl = process.env.SUITE_URL || 'https://suite.konsul.digital';
-      fetch(`${suiteUrl}/api/v1/automations/trigger`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          appCode: 'bills',
-          triggerName: 'Estado de Factura Actualizado',
-          userId: userId,
-          data: {
-            'Nombre del Cliente': updatedData.clientName || '',
-            'Email del Cliente': updatedData.clientEmail || '',
-            'Monto Total': String(updatedData.total || 0),
-            'Concepto de Venta': updatedData.concept || 'Servicios',
-            'Nuevo Estado': newStatus,
-            'Fecha de Creación': updatedData.date || new Date().toISOString()
-          }
-        })
-      }).catch(err => console.error("Error triggering status update automation:", err));
+      const clientName = updatedData.clientName || '';
+      const clientEmail = updatedData.clientEmail || '';
+      const totalStr = String(updatedData.total || 0);
+      const conceptStr = updatedData.concept || (updatedData.items && updatedData.items[0]?.description) || 'Servicios';
+      const docDate = updatedData.date || new Date().toISOString();
+
+      const triggerCall = (triggerName, data) => {
+        fetch(`${suiteUrl}/api/v1/automations/trigger`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ appCode: 'bills', triggerName, userId, data })
+        }).catch(err => console.error(`Error triggering ${triggerName}:`, err));
+      };
+
+      triggerCall('Estado de Factura Actualizado', {
+        'Nombre del Cliente': clientName,
+        'Email del Cliente': clientEmail,
+        'Monto Total': totalStr,
+        'Concepto de Venta': conceptStr,
+        'Nuevo Estado': newStatus,
+        'Fecha de Creación': docDate
+      });
+
+      if (newStatus === 'Incobrable') {
+        triggerCall('Factura marcada Incobrable', {
+          'Nombre del Cliente': clientName,
+          'Email del Cliente': clientEmail,
+          'Monto Total': totalStr,
+          'Concepto de Venta': conceptStr
+        });
+      }
+
+      if (newStatus === 'Abonada') {
+        triggerCall('Factura marcada como Abonada (Pago Parcial)', {
+          'Nombre del Cliente': clientName,
+          'Email del Cliente': clientEmail,
+          'Monto Total': totalStr,
+          'Monto Abonado': String(updatedData.amountPaid || (parseFloat(totalStr) * 0.5)),
+          'Concepto de Venta': conceptStr
+        });
+      }
+
+      if (newStatus === 'Rechazada') {
+        triggerCall('Cotización Rechazada', {
+          'Nombre del Cliente': clientName,
+          'Email del Cliente': clientEmail,
+          'Monto Total': totalStr,
+          'Concepto de Venta': conceptStr
+        });
+      }
+
+      if (newStatus === 'Pagada' || newStatus === 'Aceptada') {
+        triggerCall('Prospecto convertido a Cliente (primer Invoice pagado)', {
+          'Nombre del Cliente': clientName,
+          'Email del Cliente': clientEmail,
+          'Monto Total': totalStr
+        });
+      }
+
+      if (parseFloat(totalStr) >= 5000) {
+        triggerCall('Cliente alcanza VIP', {
+          'Nombre del Cliente': clientName,
+          'Email del Cliente': clientEmail,
+          'Total Facturado': totalStr,
+          'Cantidad Documentos': '1'
+        });
+      }
+
+      if (newStatus === 'Seguimiento') {
+        triggerCall('Factura vencida sin pago', {
+          'Nombre del Cliente': clientName,
+          'Email del Cliente': clientEmail,
+          'Monto Total': totalStr,
+          'Concepto de Venta': conceptStr,
+          'Fecha de Vencimiento': updatedData.dueDate || docDate
+        });
+      }
 
       return res.status(200).json({
         success: true,
