@@ -296,18 +296,31 @@ export default async function handler(req, res) {
         }).catch(err => console.error(`Error triggering ${triggerName}:`, err));
       };
 
-      triggerCall('Documento Creado (Factura/Cotización)', {
+      const docUrl = invoiceData.receiptUrl || `https://bills.konsul.digital/api/v1/invoices?id=${invoiceId}`;
+      const fullDocData = {
+        'ID de Factura / Documento': invoiceId,
+        'Tipo de Documento': type === 'Quote' ? 'Cotización' : type === 'Expense' ? 'Gasto' : 'Factura',
         'Nombre del Cliente': clientName,
         'Email del Cliente': clientEmailStr,
+        'Teléfono del Cliente': body.clientPhone || '',
+        'RUC / Cédula del Cliente': clientTaxId || '',
+        'Dirección del Cliente': body.clientAddress || '',
         'Monto Total': totalStr,
+        'Moneda': invoiceData.currency || 'USD',
         'Concepto de Venta': conceptStr,
-        'Fecha de Creación': docDate
-      });
+        'Estado de Factura': invoiceData.status || 'Creada',
+        'Fecha de Creación': docDate,
+        'Fecha de Vencimiento': invoiceData.dueDate || '',
+        'Notas del Documento': invoiceData.notes || '',
+        'Documento Adjunto (URL / PDF)': docUrl,
+        'Enlace de Factura en Bills': `https://bills.konsul.digital?invoiceId=${invoiceId}`
+      };
+
+      triggerCall('Documento Creado (Factura/Cotización)', fullDocData);
 
       if (totalAmount >= 5000) {
         triggerCall('Cliente alcanza VIP', {
-          'Nombre del Cliente': clientName,
-          'Email del Cliente': clientEmailStr,
+          ...fullDocData,
           'Total Facturado': totalStr,
           'Cantidad Documentos': '1'
         });
@@ -369,63 +382,56 @@ export default async function handler(req, res) {
       const conceptStr = updatedData.concept || (updatedData.items && updatedData.items[0]?.description) || 'Servicios';
       const docDate = updatedData.date || new Date().toISOString();
 
-      const triggerCall = (triggerName, data) => {
-        fetch(`${suiteUrl}/api/v1/automations/trigger`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ appCode: 'bills', triggerName, userId, data })
-        }).catch(err => console.error(`Error triggering ${triggerName}:`, err));
-      };
-
-      triggerCall('Estado de Factura Actualizado', {
+      const docUrl = updatedData.receiptUrl || `https://bills.konsul.digital/api/v1/invoices?id=${id}`;
+      const fullDocData = {
+        'ID de Factura / Documento': id,
+        'Tipo de Documento': updatedData.type === 'Quote' ? 'Cotización' : updatedData.type === 'Expense' ? 'Gasto' : 'Factura',
         'Nombre del Cliente': clientName,
         'Email del Cliente': clientEmail,
+        'Teléfono del Cliente': updatedData.clientPhone || '',
+        'RUC / Cédula del Cliente': updatedData.clientTaxId || '',
+        'Dirección del Cliente': updatedData.clientAddress || '',
         'Monto Total': totalStr,
+        'Moneda': updatedData.currency || 'USD',
         'Concepto de Venta': conceptStr,
         'Nuevo Estado': newStatus,
-        'Fecha de Creación': docDate
-      });
+        'Estado de Factura': newStatus,
+        'Fecha de Creación': docDate,
+        'Fecha de Actualización': new Date().toISOString(),
+        'Fecha de Vencimiento': updatedData.dueDate || '',
+        'Notas del Documento': updatedData.notes || '',
+        'Documento Adjunto (URL / PDF)': docUrl,
+        'Enlace de Factura en Bills': `https://bills.konsul.digital?invoiceId=${id}`
+      };
+
+      triggerCall('Estado de Factura Actualizado', fullDocData);
 
       if (newStatus === 'Incobrable') {
-        triggerCall('Factura marcada Incobrable', {
-          'Nombre del Cliente': clientName,
-          'Email del Cliente': clientEmail,
-          'Monto Total': totalStr,
-          'Concepto de Venta': conceptStr
-        });
+        triggerCall('Factura marcada Incobrable', fullDocData);
       }
 
       if (newStatus === 'Abonada') {
         triggerCall('Factura marcada como Abonada (Pago Parcial)', {
-          'Nombre del Cliente': clientName,
-          'Email del Cliente': clientEmail,
-          'Monto Total': totalStr,
+          ...fullDocData,
           'Monto Abonado': String(updatedData.amountPaid || (parseFloat(totalStr) * 0.5)),
-          'Concepto de Venta': conceptStr
+          'Saldo Pendiente': String(parseFloat(totalStr) - (updatedData.amountPaid || (parseFloat(totalStr) * 0.5)))
         });
       }
 
       if (newStatus === 'Rechazada') {
         triggerCall('Cotización Rechazada', {
-          'Nombre del Cliente': clientName,
-          'Email del Cliente': clientEmail,
-          'Monto Total': totalStr,
-          'Concepto de Venta': conceptStr
+          ...fullDocData,
+          'ID de Cotización': id
         });
       }
 
       if (newStatus === 'Pagada' || newStatus === 'Aceptada') {
-        triggerCall('Prospecto convertido a Cliente (primer Invoice pagado)', {
-          'Nombre del Cliente': clientName,
-          'Email del Cliente': clientEmail,
-          'Monto Total': totalStr
-        });
+        triggerCall('Prospecto convertido a Cliente (primer Invoice pagado)', fullDocData);
       }
 
       if (parseFloat(totalStr) >= 5000) {
         triggerCall('Cliente alcanza VIP', {
-          'Nombre del Cliente': clientName,
-          'Email del Cliente': clientEmail,
+          ...fullDocData,
           'Total Facturado': totalStr,
           'Cantidad Documentos': '1'
         });
@@ -433,10 +439,7 @@ export default async function handler(req, res) {
 
       if (newStatus === 'Seguimiento') {
         triggerCall('Factura vencida sin pago', {
-          'Nombre del Cliente': clientName,
-          'Email del Cliente': clientEmail,
-          'Monto Total': totalStr,
-          'Concepto de Venta': conceptStr,
+          ...fullDocData,
           'Fecha de Vencimiento': updatedData.dueDate || docDate
         });
       }
