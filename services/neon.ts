@@ -1206,7 +1206,7 @@ export const saveInvoiceToDb = async (invoice: Invoice): Promise<boolean> => {
 
       const fullDocData = {
         'ID de Factura / Documento': invoice.id,
-        'Tipo de Documento': invoice.type === 'Quote' ? 'Cotización' : invoice.type === 'Expense' ? 'Gasto' : 'Factura',
+        'Tipo de Documento': invoice.type === 'Quote' ? 'Cotización' : (invoice.type as any) === 'Expense' ? 'Gasto' : 'Factura',
         'Nombre del Cliente': clientName,
         'Email del Cliente': clientEmail,
         'Teléfono del Cliente': (invoice as any).clientPhone || '',

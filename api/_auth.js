@@ -21,28 +21,22 @@ export async function validateApiKey(req, res) {
 
   const envKey = process.env.KONSUL_API_KEY || process.env.BILL_API_KEY || process.env.API_KEY;
 
-  // Allow flexible auth:
-  // 1. If envKey is configured, compare against it.
-  // 2. If x-user-id is passed explicitly, use it.
-  // 3. Fallback to demo user if no key or dev mode for easy integration.
+  let userId = req.headers['x-user-id'] || req.query.userId || req.query.user_id || null;
+  const userEmail = req.headers['x-user-email'] || req.query.user_email || null;
 
-  const internalKey = process.env.INTERNAL_API_KEY || 'konsul_ecosystem_secret_key';
+  const internalKey = process.env.INTERNAL_API_KEY || process.env.KONSUL_ECOSYSTEM_SECRET_KEY || 'konsul_ecosystem_secret_key';
   const isSsoKey = apiKey && (apiKey === internalKey || apiKey.startsWith('konsul_sso_') || apiKey.startsWith('kb_live_sso_'));
 
-  if (isSsoKey) {
-    return { userId };
-  }
+  const dbUrl = process.env.DATABASE_URL;
 
-  if (envKey && apiKey && apiKey !== envKey) {
-    // Check if the provided apiKey belongs to a user in database
-    const dbUrl = process.env.DATABASE_URL;
-    if (dbUrl) {
+  if (isSsoKey) {
+    if (dbUrl && (userEmail || userId)) {
       try {
         const client = new Client(dbUrl);
         await client.connect();
         const { rows } = await client.query(
-          `SELECT id FROM users WHERE id = $1 OR email = $1 OR profile_data->'apiKeys'->>'konsul' = $2 OR profile_data->'apiKeys'->>'gemini' = $2 LIMIT 1`,
-          [apiKey, apiKey]
+          `SELECT id FROM users WHERE id = $1 OR email = $2 LIMIT 1`,
+          [userId || '', userEmail || '']
         );
         await client.end();
         if (rows.length > 0) {
@@ -50,13 +44,35 @@ export async function validateApiKey(req, res) {
           return { userId };
         }
       } catch (e) {
-        console.error("API Auth DB Lookup Error:", e);
+        console.error("SSO DB Lookup Error:", e);
       }
     }
+    return { userId: userId || 'user_demo_p1' };
+  }
 
+  // Check if the provided apiKey or userEmail belongs to a user in database
+  if (dbUrl) {
+    try {
+      const client = new Client(dbUrl);
+      await client.connect();
+      const { rows } = await client.query(
+        `SELECT id FROM users WHERE id = $1 OR email = $1 OR email = $3 OR profile_data->'apiKeys'->>'konsul' = $2 OR profile_data->'apiKeys'->>'gemini' = $2 LIMIT 1`,
+        [apiKey || '', apiKey || '', userEmail || '']
+      );
+      await client.end();
+      if (rows.length > 0) {
+        userId = rows[0].id;
+        return { userId };
+      }
+    } catch (e) {
+      console.error("API Auth DB Lookup Error:", e);
+    }
+  }
+
+  if (envKey && apiKey && apiKey !== envKey) {
     res.status(401).json({ error: 'Unauthorized: Invalid API Key' });
     return null;
   }
 
-  return { userId };
+  return { userId: userId || 'user_demo_p1' };
 }
