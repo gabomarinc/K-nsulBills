@@ -26,6 +26,7 @@ export default async function handler(req, res) {
       ALTER TABLE clients ADD COLUMN IF NOT EXISTS phone TEXT;
       ALTER TABLE clients ADD COLUMN IF NOT EXISTS tags TEXT;
       ALTER TABLE clients ADD COLUMN IF NOT EXISTS notes TEXT;
+      ALTER TABLE clients ADD COLUMN IF NOT EXISTS company TEXT;
       ALTER TABLE clients ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
 
       ALTER TABLE prospects ADD COLUMN IF NOT EXISTS tax_id TEXT;
@@ -34,6 +35,7 @@ export default async function handler(req, res) {
       ALTER TABLE prospects ADD COLUMN IF NOT EXISTS phone TEXT;
       ALTER TABLE prospects ADD COLUMN IF NOT EXISTS tags TEXT;
       ALTER TABLE prospects ADD COLUMN IF NOT EXISTS notes TEXT;
+      ALTER TABLE prospects ADD COLUMN IF NOT EXISTS company TEXT;
       ALTER TABLE prospects ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
     `);
 
@@ -47,7 +49,7 @@ export default async function handler(req, res) {
       let prospectsRows = [];
 
       if (!status || status === 'CLIENT') {
-        let q = `SELECT id, name, tax_id, email, address, phone, tags, notes, 'CLIENT' as status FROM clients WHERE user_id = $1`;
+        let q = `SELECT id, name, tax_id, email, address, phone, company, tags, notes, 'CLIENT' as status FROM clients WHERE user_id = $1`;
         const params = [userId];
         if (search) {
           params.push(`%${search}%`);
@@ -62,7 +64,7 @@ export default async function handler(req, res) {
       }
 
       if (!status || status === 'PROSPECT') {
-        let q = `SELECT id, name, tax_id, email, address, phone, tags, notes, 'PROSPECT' as status FROM prospects WHERE user_id = $1`;
+        let q = `SELECT id, name, tax_id, email, address, phone, company, tags, notes, 'PROSPECT' as status FROM prospects WHERE user_id = $1`;
         const params = [userId];
         if (search) {
           params.push(`%${search}%`);
@@ -164,14 +166,15 @@ export default async function handler(req, res) {
       const targetTable = status === 'CLIENT' ? 'clients' : 'prospects';
 
       const upsertQuery = `
-        INSERT INTO ${targetTable} (id, user_id, name, tax_id, email, address, phone, tags, notes, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+        INSERT INTO ${targetTable} (id, user_id, name, tax_id, email, address, phone, company, tags, notes, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
         ON CONFLICT (id) DO UPDATE SET 
           name = EXCLUDED.name,
           tax_id = COALESCE(EXCLUDED.tax_id, ${targetTable}.tax_id),
           email = COALESCE(EXCLUDED.email, ${targetTable}.email),
           address = COALESCE(EXCLUDED.address, ${targetTable}.address),
           phone = COALESCE(EXCLUDED.phone, ${targetTable}.phone),
+          company = COALESCE(EXCLUDED.company, ${targetTable}.company),
           tags = COALESCE(EXCLUDED.tags, ${targetTable}.tags),
           notes = COALESCE(EXCLUDED.notes, ${targetTable}.notes),
           updated_at = NOW();
@@ -185,6 +188,7 @@ export default async function handler(req, res) {
         body.email || null,
         body.address || null,
         body.phone || null,
+        body.company || null,
         body.tags || null,
         body.notes || null
       ]);
