@@ -87,6 +87,7 @@ export default async function handler(req, res) {
         email: r.email,
         address: r.address,
         phone: r.phone,
+        company: r.company,
         tags: r.tags,
         notes: r.notes,
         status: r.status
